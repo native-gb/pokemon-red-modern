@@ -421,13 +421,20 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 }
 
 void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
-                const content::CatalogSummary& catalog, BattleAnimationLab& lab, WorldState& maps,
+                const content::CatalogSummary& catalog, const BootState& boot,
+                BattleAnimationLab& lab, WorldState& maps,
                 const RuleCatalog& rules, PresentationSettings& presentation,
                 const GameClocks& clocks, const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
-        if (game.mode == Mode::overworld) {
+        if (game.mode == Mode::title) {
+            ImGui::Text("Boot: %s", label(boot.screen));
+            ImGui::Separator();
+            ImGui::TextUnformatted(
+                "D-pad Navigate   A/Start Confirm   B Back   Select Case   "
+                "F1/F2 Tools   F11 Fullscreen");
+        } else if (game.mode == Mode::overworld) {
             const std::string_view map = selected_map_name(maps);
             ImGui::Text("Map: %.*s", static_cast<int>(map.size()), map.data());
             ImGui::Separator();

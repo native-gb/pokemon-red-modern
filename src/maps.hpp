@@ -188,6 +188,8 @@ struct WorldState {
 bool load_world(const std::filesystem::path& path, WorldState& result, std::string& error);
 bool initialize_world_runtime(WorldState& world, const InteractionCatalog& interactions,
                               std::string& error);
+bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
+                    std::int32_t y, std::string& error);
 void step_world(WorldState& world, const InteractionCatalog& interactions,
                 const WorldStepInput& input);
 void select_next_map(WorldState& world);

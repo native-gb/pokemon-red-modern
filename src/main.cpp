@@ -1,10 +1,12 @@
 #include "battle_animation_lab.hpp"
+#include "boot.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "controls.hpp"
 #include "interactions.hpp"
 #include "maps.hpp"
 #include "render/dialogue.hpp"
+#include "render/boot.hpp"
 #include "render/frame.hpp"
 #include "render/maps.hpp"
 #include "rules.hpp"
@@ -86,6 +88,14 @@ int main(int argc, char** argv) {
 
     pokered::content::CatalogSummary catalog;
     pokered::GameState game;
+    pokered::BootContent boot_content;
+    pokered::BootState boot;
+    std::string boot_error;
+    const std::filesystem::path boot_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "boot_content.bin";
+    if (!pokered::load_boot_content(boot_cache, boot_content, boot_error))
+        std::fprintf(stderr, "%s\n", boot_error.c_str());
+
     pokered::BattleAnimationLab animation_lab;
     pokered::Diagnostics animation_diagnostics;
     const std::filesystem::path generated_animation_root =
@@ -95,7 +105,6 @@ int main(int argc, char** argv) {
         for (const pokered::Diagnostic& diagnostic : animation_diagnostics.entries)
             std::fprintf(stderr, "%s\n", pokered::format_diagnostic(diagnostic).c_str());
     } else {
-        game.mode = pokered::Mode::battle;
         std::printf("Loaded %zu battle animation lab programs from %s\n",
                     animation_lab.entries.size(), generated_animation_root.c_str());
     }
@@ -121,7 +130,7 @@ int main(int argc, char** argv) {
     if (world.loaded && interactions.loaded &&
         !pokered::initialize_world_runtime(world, interactions, interaction_error))
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
-    if (world.loaded && interactions.loaded && rules.loaded) {
+    if (world.loaded && interactions.loaded && rules.loaded && boot_content.loaded) {
         catalog.state = pokered::content::PackState::partial;
         catalog.campaign = "Pokemon Red";
         catalog.source = "Compiled local campaign pack";
@@ -133,6 +142,13 @@ int main(int argc, char** argv) {
 
     pokered::HostWindow window;
     if (!pokered::initialize_window(window, data_root, presentation.control_profile)) return 1;
+    pokered::render::BootRenderResources boot_resources;
+    if (boot_content.loaded &&
+        !pokered::render::upload_boot_textures(window.frame.renderer, boot_content,
+                                               boot_resources)) {
+        std::fprintf(stderr, "could not upload imported boot textures: %s\n", SDL_GetError());
+        boot_content.loaded = false;
+    }
     pokered::render::WorldRenderResources world_resources;
     if (world.loaded) {
         if (!pokered::render::upload_world_textures(window.frame.renderer, world,
@@ -143,8 +159,19 @@ int main(int argc, char** argv) {
             std::printf("World renderer: %zu chunks, %zu texture pages, %zu animated tiles\n",
                         world_resources.terrain_chunks.size(), world_resources.terrain_pages.size(),
                         world_resources.animated_tiles.size());
-            game.mode = pokered::Mode::overworld;
         }
+    }
+    if (boot_content.loaded) {
+        if (!pokered::begin_boot(boot_content, boot, boot_error)) {
+            std::fprintf(stderr, "%s\n", boot_error.c_str());
+            pokered::render::destroy_boot_textures(boot_resources);
+            pokered::render::destroy_world_textures(world_resources);
+            pokered::shutdown_window(window);
+            return 1;
+        }
+        game.mode = pokered::Mode::title;
+    } else if (world.loaded) {
+        game.mode = pokered::Mode::overworld;
     }
 
     pokered::ToolState tools{
@@ -168,6 +195,7 @@ int main(int argc, char** argv) {
     pokered::GameClocks clocks;
     bool fast_forward_toggle_active = false;
     bool tools_chord_down = false;
+    pokered::BootInput pending_boot_input;
 
     while (running) {
         const std::uint64_t frame_started = SDL_GetTicksNS();
@@ -205,6 +233,21 @@ int main(int argc, char** argv) {
         const bool tools_own_input = tools.layout != pokered::ToolLayout::closed;
         const bool confirm_pressed = controls.confirm && !previous_controls.confirm;
         if (!tools_own_input) pending_world_activation |= confirm_pressed;
+        if (!tools_own_input && game.mode == pokered::Mode::title) {
+            pending_boot_input.up_pressed |= controls.up && !previous_controls.up;
+            pending_boot_input.down_pressed |= controls.down && !previous_controls.down;
+            pending_boot_input.left_pressed |= controls.left && !previous_controls.left;
+            pending_boot_input.right_pressed |= controls.right && !previous_controls.right;
+            pending_boot_input.confirm_pressed |= confirm_pressed;
+            pending_boot_input.cancel_pressed |=
+                controls.back && !previous_controls.back;
+            pending_boot_input.start_pressed |=
+                controls.start && !previous_controls.start;
+            pending_boot_input.select_pressed |=
+                controls.select && !previous_controls.select;
+            pending_boot_input.random =
+                static_cast<std::uint8_t>((game.step * 73U + 41U) & 0xFFU);
+        }
 
         // Fast-forward scales deterministic game work only. Real,
         // presentation, audio, and future music clocks remain wall-clock based.
@@ -220,8 +263,8 @@ int main(int argc, char** argv) {
         clocks.fast_forward = fast_forward;
 
         if (input.toggle_lab_view && world.loaded && animation_lab.loaded)
-            game.mode = game.mode == pokered::Mode::overworld ? pokered::Mode::battle
-                                                              : pokered::Mode::overworld;
+            game.mode = game.mode == pokered::Mode::battle ? pokered::Mode::overworld
+                                                           : pokered::Mode::battle;
         if (input.previous_animation) {
             if (game.mode == pokered::Mode::overworld)
                 pokered::select_previous_map(world);
@@ -277,8 +320,33 @@ int main(int argc, char** argv) {
         while (accumulator >= step_seconds) {
             if (!game.paused) {
                 pokered::step_game(game);
-                pokered::step_world_animation(world);
+                if (game.mode == pokered::Mode::overworld)
+                    pokered::step_world_animation(world);
                 pokered::advance_game_clock(clocks, step_seconds);
+            }
+            if (!game.paused && !tools_own_input &&
+                game.mode == pokered::Mode::title) {
+                pokered::BootStepResult boot_result;
+                if (!pokered::step_boot(boot_content, pending_boot_input, boot,
+                                        boot_result, boot_error)) {
+                    std::fprintf(stderr, "%s\n", boot_error.c_str());
+                    render_failed = true;
+                    running = false;
+                    break;
+                }
+                pending_boot_input = {};
+                if (boot_result.new_game_requested) {
+                    if (!pokered::enter_world_at(
+                            world, boot_content.new_game_map_id,
+                            boot_content.new_game_x, boot_content.new_game_y,
+                            boot_error)) {
+                        std::fprintf(stderr, "%s\n", boot_error.c_str());
+                        render_failed = true;
+                        running = false;
+                        break;
+                    }
+                    game.mode = pokered::Mode::overworld;
+                }
             }
             if (!game.paused && !tools_own_input && game.mode == pokered::Mode::overworld) {
                 pokered::step_world(world, interactions,
@@ -300,15 +368,16 @@ int main(int argc, char** argv) {
         imgui_new_frame();
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
                                            window.frame.render_width, window.frame.render_height,
-                                           game, catalog, animation_lab, world, world_resources) ||
+                                           game, catalog, boot_content, boot, boot_resources,
+                                           animation_lab, world, world_resources) ||
             !pokered::draw_window(window)) {
             std::fprintf(stderr, "could not render frame: %s\n", SDL_GetError());
             render_failed = true;
             break;
         }
 
-        pokered::draw_tools(tools, window.runtime, game, catalog, animation_lab, world, rules,
-                            presentation, clocks,
+        pokered::draw_tools(tools, window.runtime, game, catalog, boot, animation_lab,
+                            world, rules, presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_dialogue_overlay(world);
         imgui_render_layer();
@@ -337,6 +406,7 @@ int main(int argc, char** argv) {
         previous_controls = controls;
     }
 
+    pokered::render::destroy_boot_textures(boot_resources);
     pokered::render::destroy_world_textures(world_resources);
     pokered::shutdown_window(window);
     if (!options.render_smoke && settings_writable && presentation != saved_presentation &&

@@ -1,5 +1,6 @@
 #include "animations.hpp"
 #include "battle_animation_lab.hpp"
+#include "boot.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "content_index.hpp"
@@ -490,6 +491,83 @@ void test_local_rule_cache(TestState& state) {
     check(state, fire_beats_grass, "type chart retains Fire versus Grass");
 }
 
+void test_local_boot_cache(TestState& state) {
+    // The generated cache is optional in a clean public checkout. When a local
+    // ROM has been imported, drive the actual title-to-New Game owner headlessly.
+    const std::filesystem::path path =
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "runtime" /
+        "imports" / "pokemon_red_us_rev_0" / "compiled" / "boot_content.bin";
+    if (!std::filesystem::exists(path)) {
+        std::puts("boot cache test skipped: no local imported campaign");
+        return;
+    }
+    pokered::BootContent content;
+    std::string error;
+    check(state, pokered::load_boot_content(path, content, error),
+          "local boot cache loads");
+    if (!content.loaded) return;
+    check(state,
+          content.images.size() == 27U && content.title.species.size() == 16U &&
+              content.ui_tiles.size() == 256U * 64U,
+          "boot cache retains complete title graphics and UI tiles");
+    check(state,
+          content.oak.player_names ==
+                  std::array<std::string, 4>{"NEW NAME", "RED", "ASH", "JACK"} &&
+              content.oak.rival_names ==
+                  std::array<std::string, 4>{"NEW NAME", "BLUE", "GARY", "JOHN"},
+          "boot cache retains cartridge default names");
+
+    pokered::BootState boot;
+    check(state, pokered::begin_boot(content, boot, error),
+          "normal boot owner starts at title");
+    pokered::BootStepResult result;
+    for (std::size_t guard = 0U;
+         guard < 1000U && boot.title_startup_frames != 0U; ++guard)
+        check(state, pokered::step_boot(content, {}, boot, result, error),
+              "title startup advances");
+    check(state,
+          pokered::step_boot(content, {.confirm_pressed = true}, boot, result,
+                             error) &&
+              boot.screen == pokered::BootScreen::main_menu,
+          "title input opens imported main menu");
+    while (boot.delay_frames != 0U)
+        check(state, pokered::step_boot(content, {}, boot, result, error),
+              "main-menu input guard advances");
+    check(state,
+          pokered::step_boot(content, {.confirm_pressed = true}, boot, result,
+                             error) &&
+              boot.screen == pokered::BootScreen::oak_text,
+          "New Game enters imported Oak introduction");
+
+    // Drain imported pages and select the first concrete defaults. The finite
+    // guard proves this path emits a semantic campaign handoff.
+    for (std::size_t guard = 0U;
+         guard < 2000U && !result.new_game_requested; ++guard) {
+        pokered::BootInput input;
+        if (boot.screen == pokered::BootScreen::oak_text &&
+            !boot.picture_sliding) {
+            input.confirm_pressed = true;
+        } else if (boot.screen == pokered::BootScreen::name_menu &&
+                   !boot.picture_sliding) {
+            if (boot.name_selection == 0U)
+                input.down_pressed = true;
+            else
+                input.confirm_pressed = true;
+        }
+        check(state, pokered::step_boot(content, input, boot, result, error),
+              "Oak New Game path advances");
+        if (!error.empty()) break;
+    }
+    check(state, result.new_game_requested,
+          "Oak sequence emits New Game handoff");
+    check(state, boot.player_name == "RED" && boot.rival_name == "BLUE",
+          "New Game handoff retains selected names");
+    check(state,
+          content.new_game_map_id == 0x26U && content.new_game_x == 3U &&
+              content.new_game_y == 6U,
+          "New Game placement comes from imported campaign content");
+}
+
 } // namespace
 
 int main() {
@@ -505,6 +583,7 @@ int main() {
     test_host_settings_and_clocks(state);
     test_world_spaces_and_warps(state);
     test_local_rule_cache(state);
+    test_local_boot_cache(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

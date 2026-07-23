@@ -416,6 +416,8 @@ ViewLayout layout_view(int output_width, int output_height) {
 
 bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width, int output_height,
                   const GameState& game, const content::CatalogSummary& catalog,
+                  const BootContent& boot_content, const BootState& boot,
+                  const BootRenderResources& boot_resources,
                   const BattleAnimationLab& lab, const WorldState& maps,
                   WorldRenderResources& world_resources) {
     if (renderer == nullptr || target == nullptr) return false;
@@ -432,7 +434,10 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
     (void)SDL_SetRenderDrawColor(renderer, 5, 6, 9, 255);
     (void)SDL_RenderFillRect(renderer, &shadow);
 
-    if (lab.loaded) {
+    if (game.mode == Mode::title && boot_content.loaded && boot.active)
+        return draw_boot(renderer, view, boot_content, boot, boot_resources);
+
+    if (game.mode == Mode::battle && lab.loaded) {
         draw_battle_lab(renderer, view, lab);
         return true;
     }

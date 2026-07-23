@@ -1,5 +1,6 @@
 #include "import_battle_animations.hpp"
 #include "import_battle_animations_io.hpp"
+#include "import_boot.hpp"
 #include "import_maps.hpp"
 #include "import_pictures.hpp"
 #include "import_rules.hpp"
@@ -43,12 +44,14 @@ int main(int argc, char** argv) {
     }
 
     pokered::import::BattleAnimationImport imported;
+    pokered::import::BootImport boot;
     pokered::import::MapImport maps;
     pokered::import::PictureImport pictures;
     pokered::import::RuleImport rules;
     pokered::import::ScriptImport scripts;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
+        !pokered::import::decode_boot_import(rom, boot, error) ||
         !pokered::import::decode_picture_import(rom, pictures, error) ||
         !pokered::import::decode_map_import(rom, maps, error) ||
         !pokered::import::decode_rule_import(rom, rules, error) ||
@@ -56,6 +59,8 @@ int main(int argc, char** argv) {
         std::cerr << error << '\n';
         return 1;
     }
+    imported.files.insert(imported.files.end(), std::make_move_iterator(boot.files.begin()),
+                          std::make_move_iterator(boot.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(pictures.files.begin()),
                           std::make_move_iterator(pictures.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(maps.files.begin()),
@@ -73,6 +78,10 @@ int main(int argc, char** argv) {
     }
     std::ostringstream domain_manifest;
     domain_manifest << "picture_importer_version 1\n"
+                    << "boot_importer_version 1\n"
+                    << "boot_images " << boot.images << '\n'
+                    << "boot_title_species " << boot.title_species << '\n'
+                    << "boot_text_programs " << boot.text_programs << '\n'
                     << "front_pictures " << pictures.front_pictures << '\n'
                     << "back_pictures " << pictures.back_pictures << '\n'
                     << "trainer_pictures " << pictures.trainer_classes << '\n'
@@ -111,6 +120,10 @@ int main(int argc, char** argv) {
     }
     std::cout << "Imported " << imported.animation_programs << " battle animations from "
               << rom_path << '\n';
+    std::cout << "Imported normal boot with " << boot.images << " images, "
+              << boot.title_species << " title species, and " << boot.text_programs
+              << " Oak text programs\n";
+    std::cout << "Boot cache: " << output_root / "compiled" / "boot_content.bin" << '\n';
     std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"
               << '\n';
     std::cout << "Frame assets: " << output_root / "compiled" / "battle_animation_frames.bin"

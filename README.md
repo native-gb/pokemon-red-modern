@@ -76,7 +76,8 @@ campaign coroutine design is in
 - [content records and indexes](docs/CONTENT_SCHEMA.md);
 - [executors and typed ISAs](docs/EXECUTORS_AND_ISA.md);
 - [packages and patches](docs/PACKAGES_AND_PATCHES.md);
-- [generated source and compiled cache](docs/IMPORT_OUTPUT_AND_CACHE.md).
+- [generated source and compiled cache](docs/IMPORT_OUTPUT_AND_CACHE.md);
+- [normal boot flow and remaining gaps](docs/BOOT_FLOW.md).
 
 The current visual development entry point is the
 [battle animation lab](docs/BATTLE_ANIMATION_LAB.md).

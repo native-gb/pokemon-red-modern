@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battle_animation_lab.hpp"
+#include "boot.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "maps.hpp"
@@ -28,7 +29,8 @@ struct ToolState {
 
 void apply_tool_shortcuts(ToolState& tools, const WindowInput& input);
 void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
-                const content::CatalogSummary& catalog, BattleAnimationLab& lab, WorldState& maps,
+                const content::CatalogSummary& catalog, const BootState& boot,
+                BattleAnimationLab& lab, WorldState& maps,
                 const RuleCatalog& rules, PresentationSettings& presentation,
                 const GameClocks& clocks, const char* renderer_name);
 

@@ -639,6 +639,51 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
     return true;
 }
 
+bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
+                    std::int32_t y, std::string& error) {
+    const auto found = std::find_if(world.maps.begin(), world.maps.end(),
+                                    [map_id](const WorldMap& map) {
+                                        return map.id == map_id;
+                                    });
+    if (!world.loaded || found == world.maps.end()) {
+        error = "campaign start references an unavailable map";
+        return false;
+    }
+    const std::size_t map_index =
+        static_cast<std::size_t>(found - world.maps.begin());
+    if (x < 0 || y < 0 || x >= found->width_tiles / 2 ||
+        y >= found->height_tiles / 2) {
+        error = "campaign start lies outside its imported map";
+        return false;
+    }
+    const std::int32_t global_x = found->global_x_tiles / 2 + x;
+    const std::int32_t global_y = found->global_y_tiles / 2 + y;
+    if (!is_passable(world, map_index, global_x, global_y)) {
+        error = "campaign start lies on an impassable world cell";
+        return false;
+    }
+    world.player.map_index = map_index;
+    world.player.last_outdoor_map_index = map_index;
+    world.player.x = x;
+    world.player.y = y;
+    world.player.visual_global_x = static_cast<float>(global_x);
+    world.player.visual_global_y = static_cast<float>(global_y);
+    world.player.facing = WorldDirection::down;
+    world.player.move_cooldown = 0U;
+    world.player.initialized = true;
+    world.current = map_index;
+    world.current_space = found->world_space;
+    world.view = WorldView::world;
+    world.follow_player = true;
+    world.camera_x = world.target_camera_x =
+        world.player.visual_global_x * 16.0F + 8.0F;
+    world.camera_y = world.target_camera_y =
+        world.player.visual_global_y * 16.0F + 8.0F;
+    world.camera_initialized = true;
+    error.clear();
+    return true;
+}
+
 void step_world(WorldState& world, const InteractionCatalog& interactions,
                 const WorldStepInput& input) {
     if (!world.player.initialized || world.spatial.size() != world.maps.size()) return;
