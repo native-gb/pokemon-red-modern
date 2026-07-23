@@ -317,6 +317,12 @@ jumps in generated source, but authored code should remain structured.
 Every move effect is a program. Native C++ exposes only general mechanics and
 state operations; there is no per-move native callback registry.
 
+The active content `BattleRuleset` supplies typed damage, capture, experience,
+critical-hit, type-interaction, and modifier-order programs. The battle
+executor supplies validated operands and deterministic RNG. This keeps
+Pokemon Red's tables, constants, modifier order, and Original/Fixed variants
+out of move-name switches and anonymous C++ literals.
+
 Queries:
 
 ```text

@@ -168,11 +168,22 @@ At minimum:
 ### Rules and inventory
 
 - species, internal species slots, base stats, types, growth, experience,
-  learnsets, evolution, dex ordering, and dex text;
-- moves, PP, power, accuracy, type, priority, effect programs, animation, and
-  audio bindings;
-- statuses, volatile effects, stat stages, immunities, type interactions, and
-  capture data;
+  level-up learnsets, starting moves, machine compatibility, evolution methods,
+  evolution requirements, dex ordering, catch rate, experience yield, and dex
+  text;
+- moves, PP, power, accuracy, type, damage class, target policy, priority,
+  critical-hit policy, effect scripts, damage bindings, animation, and audio
+  bindings;
+- type definitions and the complete attacking/defending type-interaction
+  matrix, including immunities and intentionally unused entries;
+- stat, accuracy/evasion, critical-hit, ordinary damage, fixed-damage,
+  multi-hit, recoil, drain, experience, and level/stat-growth calculation
+  profiles;
+- statuses, volatile effects, stat stages, immunities, badge modifiers, STAB,
+  random-damage ranges, and other ordered damage modifiers;
+- capture calculation programs and tables, including species catch rates, ball
+  modifiers, current/max HP, status modifiers, shake/result thresholds, Safari
+  catch/escape factors, bait/rock changes, and failure outcomes;
 - items, prices, shops, marts, machines, field uses, battle uses, key-item
   behavior, and storage rules;
 - trainers, classes, parties, AI programs, rewards, gifts, trades, static
@@ -196,6 +207,13 @@ Every table has a source-range accounting record. Every cross-reference is
 resolved to a typed ID or listed as unresolved. Every generated index reports
 record count, referenced count, unreferenced count, alias count, and missing
 binding count.
+
+Calculation machinery is split cleanly: the engine supplies bounded arithmetic,
+RNG, comparison, modifier-ordering, and battle/capture state operations; the
+imported campaign ruleset selects data tables and compiled formula/effect
+programs. Pokemon Red constants, lookup tables, special move behavior, and
+formula variants do not become anonymous literals or species/move switches in
+C++.
 
 ## Semantic naming
 

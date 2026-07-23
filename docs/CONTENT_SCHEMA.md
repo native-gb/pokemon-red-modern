@@ -85,6 +85,10 @@ struct Catalog {
     Index<DexEntryId, DexEntryDef> dex_entries;
 
     Index<MoveId, MoveDef> moves;
+    Index<BattleRulesetId, BattleRulesetDef> battle_rulesets;
+    Index<DamageFormulaId, DamageFormulaProgram> damage_formulas;
+    Index<CaptureFormulaId, CaptureFormulaProgram> capture_formulas;
+    Index<ExperienceFormulaId, ExperienceFormulaProgram> experience_formulas;
     Index<BattleEffectId, BattleEffectProgram> battle_effects;
     Index<ItemId, ItemDef> items;
     Index<ItemEffectId, ItemEffectProgram> item_effects;
@@ -309,6 +313,36 @@ define status_immunity steel poison
 ```
 
 No executor may switch over a fixed list of type names.
+
+## Battle, damage, and capture rules
+
+A campaign battle ruleset resolves formula programs and tables explicitly:
+
+```text
+battle_ruleset pokemon_red_original
+    damage_formula gen_1_original_damage
+    capture_formula gen_1_original_capture
+    experience_formula gen_1_original_experience
+    type_interactions gen_1_type_chart
+    critical_hit_profile gen_1_original_critical_hits
+
+battle_ruleset pokemon_red_fixed
+    inherit pokemon_red_original
+    type_interactions gen_1_fixed_type_chart
+    critical_hit_profile gen_1_fixed_critical_hits
+```
+
+Damage formula programs consume typed values such as level, power, attack,
+defense, STAB, type multipliers, critical state, random roll, and ordered
+modifiers. Capture formula programs consume species catch rate, ball profile,
+HP, status, Safari factors, and deterministic RNG. They cannot access raw
+memory or arbitrary engine state.
+
+Move effect programs decide semantic behavior—damage, status, recoil, drain,
+multi-hit, fixed damage, transform, metronome, and other effects—while formula
+programs calculate their numeric results. Learnsets, starting moves, machine
+compatibility, and evolutions remain separate indexed records rather than
+per-species code.
 
 ## Species and progression
 
