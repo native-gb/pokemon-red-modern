@@ -1,0 +1,114 @@
+; Synthetic battle view used when no locally imported cartridge pack exists.
+battle_ui development
+    tiles 121 122 123 124 125 126 127 237 113 98 99 107 109 110
+    zero_hp_condition "OUT"
+    condition_text none ""
+    condition_text sleep "SLP"
+    condition_text poison "PSN"
+    condition_text burn "BRN"
+    condition_text freeze "FRZ"
+    condition_text paralysis "PAR"
+
+    enemy_hud
+        name 1 0
+        level 4 1
+        condition 5 1
+        hp_bar 2 2
+        frame_tile 1 2 115
+        frame_tile 1 3 116
+        frame_tile 2 3 118
+        frame_tile 3 3 118
+        frame_tile 4 3 118
+        frame_tile 5 3 118
+        frame_tile 6 3 118
+        frame_tile 7 3 118
+        frame_tile 8 3 118
+        frame_tile 9 3 118
+        frame_tile 10 3 120
+
+    player_hud
+        name 10 7
+        level 14 8
+        condition 15 8
+        hp_bar 10 9
+        hp_numbers 13 10 14 10 17
+        frame_tile 18 9 115
+        frame_tile 18 10 115
+        frame_tile 18 11 119
+        frame_tile 17 11 118
+        frame_tile 16 11 118
+        frame_tile 15 11 118
+        frame_tile 14 11 118
+        frame_tile 13 11 118
+        frame_tile 12 11 118
+        frame_tile 11 11 118
+        frame_tile 10 11 118
+        frame_tile 9 11 111
+
+    command_menu standard
+        box 8 12 19 17
+        show_player true
+        command attack
+            text "ATTACK"
+            position 10 14
+            on_select development_choose_attack
+        command party
+            text "TEAM"
+            position 16 14
+            on_select development_choose_party
+        command pack
+            text "PACK"
+            position 10 16
+            on_select development_choose_pack
+        command leave
+            text "EXIT"
+            position 16 16
+            on_select development_attempt_leave
+
+    command_menu safari
+        box 0 12 19 17
+        show_player false
+        command capsule
+            text "CAPSULE"
+            position 2 14
+            on_select development_throw_capsule
+            count_right 8
+        command snack
+            text "SNACK"
+            position 14 14
+            on_select development_throw_snack
+        command pebble
+            text "PEBBLE"
+            position 2 16
+            on_select development_throw_pebble
+        command leave
+            text "LEAVE"
+            position 14 16
+            on_select development_attempt_leave
+
+    move_menu
+        information_box 0 8 10 12
+        list_box 4 12 19 17
+        join_tile 4 12 122
+        join_tile 10 12 126
+        first_move 6 13
+        cursor 5 13
+        type_label 1 9 "TYPE"
+        type_slash 5 9
+        type_value 2 10
+        pp 6 7 11 9 "disabled!"
+
+    message_layout
+        box 0 12 19 17
+        line 1 14
+        line 1 16
+
+battle_ui_lab_state
+    player "CREATURE" 25 63 83 none true
+    enemy "CREATURE" 23 42 61 none true
+    move "MOVE ONE" "TYPE" 14 15 true
+    move "MOVE TWO" "TYPE" 31 35 true
+    move "MOVE THREE" "TYPE" 40 40 true
+    move "MOVE FOUR" "TYPE" 20 20 true
+    message "CREATURE gained" "123 EXP!"
+    command_count safari capsule 30

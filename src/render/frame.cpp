@@ -313,6 +313,27 @@ void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const Animation
     fill_native_rect(renderer, view, effect.x - size * 0.5F, effect.y - size * 0.5F, size, size);
 }
 
+bool draw_battle_ui(SDL_Renderer* renderer, const ViewLayout& view, const BattleAnimationLab& lab,
+                    content::AnimationPalette palette) {
+    if (lab.imported_assets.battle_ui_tiles.size() != 256U * 64U) return false;
+    for (std::size_t map_index = 0; map_index < lab.ui_tile_map.size(); ++map_index) {
+        const std::uint8_t tile = lab.ui_tile_map[map_index];
+        if (tile == 0) continue;
+        const std::size_t tile_x = map_index % 20U;
+        const std::size_t tile_y = map_index / 20U;
+        const std::size_t pixel_begin = static_cast<std::size_t>(tile) * 64U;
+        for (std::size_t y = 0; y < 8; ++y) {
+            for (std::size_t x = 0; x < 8; ++x) {
+                draw_mon_pixel(renderer, view, palette,
+                               lab.imported_assets.battle_ui_tiles[pixel_begin + y * 8U + x],
+                               static_cast<float>(tile_x * 8U + x),
+                               static_cast<float>(tile_y * 8U + y));
+            }
+        }
+    }
+    return true;
+}
+
 void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
                      const BattleAnimationLab& lab) {
     const AnimationTarget* battle_screen =
@@ -345,13 +366,14 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     (void)SDL_SetRenderClipRect(renderer, &clip);
 
     // Draw a fixed Pokémon battle composition; animation state supplies only overrides.
-    set_draw_color(renderer, screen_palette, 190, 181, 167);
-    fill_native_rect(renderer, scene_view, 8.0F, 94.0F, 56.0F, 2.0F);
-    fill_native_rect(renderer, scene_view, 96.0F, 54.0F, 56.0F, 2.0F);
     const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
     const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
     const ImportedPokemonVisual* pokemon = battle_animation_lab_species(lab);
-    if (attacker != nullptr)
+    const bool show_player =
+        lab.ui.mode == BattleUiMode::safari
+            ? lab.ui.definition.safari_commands.show_player
+            : lab.ui.definition.standard_commands.show_player;
+    if (attacker != nullptr && show_player)
         draw_battler(renderer, scene_view, *attacker, true, screen_palette, lab.imported_assets,
                      pokemon);
     if (defender != nullptr)
@@ -360,11 +382,13 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     for (const AnimationEffect& effect : lab.animation.effects)
         draw_effect(renderer, scene_view, effect, lab.imported_assets, screen_palette);
 
-    // Gen 1 reserves the lower six tile rows for battle text and action menus.
-    set_draw_color(renderer, screen_palette, 54, 47, 58);
-    fill_native_rect(renderer, scene_view, 0.0F, 96.0F, 160.0F, 48.0F);
-    set_draw_color(renderer, screen_palette, 250, 247, 238);
-    fill_native_rect(renderer, scene_view, 2.0F, 98.0F, 156.0F, 44.0F);
+    // Imported font and HUD tiles overlay only occupied tile-map cells.
+    if (!draw_battle_ui(renderer, scene_view, lab, screen_palette)) {
+        set_draw_color(renderer, screen_palette, 54, 47, 58);
+        fill_native_rect(renderer, scene_view, 0.0F, 96.0F, 160.0F, 48.0F);
+        set_draw_color(renderer, screen_palette, 250, 247, 238);
+        fill_native_rect(renderer, scene_view, 2.0F, 98.0F, 156.0F, 44.0F);
+    }
     (void)SDL_SetRenderClipRect(renderer, nullptr);
 }
 

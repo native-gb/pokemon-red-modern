@@ -21,4 +21,4 @@ esac
 if [[ ! -f "$build_dir/build.ninja" ]]; then
     cmake --preset "$preset"
 fi
-cmake --build --preset "$preset"
+cmake --build --preset "$preset" --target native-gb-pokemon-red-modern

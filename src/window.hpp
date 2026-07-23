@@ -14,6 +14,10 @@ struct WindowInput {
     bool next_animation{};
     bool previous_species{};
     bool next_species{};
+    bool cycle_battle_ui{};
+    bool previous_battle_ui_selection{};
+    bool next_battle_ui_selection{};
+    bool cycle_battle_status{};
     bool restart_animation{};
     bool reload_animation_sources{};
     bool toggle_animation_auto_advance{};

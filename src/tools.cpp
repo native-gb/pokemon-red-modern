@@ -83,6 +83,14 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         if (ImGui::Button("Previous Pokemon")) previous_battle_species(lab);
         ImGui::SameLine();
         if (ImGui::Button("Next Pokemon")) next_battle_species(lab);
+        ImGui::Text("Battle UI: %.*s", static_cast<int>(label(lab.ui.mode).size()),
+                    label(lab.ui.mode).data());
+        ImGui::Text("Player status: %s", lab.ui.player.status.text.c_str());
+        if (ImGui::Button("Cycle UI view")) cycle_battle_ui_mode(lab);
+        if (ImGui::Button("Previous menu selection")) previous_battle_ui_menu_selection(lab);
+        ImGui::SameLine();
+        if (ImGui::Button("Next menu selection")) next_battle_ui_menu_selection(lab);
+        if (ImGui::Button("Cycle player status")) cycle_battle_ui_status(lab);
         ImGui::Text("Tick: %u", lab.animation.tick);
         ImGui::Text("Effects: %zu", lab.animation.effects.size());
         ImGui::Checkbox("Auto advance", &lab.auto_advance);
@@ -102,6 +110,7 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Text("Pokemon fronts   %zu", lab.imported_assets.pokemon.size());
         ImGui::Text("Pokemon backs    %zu", lab.imported_assets.pokemon.size());
         ImGui::Text("Trainer portraits %zu", lab.imported_assets.trainers.size());
+        ImGui::Text("Battle UI tiles  %zu", lab.imported_assets.battle_ui_tiles.size() / 64U);
         ImGui::Spacing();
         ImGui::TextWrapped("Every domain will be a typed index with stable IDs, "
                            "validation, and import provenance.");
@@ -147,8 +156,12 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
         const std::string_view species = battle_animation_lab_species_name(lab);
         ImGui::Text("Pokemon: %.*s", static_cast<int>(species.size()), species.data());
         ImGui::Separator();
+        ImGui::Text("UI: %.*s", static_cast<int>(label(lab.ui.mode).size()),
+                    label(lab.ui.mode).data());
+        ImGui::Separator();
         ImGui::TextUnformatted("Left/Right Animation   Up/Down Pokemon   R Restart   F5 Reload   "
-                               "Space Auto   F1/F2 Tools   F11 Fullscreen");
+                               "M UI   PgUp/PgDn Select   S Status   Space Auto   F1/F2 Tools   "
+                               "F11 Fullscreen");
         ImGui::EndMainMenuBar();
     }
 

@@ -250,6 +250,35 @@ bool load_battle_pictures(const std::filesystem::path& path, ImportedAnimationAs
     return true;
 }
 
+bool load_battle_ui_tiles(const std::filesystem::path& path, ImportedAnimationAssets& result,
+                          Diagnostics& diagnostics) {
+    if (!std::filesystem::exists(path)) return true;
+    std::ifstream input(path, std::ios::binary);
+    std::array<char, 4> magic{};
+    std::uint16_t tile_count = 0;
+    if (!input.read(magic.data(), magic.size()) || magic != std::array{'P', 'U', 'I', '1'} ||
+        !read_u16(input, tile_count) || tile_count != 256) {
+        add_error(diagnostics, {path.string(), 1, 1}, "invalid_battle_ui_header",
+                  "imported battle UI cache has an invalid header or tile count");
+        return false;
+    }
+    result.battle_ui_tiles.resize(static_cast<std::size_t>(tile_count) * 64U);
+    if (!input.read(reinterpret_cast<char*>(result.battle_ui_tiles.data()),
+                    static_cast<std::streamsize>(result.battle_ui_tiles.size()))) {
+        add_error(diagnostics, {path.string(), 1, 1}, "truncated_battle_ui_tiles",
+                  "imported battle UI tile pixels are truncated");
+        return false;
+    }
+    return true;
+}
+
+std::filesystem::path battle_ui_source_root(const std::filesystem::path& animation_root) {
+    const std::filesystem::path imported =
+        animation_root.parent_path().parent_path() / "ui";
+    if (std::filesystem::exists(imported)) return imported;
+    return animation_root.parent_path() / "battle_ui";
+}
+
 } // namespace
 
 bool load_battle_animation_lab(const std::filesystem::path& source_root, BattleAnimationLab& result,
@@ -271,6 +300,9 @@ bool load_battle_animation_lab(const std::filesystem::path& source_root, BattleA
     const std::filesystem::path battle_pictures =
         imported_assets.parent_path() / "battle_pictures.bin";
     if (!load_battle_pictures(battle_pictures, loaded.imported_assets, diagnostics)) return false;
+    const std::filesystem::path battle_ui_tiles =
+        imported_assets.parent_path() / "battle_ui_tiles.bin";
+    if (!load_battle_ui_tiles(battle_ui_tiles, loaded.imported_assets, diagnostics)) return false;
     for (const SourceDocument& source : sources) {
         for (const sexpr::Form& form : source.document.forms) {
             if (!sexpr::is_head(form, "animation") || form.arguments.size() != 1 ||
@@ -294,7 +326,20 @@ bool load_battle_animation_lab(const std::filesystem::path& source_root, BattleA
         return false;
     }
 
+    // Load the imported battle layout, or the small authored fixture used without a cartridge.
+    const std::filesystem::path ui_root = battle_ui_source_root(source_root);
+    if (!load_battle_ui_source(ui_root, loaded.ui, diagnostics)) return false;
+
     // Start the first program with the fixed semantic targets exposed by the battle view.
+    const std::string_view initial_species = loaded.imported_assets.pokemon.empty()
+                                                 ? std::string_view("POKEMON")
+                                                 : loaded.imported_assets.pokemon.front().name;
+    set_battle_ui_species(loaded.ui, initial_species);
+    std::string ui_error;
+    if (!compose_battle_ui(loaded.ui, loaded.ui_tile_map, ui_error)) {
+        add_error(diagnostics, {source_root.string(), 1, 1}, "invalid_battle_ui_state", ui_error);
+        return false;
+    }
     loaded.loaded = true;
     if (!start_current(loaded, diagnostics)) return false;
     result = std::move(loaded);
@@ -308,6 +353,14 @@ bool reload_battle_animation_lab(BattleAnimationLab& lab, Diagnostics& diagnosti
     if (!reloaded.entries.empty()) reloaded.current = lab.current % reloaded.entries.size();
     if (!reloaded.imported_assets.pokemon.empty())
         reloaded.current_species = lab.current_species % reloaded.imported_assets.pokemon.size();
+    reloaded.ui = lab.ui;
+    set_battle_ui_species(reloaded.ui, battle_animation_lab_species_name(reloaded));
+    std::string ui_error;
+    if (!compose_battle_ui(reloaded.ui, reloaded.ui_tile_map, ui_error)) {
+        add_error(diagnostics, {lab.source_root.string(), 1, 1}, "invalid_battle_ui_state",
+                  ui_error);
+        return false;
+    }
     if (!start_current(reloaded, diagnostics)) return false;
     lab = std::move(reloaded);
     return true;
@@ -344,6 +397,9 @@ void previous_battle_animation_lab(BattleAnimationLab& lab) {
 void next_battle_species(BattleAnimationLab& lab) {
     if (lab.imported_assets.pokemon.empty()) return;
     lab.current_species = (lab.current_species + 1U) % lab.imported_assets.pokemon.size();
+    set_battle_ui_species(lab.ui, battle_animation_lab_species_name(lab));
+    std::string error;
+    (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
     restart_battle_animation_lab(lab);
 }
 
@@ -351,7 +407,34 @@ void previous_battle_species(BattleAnimationLab& lab) {
     if (lab.imported_assets.pokemon.empty()) return;
     lab.current_species = lab.current_species == 0 ? lab.imported_assets.pokemon.size() - 1U
                                                    : lab.current_species - 1U;
+    set_battle_ui_species(lab.ui, battle_animation_lab_species_name(lab));
+    std::string error;
+    (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
     restart_battle_animation_lab(lab);
+}
+
+void cycle_battle_ui_mode(BattleAnimationLab& lab) {
+    next_battle_ui_mode(lab.ui);
+    std::string error;
+    (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
+}
+
+void next_battle_ui_menu_selection(BattleAnimationLab& lab) {
+    next_battle_ui_selection(lab.ui);
+    std::string error;
+    (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
+}
+
+void previous_battle_ui_menu_selection(BattleAnimationLab& lab) {
+    previous_battle_ui_selection(lab.ui);
+    std::string error;
+    (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
+}
+
+void cycle_battle_ui_status(BattleAnimationLab& lab) {
+    next_battle_ui_status(lab.ui);
+    std::string error;
+    (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
 }
 
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab) {

@@ -70,6 +70,14 @@ WindowInput poll_window_events(HostWindow& window) {
             input.previous_species = true;
         else if (event.key.key == SDLK_DOWN)
             input.next_species = true;
+        else if (event.key.key == SDLK_M)
+            input.cycle_battle_ui = true;
+        else if (event.key.key == SDLK_PAGEUP)
+            input.previous_battle_ui_selection = true;
+        else if (event.key.key == SDLK_PAGEDOWN)
+            input.next_battle_ui_selection = true;
+        else if (event.key.key == SDLK_S)
+            input.cycle_battle_status = true;
         else if (event.key.key == SDLK_R)
             input.restart_animation = true;
         else if (event.key.key == SDLK_F5)

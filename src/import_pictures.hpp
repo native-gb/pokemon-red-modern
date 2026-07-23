@@ -16,6 +16,7 @@ struct PictureImport {
     std::size_t front_pictures{};
     std::size_t back_pictures{};
     std::size_t trainer_classes{};
+    std::size_t battle_ui_tiles{};
 };
 
 // Import decoded, GPU-upload-ready battle pixels and readable ROM bindings.

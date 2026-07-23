@@ -1,6 +1,7 @@
 #pragma once
 
 #include "animations.hpp"
+#include "battle_ui.hpp"
 #include "catalog.hpp"
 #include "diagnostics.hpp"
 
@@ -60,6 +61,7 @@ struct ImportedAnimationAssets {
     std::vector<ImportedAnimationVisual> visuals;
     std::vector<ImportedPokemonVisual> pokemon;
     std::vector<ImportedTrainerVisual> trainers;
+    std::vector<std::uint8_t> battle_ui_tiles;
 };
 
 struct BattleAnimationLab {
@@ -67,6 +69,8 @@ struct BattleAnimationLab {
     content::Catalog catalog;
     std::vector<BattleAnimationLabEntry> entries;
     ImportedAnimationAssets imported_assets;
+    BattleUiState ui;
+    BattleTileMap ui_tile_map{};
     AnimationState animation;
     std::size_t current{};
     std::size_t current_species{};
@@ -84,6 +88,10 @@ void next_battle_animation_lab(BattleAnimationLab& lab);
 void previous_battle_animation_lab(BattleAnimationLab& lab);
 void next_battle_species(BattleAnimationLab& lab);
 void previous_battle_species(BattleAnimationLab& lab);
+void cycle_battle_ui_mode(BattleAnimationLab& lab);
+void next_battle_ui_menu_selection(BattleAnimationLab& lab);
+void previous_battle_ui_menu_selection(BattleAnimationLab& lab);
+void cycle_battle_ui_status(BattleAnimationLab& lab);
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab);
 std::string_view battle_animation_lab_species_name(const BattleAnimationLab& lab);
 const ImportedPokemonVisual* battle_animation_lab_species(const BattleAnimationLab& lab);

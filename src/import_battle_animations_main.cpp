@@ -63,5 +63,6 @@ int main(int argc, char** argv) {
               << pictures.back_pictures << " back pictures, and " << pictures.trainer_classes
               << " trainer-class portraits\n";
     std::cout << "Picture cache: " << output_root / "compiled" / "battle_pictures.bin" << '\n';
+    std::cout << "Battle UI cache: " << output_root / "compiled" / "battle_ui_tiles.bin" << '\n';
     return 0;
 }

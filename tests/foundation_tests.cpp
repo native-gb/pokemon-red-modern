@@ -299,6 +299,35 @@ void test_battle_animation_lab(TestState& state) {
     check(state, !lab.animation.effects.empty(), "scratch spawns temporary visual effects");
 }
 
+void test_battle_ui(TestState& state) {
+    // Load a synthetic readable fixture, then compose semantic slots from parsed data.
+    const std::filesystem::path source_root =
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "dev" / "battle_ui";
+    pokered::Diagnostics diagnostics;
+    pokered::BattleUiState ui;
+    check(state, pokered::load_battle_ui_source(source_root, ui, diagnostics),
+          "battle UI source loads");
+    pokered::BattleTileMap tiles;
+    std::string error;
+    check(state, pokered::compose_battle_ui(ui, tiles, error), "standard battle UI composes");
+    check(state, tiles[12U * 20U + 8U] == 0x79, "standard command box uses right-side geometry");
+    check(state, tiles[14U * 20U + 9U] == 0xED, "standard command selection draws cursor");
+    check(state, tiles[9U * 20U + 10U] == 0x71, "player HP label uses battle HUD tile");
+
+    // Move selection owns a separate joined type/PP and move-list layout.
+    pokered::next_battle_ui_mode(ui);
+    check(state, pokered::compose_battle_ui(ui, tiles, error), "move battle UI composes");
+    check(state, tiles[8U * 20U] == 0x79 && tiles[12U * 20U + 10U] == 0x7E,
+          "move type box joins the move list at the canonical border");
+    check(state, tiles[13U * 20U + 5U] == 0xED, "move selection draws its own cursor");
+
+    // Safari supplies another command descriptor and deliberately hides player HUD.
+    pokered::next_battle_ui_mode(ui);
+    check(state, pokered::compose_battle_ui(ui, tiles, error), "Safari battle UI composes");
+    check(state, tiles[12U * 20U] == 0x79, "Safari command box spans the full width");
+    check(state, tiles[9U * 20U + 18U] == 0, "Safari layout omits the player HUD");
+}
+
 } // namespace
 
 int main() {
@@ -310,6 +339,7 @@ int main() {
     test_predicates(state);
     test_animations(state);
     test_battle_animation_lab(state);
+    test_battle_ui(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

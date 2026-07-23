@@ -109,6 +109,11 @@ int main(int argc, char** argv) {
         if (input.next_animation) pokered::next_battle_animation_lab(animation_lab);
         if (input.previous_species) pokered::previous_battle_species(animation_lab);
         if (input.next_species) pokered::next_battle_species(animation_lab);
+        if (input.cycle_battle_ui) pokered::cycle_battle_ui_mode(animation_lab);
+        if (input.previous_battle_ui_selection)
+            pokered::previous_battle_ui_menu_selection(animation_lab);
+        if (input.next_battle_ui_selection) pokered::next_battle_ui_menu_selection(animation_lab);
+        if (input.cycle_battle_status) pokered::cycle_battle_ui_status(animation_lab);
         if (input.restart_animation) pokered::restart_battle_animation_lab(animation_lab);
         if (input.reload_animation_sources) {
             pokered::Diagnostics reload_diagnostics;
