@@ -70,3 +70,11 @@ This is structural coverage, not semantic script coverage. Text referenced
 only from machine-code routines, trainer/event-flag ownership, movement paths,
 and each routine's campaign-ISA translation remain open. The importer must
 continue reporting those gaps explicitly.
+
+The text-command decoder currently emits all 1,126 directly owned map text
+programs under `source/text/maps`. Of these, 486 are complete data-language
+programs with readable dialogue and formatting operations. The other 640 begin
+with `text_asm`; they are indexed as `dynamic_untranslated` because their
+branches and referenced dialogue must be recovered while lifting their native
+routine. No entry is silently discarded or represented as decoded text when
+only its address is known.

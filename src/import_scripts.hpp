@@ -18,6 +18,9 @@ struct ScriptImport {
     std::size_t unresolved_slots{};
     std::size_t script_entry_points{};
     std::size_t owned_text_entries{};
+    std::size_t decoded_text_programs{};
+    std::size_t dynamic_text_programs{};
+    std::size_t unresolved_text_programs{};
     std::size_t background_interactions{};
     std::size_t actor_interactions{};
 };

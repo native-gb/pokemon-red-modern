@@ -1,4 +1,5 @@
 #include "import_scripts.hpp"
+#include "import_text.hpp"
 
 #include <algorithm>
 #include <array>
@@ -308,10 +309,7 @@ void emit_map_source(const MapProgramInventory& map, ScriptImport& result) {
             source << "    alias_of " << map_slot_key(map.alias_of) << '\n';
         for (std::size_t index = 0; index < map.text_entry_offsets.size(); ++index) {
             source << "    owned_text text_" << std::setfill('0') << std::setw(2) << index + 1U
-                   << ' '
-                   << source_address(source_bank(map.bank, map.text_entry_offsets[index]),
-                                     map.text_entry_offsets[index])
-                   << '\n';
+                   << ' ' << key << "_text_" << std::setw(2) << index + 1U << '\n';
         }
         for (const InteractionOwner& background : map.backgrounds) {
             source << "    background_interaction " << static_cast<unsigned>(background.index)
@@ -329,6 +327,40 @@ void emit_map_source(const MapProgramInventory& map, ScriptImport& result) {
     add_text_file(result, "source/scripts/maps/" + key + ".sexpr", source.str());
 }
 
+void emit_map_text_source(std::span<const std::uint8_t> rom, const MapProgramInventory& map,
+                          ScriptImport& result) {
+    if (!map.decoded || map.text_entry_offsets.empty()) return;
+
+    const std::string map_key = map_slot_key(map.map_id);
+    std::ostringstream source;
+    source << "; ROM-decoded text programs directly owned by " << map_key << ".\n";
+    for (std::size_t index = 0; index < map.text_entry_offsets.size(); ++index) {
+        const std::size_t text_offset = map.text_entry_offsets[index];
+        const std::uint8_t text_bank = source_bank(map.bank, text_offset);
+        const std::string key =
+            map_key + "_text_" + (index + 1U < 10U ? "0" : "") + std::to_string(index + 1U);
+        DecodedTextProgram program;
+        const bool decoded = decode_text_program(rom, text_bank, text_offset, program);
+
+        source << "\ntext " << key << '\n'
+               << "    entry_source " << source_address(text_bank, text_offset) << '\n'
+               << "    decoded_bytes " << program.source_bytes << '\n';
+        if (!decoded) {
+            source << "    status unresolved\n"
+                   << "    reason " << program.unresolved_reason << '\n'
+                   << program.operations;
+            ++result.unresolved_text_programs;
+        } else if (program.dynamic) {
+            source << "    status dynamic_untranslated\n" << program.operations;
+            ++result.dynamic_text_programs;
+        } else {
+            source << "    status decoded\n" << program.operations;
+            ++result.decoded_text_programs;
+        }
+    }
+    add_text_file(result, "source/text/maps/" + map_key + ".sexpr", source.str());
+}
+
 void emit_reports(const std::vector<MapProgramInventory>& maps, ScriptImport& result) {
     std::ostringstream summary;
     summary << "Pokemon Red map-program import inventory\n"
@@ -338,6 +370,9 @@ void emit_reports(const std::vector<MapProgramInventory>& maps, ScriptImport& re
             << "unresolved_slots " << result.unresolved_slots << '\n'
             << "script_entry_points " << result.script_entry_points << '\n'
             << "owned_text_entries " << result.owned_text_entries << '\n'
+            << "decoded_text_programs " << result.decoded_text_programs << '\n'
+            << "dynamic_text_programs " << result.dynamic_text_programs << '\n'
+            << "unresolved_text_programs " << result.unresolved_text_programs << '\n'
             << "background_interactions " << result.background_interactions << '\n'
             << "actor_interactions " << result.actor_interactions << '\n'
             << "semantic_scripts_translated 0\n"
@@ -400,6 +435,7 @@ bool decode_script_import(std::span<const std::uint8_t> rom, ScriptImport& resul
     result.map_slots = maps.size();
     for (const MapProgramInventory& map : maps) {
         emit_map_source(map, result);
+        emit_map_text_source(rom, map, result);
         if (!map.decoded) {
             ++result.unresolved_slots;
             continue;

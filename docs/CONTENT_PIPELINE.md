@@ -102,6 +102,7 @@ The importer therefore emits a deterministic intermediate inventory:
 
 ```text
 source/scripts/maps/map_000.sexpr
+source/text/maps/map_000.sexpr
 reports/script_import_summary.txt
 reports/unresolved_scripts.txt
 compiled/map_program_index.bin
