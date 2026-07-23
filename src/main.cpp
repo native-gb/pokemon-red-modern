@@ -376,8 +376,11 @@ int main(int argc, char** argv) {
                     battle_result, control_error)) {
                 std::fprintf(stderr, "%s\n", control_error.c_str());
             }
-            if (battle_result.finished)
+            if (battle_result.finished) {
+                pokered::finish_world_actor_battle(
+                    interactions, world, campaign);
                 game.mode = pokered::Mode::overworld;
+            }
         }
 
         const double game_elapsed =
@@ -428,15 +431,26 @@ int main(int argc, char** argv) {
                                         .activate = pending_world_activation,
                                     });
                 pending_world_activation = false;
+                bool actor_battle_began = false;
+                std::string actor_battle_error;
+                if (trainers.loaded &&
+                    !pokered::service_world_actor_battle(
+                        interactions, trainers, world, rules,
+                        battle_rules, campaign, animation_lab,
+                        actor_battle_began, actor_battle_error)) {
+                    std::fprintf(stderr, "%s\n",
+                                 actor_battle_error.c_str());
+                }
                 bool battle_began = false;
                 std::string wild_error;
-                if (encounters.loaded &&
+                if (!actor_battle_began && encounters.loaded &&
                     !pokered::begin_world_wild_battle(
                         encounters, world, rules, battle_rules, campaign,
                         animation_lab, battle_began, wild_error)) {
                     std::fprintf(stderr, "%s\n", wild_error.c_str());
                 }
-                if (battle_began) game.mode = pokered::Mode::battle;
+                if (actor_battle_began || battle_began)
+                    game.mode = pokered::Mode::battle;
             }
             if (!game.paused && game.mode == pokered::Mode::battle_lab)
                 pokered::step_battle_animation_lab(animation_lab);

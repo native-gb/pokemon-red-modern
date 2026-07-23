@@ -23,6 +23,13 @@ struct GameState {
     bool paused{};
 };
 
+struct CampaignBattleOwner {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::uint32_t defeated_flag{};
+    bool active{};
+};
+
 // Campaign-owned state is separate from host presentation settings and from
 // transient world/render state. Imported programs address flags and variables
 // through typed numeric IDs; vectors grow only as validated programs require.
@@ -33,6 +40,7 @@ struct CampaignState {
     std::uint16_t trainer_id{};
     PartyState party;
     BattleState battle;
+    CampaignBattleOwner battle_owner;
     std::vector<std::uint8_t> flags;
     std::vector<std::uint16_t> variables;
     std::uint64_t play_steps{};
@@ -44,8 +52,8 @@ bool begin_new_campaign(CampaignState& campaign, std::string player_name,
                         std::string rival_name,
                         const std::array<std::uint8_t, 3>& options,
                         std::string& error);
-bool campaign_flag(const CampaignState& campaign, std::uint16_t id);
-void set_campaign_flag(CampaignState& campaign, std::uint16_t id, bool value);
+bool campaign_flag(const CampaignState& campaign, std::uint32_t id);
+void set_campaign_flag(CampaignState& campaign, std::uint32_t id, bool value);
 std::uint16_t campaign_variable(const CampaignState& campaign, std::uint16_t id);
 void set_campaign_variable(CampaignState& campaign, std::uint16_t id,
                            std::uint16_t value);

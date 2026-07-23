@@ -149,6 +149,18 @@ struct DialogueState {
     bool open{};
 };
 
+struct WorldActorActivation {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    bool occurred{};
+};
+
+struct WorldOpponentRequest {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    bool pending{};
+};
+
 struct WorldStepInput {
     bool left{};
     bool right{};
@@ -169,6 +181,8 @@ struct WorldState {
     WorldPlayerState player;
     DialogueState dialogue;
     WorldWarpState last_warp;
+    WorldActorActivation last_actor_activation;
+    WorldOpponentRequest opponent_request;
     std::size_t current{};
     std::uint16_t current_space{};
     WorldView view{WorldView::world};
@@ -204,6 +218,9 @@ void pan_world_view(WorldState& world, float x, float y);
 void reset_world_view(WorldState& world);
 void update_world_view(WorldState& world, double elapsed_seconds);
 void step_world_animation(WorldState& world);
+void open_world_dialogue(WorldState& world,
+                         const CampaignState& campaign,
+                         const std::vector<std::string>& pages);
 std::uint8_t next_world_random_byte(WorldState& world);
 const WorldMap* selected_map(const WorldState& world);
 const WorldSpace* current_world_space(const WorldState& world);

@@ -185,8 +185,19 @@ battles. Real battle presentation binds the two owned species pictures, names,
 levels, HP, status, move names, types, and PP; the animation lab is a separate
 developer mode.
 
-The import report keeps status programs at zero and reports exactly one bound
-source move effect until those domains are genuinely executable.
+Trainer and static-Pokemon actors now enter that same owner through two
+independent imported joins. The trainer cache resolves all 346 compact actor
+parameters into 334 indexed trainer parties and 12 static species/level
+records. The interaction cache resolves all 322 trainer headers into actor
+ownership, sight range, defeated flag, and before/end/after text. Activating
+an undefeated resolved owner presents its imported text, starts its owned
+battle after acknowledgement, and commits the imported defeated flag only on
+victory. Static encounters use the same path without masquerading as trainer
+parties. Sight approach and the remaining special scripted opponents stay
+explicit campaign-script work.
+
+The import report keeps status programs at zero and reports 25 bound source
+move effects until the remaining effect domains are genuinely executable.
 
 ## Engine boundary
 

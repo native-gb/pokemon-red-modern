@@ -697,6 +697,7 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                 const CampaignState& campaign,
                 const WorldStepInput& input) {
     world.player_completed_step = false;
+    world.last_actor_activation = {};
     if (!campaign.initialized || !world.player.initialized ||
         world.spatial.size() != world.maps.size())
         return;
@@ -734,6 +735,11 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                 actor.facing = opposite(world.player.facing);
                 const WorldActorSpawn& spawn =
                     world.maps[actor.map_index].actors[actor.spawn_index];
+                world.last_actor_activation = {
+                    .map_id = target.id,
+                    .actor_index = spawn.index,
+                    .occurred = true,
+                };
                 open_interaction(
                     world, campaign,
                     find_interaction(interactions, target.id, spawn.text_id));
@@ -831,6 +837,16 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         world.roam_schedule[(schedule_slot + delay) % world.roam_schedule.size()].push_back(
             actor_index);
     }
+}
+
+void open_world_dialogue(WorldState& world,
+                         const CampaignState& campaign,
+                         const std::vector<std::string>& pages) {
+    world.dialogue = {};
+    for (const std::string& page : pages)
+        world.dialogue.pages.push_back(
+            substitute_campaign_text(page, campaign));
+    world.dialogue.open = !world.dialogue.pages.empty();
 }
 
 void select_next_map(WorldState& world) {

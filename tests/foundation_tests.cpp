@@ -786,9 +786,104 @@ void test_local_rule_cache(TestState& state) {
     check(state,
           trainer_interaction_count == 322U && articuno != nullptr &&
               articuno->sight_range == 0U &&
-              articuno->defeated_flag == 443410U,
+              articuno->defeated_flag == 443410U &&
+              !articuno->before_pages.empty(),
           "all trainer headers load, including the static encounter whose "
           "flag bit differs from its actor index");
+
+    pokered::BattleRuleCatalog battle_rules;
+    check(state,
+          pokered::load_battle_rules(
+              path.parent_path() / "battle_rules.bin", battle_rules,
+              error),
+          "battle rules load for trainer interaction ownership");
+    pokered::BattleAnimationLab battle_view;
+    pokered::Diagnostics battle_diagnostics;
+    check(state,
+          pokered::load_battle_animation_lab(
+              path.parent_path().parent_path() / "source" /
+                  "animations" / "battle_moves",
+              battle_view, battle_diagnostics),
+          "battle presentation loads for trainer interaction ownership");
+    const pokered::StatFormulaProgram* stat_formula =
+        pokered::find_stat_formula(
+            battle_rules, battle_rules.original_stat_formula);
+    pokered::CampaignState trainer_campaign;
+    check(state,
+          pokered::begin_new_campaign(trainer_campaign, "RED", "BLUE",
+                                      {}, error),
+          "trainer interaction fixture creates campaign state");
+    pokered::PokemonState starter;
+    check(state,
+          stat_formula != nullptr &&
+              pokered::build_pokemon(
+                  rules, *stat_formula, 1U, 12U, {15U, 15U, 15U, 15U},
+                  trainer_campaign.trainer_id, "BULBASAUR", starter,
+                  error),
+          "trainer interaction fixture creates a usable party member");
+    trainer_campaign.party.members.push_back(std::move(starter));
+    world.last_actor_activation = {
+        .map_id = 14U,
+        .actor_index = 2U,
+        .occurred = true,
+    };
+    bool trainer_began = false;
+    check(state,
+          pokered::service_world_actor_battle(
+              interaction_catalog, trainers, world, rules, battle_rules,
+              trainer_campaign, battle_view, trainer_began, error) &&
+              !trainer_began && world.dialogue.open &&
+              world.opponent_request.pending,
+          "fresh trainer activation presents imported before-battle text");
+    world.last_actor_activation = {};
+    world.dialogue = {};
+    check(state,
+          pokered::service_world_actor_battle(
+              interaction_catalog, trainers, world, rules, battle_rules,
+              trainer_campaign, battle_view, trainer_began, error) &&
+              trainer_began && trainer_campaign.battle.active &&
+              trainer_campaign.battle.kind ==
+                  pokered::BattleKind::trainer &&
+              trainer_campaign.battle_owner.active,
+          "acknowledged trainer dialogue starts its indexed party battle");
+    const std::uint32_t trainer_flag =
+        trainer_campaign.battle_owner.defeated_flag;
+    trainer_campaign.battle.active = false;
+    trainer_campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    pokered::finish_world_actor_battle(
+        interaction_catalog, world, trainer_campaign);
+    check(state,
+          pokered::campaign_flag(trainer_campaign, trainer_flag) &&
+              world.dialogue.open,
+          "trainer victory persists its imported flag and presents end text");
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 162U,
+        .actor_index = 3U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_world_actor_battle(
+              interaction_catalog, trainers, world, rules, battle_rules,
+              trainer_campaign, battle_view, trainer_began, error) &&
+              !trainer_began && world.opponent_request.pending &&
+              world.dialogue.open,
+          "static Pokemon activation presents its imported battle text");
+    world.last_actor_activation = {};
+    world.dialogue = {};
+    check(state,
+          pokered::service_world_actor_battle(
+              interaction_catalog, trainers, world, rules, battle_rules,
+              trainer_campaign, battle_view, trainer_began, error) &&
+              trainer_began &&
+              trainer_campaign.battle.kind == pokered::BattleKind::wild &&
+              trainer_campaign.battle.enemy_party.members.size() == 1U &&
+              trainer_campaign.battle.enemy_party.members.front()
+                      .species_dex == 144U &&
+              trainer_campaign.battle.enemy_party.members.front().level ==
+                  50U,
+          "static Pokemon actor starts its imported species and level battle");
 
     const pokered::SpeciesRule* bulbasaur = pokered::find_species(rules, 1);
     check(state,
@@ -834,12 +929,6 @@ void test_local_rule_cache(TestState& state) {
               trade_evolution->target_species_dex == 65U,
           "evolution executor resolves level, item, and trade methods");
 
-    const std::filesystem::path battle_path =
-        path.parent_path() / "battle_rules.bin";
-    pokered::BattleRuleCatalog battle_rules;
-    check(state,
-          pokered::load_battle_rules(battle_path, battle_rules, error),
-          "semantic battle rule cache loads");
     const pokered::DamageFormulaProgram* damage =
         pokered::find_damage_formula(
             battle_rules, battle_rules.original_damage_formula);

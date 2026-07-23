@@ -37,14 +37,17 @@ bool begin_new_campaign(CampaignState& campaign, std::string player_name,
     return true;
 }
 
-bool campaign_flag(const CampaignState& campaign, std::uint16_t id) {
-    return id < campaign.flags.size() && campaign.flags[id] != 0U;
+bool campaign_flag(const CampaignState& campaign, std::uint32_t id) {
+    const std::size_t index = static_cast<std::size_t>(id);
+    return index < campaign.flags.size() &&
+           campaign.flags[index] != 0U;
 }
 
-void set_campaign_flag(CampaignState& campaign, std::uint16_t id, bool value) {
-    if (id >= campaign.flags.size())
-        campaign.flags.resize(static_cast<std::size_t>(id) + 1U);
-    campaign.flags[id] = value ? 1U : 0U;
+void set_campaign_flag(CampaignState& campaign, std::uint32_t id, bool value) {
+    const std::size_t index = static_cast<std::size_t>(id);
+    if (index >= campaign.flags.size())
+        campaign.flags.resize(index + 1U);
+    campaign.flags[index] = value ? 1U : 0U;
 }
 
 std::uint16_t campaign_variable(const CampaignState& campaign, std::uint16_t id) {
