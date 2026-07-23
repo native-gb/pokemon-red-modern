@@ -50,6 +50,10 @@ shape for this repository.
   natural boundary exists; do not split merely to hit a number.
 - Comments explain invariants, ownership, sequencing, or non-obvious source
   evidence. Do not narrate individual statements.
+- Follow the Tetris Modern paragraph style: place one short comment above a
+  cohesive block of roughly several statements, then let straightforward C++
+  carry the details. Avoid end-of-line narration and comment-per-statement
+  noise.
 - Keep hot-loop work proportional to changed code. Run focused checks first;
   broad audits are explicit milestones.
 

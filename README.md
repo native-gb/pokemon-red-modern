@@ -19,6 +19,9 @@ The repository currently provides:
 - fullscreen toggle on F11;
 - a flat source tree with a concrete `render/` module;
 - incremental Debug, Release, and sanitizer builds;
+- snake_case symbols, dense typed IDs, content records, and indexes;
+- the indented S-expression reader and canonical diagnostic printer;
+- deterministic package `define`/`override` resolution with field provenance;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.
@@ -27,6 +30,7 @@ No cartridge is required for the scaffold to open.
 ./scripts/run.sh
 ./scripts/run.sh --tools
 ./scripts/run.sh --render-smoke
+./scripts/test.sh
 ```
 
 See [PLAN.md](PLAN.md) for the implementation order and

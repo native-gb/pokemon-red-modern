@@ -18,6 +18,10 @@ rendering or memory constraints.
 
 ## Milestone 1 — reproducible content pack
 
+- [x] Define symbols, typed IDs, dense indexes, catalog records, and source
+  diagnostics.
+- [x] Parse the indented S-expression notation and resolve deterministic
+  package overlays with provenance.
 - Verify supported ROM identity and header.
 - Define pack manifest, schema versions, cache keys, and provenance.
 - Emit deterministic readable source for every imported content/program domain.

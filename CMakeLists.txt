@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 project(native_gb_pokemon_red_modern VERSION 0.1.0 LANGUAGES C CXX)
 
+include(CTest)
 include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -61,9 +62,13 @@ endif()
 
 add_executable(native-gb-pokemon-red-modern
     src/catalog.cpp
+    src/diagnostics.cpp
     src/main.cpp
+    src/overlays.cpp
     src/render/frame.cpp
+    src/sexpr.cpp
     src/state.cpp
+    src/symbols.cpp
     src/tools.cpp
     src/window.cpp
 )
@@ -79,3 +84,18 @@ target_compile_definitions(native-gb-pokemon-red-modern PRIVATE
 target_link_libraries(native-gb-pokemon-red-modern PRIVATE
     gubsy::engine SDL3::SDL3)
 pokered_modern_target_defaults(native-gb-pokemon-red-modern)
+
+if(BUILD_TESTING)
+    add_executable(pokered-modern-foundation-tests
+        tests/foundation_tests.cpp
+        src/catalog.cpp
+        src/diagnostics.cpp
+        src/overlays.cpp
+        src/sexpr.cpp
+        src/symbols.cpp
+    )
+    target_include_directories(pokered-modern-foundation-tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    pokered_modern_target_defaults(pokered-modern-foundation-tests)
+    add_test(NAME pokered_modern_foundation COMMAND pokered-modern-foundation-tests)
+endif()
