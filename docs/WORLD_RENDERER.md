@@ -36,17 +36,56 @@ data/runtime/imports/pokemon_red_us_rev_0/compiled/world_maps.bin
 ```
 
 It contains decoded tilesets, complete tile-ID layers, animation frames, and
-global origins resolved from the ROM connection graph. After loading, the
-renderer composes each resident map once as an independent GPU texture.
+global origins resolved from the ROM connection graph. Tile layers remain the
+authoritative terrain representation after loading. A map is a content and
+simulation boundary, not a render primitive.
 
-The camera converts global world coordinates into screen coordinates and culls
-maps that do not intersect the viewport. Visible maps are drawn directly at
-their global origins. There is no monolithic world texture and no separate
-overview representation.
+The renderer derives 32×32-tile GPU cache textures on a fixed global grid.
+These chunks may contain tiles from several connected maps, and a map may
+occupy several chunks. Chunks are packed into a small set of GPU texture pages
+so the host can batch consecutive blits from the same texture. The camera
+converts global world coordinates into screen coordinates, rejects chunks
+outside the viewport, and blits the remaining chunks. Zooming out naturally
+exposes more chunks. There is no monolithic world texture, map-sized texture
+ownership, or separate overview representation.
 
 Water and flower locations remain identifiable in the imported tile layers.
-The renderer batches their active ROM-derived frames over the static chunks,
-so environmental animation does not rebuild map textures.
+When their ROM-derived animation phase changes, the renderer blits the new
+8×8 frames into their existing GPU cache-page locations. Ordinary render
+frames still draw the same visible chunks; they do not rebuild tile geometry
+or upload a CPU framebuffer. Future terrain edits will dirty only the globally
+addressed chunks containing the changed tiles.
+
+The connected view deliberately separates these layers:
+
+1. cached terrain derived from authoritative tile grids;
+2. animated and mutable terrain cache updates;
+3. ground effects beneath actors;
+4. actors and their shadows;
+5. foreground terrain and occlusion;
+6. world effects, weather, and transitions;
+7. game UI and developer overlays.
+
+Effects and actors therefore use the same world coordinates as terrain without
+being part of map-sized images. Effects are drawn after terrain and are never
+baked into the terrain cache. A future renderer backend may replace the cache
+implementation with instanced tile draws without changing campaign data,
+simulation coordinates, or layer semantics.
+
+## Presentation cadence
+
+Simulation remains fixed at 60 Hz. Rendering is independent and defaults to a
+144 Hz hard cap with VSync enabled. The developer tools expose:
+
+- a VSync toggle;
+- motion interpolation on/off;
+- 60, 120, 144, 165, and 240 Hz render limits;
+- the effective render cap and measured frame rate;
+- a toggle for the top-left FPS overlay.
+
+Disabling motion interpolation intentionally reduces the effective render cap
+to 60 Hz. The frame limiter uses precise post-present pacing and does not alter
+simulation step count or environmental animation timing.
 
 ## Controls
 
@@ -62,8 +101,8 @@ The connected world is the initial view when its local cache exists.
 
 Camera position and zoom move smoothly toward target values. Zoom is a
 multiplier over a fitted view and ranges from the entire connected surface to
-pixel-level inspection. Every visible map uses its full native source texture;
-the overview is simply the same world renderer with a distant camera.
+pixel-level inspection. The overview is the same renderer and the same terrain
+data observed by a distant camera.
 
 ## Deliberate omissions
 

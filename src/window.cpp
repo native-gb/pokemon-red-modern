@@ -8,6 +8,10 @@
 
 namespace pokered {
 
+int effective_render_rate(const PresentationSettings& settings) {
+    return settings.motion_interpolation ? settings.render_rate_limit : 60;
+}
+
 bool initialize_window(HostWindow& window, const std::filesystem::path& data_root) {
     GubsyAppConfig config;
     config.enable_mods = false;
@@ -41,13 +45,20 @@ bool initialize_window(HostWindow& window, const std::filesystem::path& data_roo
     (void)SDL_SetWindowPosition(window.frame.window, SDL_WINDOWPOS_CENTERED,
                                 SDL_WINDOWPOS_CENTERED);
     (void)SDL_SyncWindow(window.frame.window);
-    (void)SDL_SetRenderVSync(window.frame.renderer, 1);
+    if (!apply_window_vsync(window, true))
+        std::fprintf(stderr, "could not enable VSync: %s\n", SDL_GetError());
 
     if (!init_imgui_layer(window.frame.window, window.frame.renderer)) {
         std::fprintf(stderr, "could not initialize ImGui\n");
         cleanup_gubsy_runtime(window.runtime);
         return false;
     }
+    return true;
+}
+
+bool apply_window_vsync(HostWindow& window, bool enabled) {
+    if (!SDL_SetRenderVSync(window.frame.renderer, enabled ? 1 : 0)) return false;
+    window.vsync = enabled;
     return true;
 }
 
@@ -69,8 +80,7 @@ WindowInput poll_window_events(HostWindow& window) {
         else if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
                  event.key.key == SDLK_KP_PLUS)
             input.zoom_world_in = true;
-        else if (event.key.key == SDLK_MINUS ||
-                 event.key.key == SDLK_KP_MINUS)
+        else if (event.key.key == SDLK_MINUS || event.key.key == SDLK_KP_MINUS)
             input.zoom_world_out = true;
         if (event.key.repeat) continue;
         if (event.key.key == SDLK_F1)
@@ -116,10 +126,8 @@ WindowInput poll_window_events(HostWindow& window) {
     input.pan_world_right = keyboard[SDL_SCANCODE_D];
     input.pan_world_up = keyboard[SDL_SCANCODE_W];
     input.pan_world_down = keyboard[SDL_SCANCODE_S];
-    input.zoom_world_in =
-        keyboard[SDL_SCANCODE_EQUALS] || keyboard[SDL_SCANCODE_KP_PLUS];
-    input.zoom_world_out =
-        keyboard[SDL_SCANCODE_MINUS] || keyboard[SDL_SCANCODE_KP_MINUS];
+    input.zoom_world_in = keyboard[SDL_SCANCODE_EQUALS] || keyboard[SDL_SCANCODE_KP_PLUS];
+    input.zoom_world_out = keyboard[SDL_SCANCODE_MINUS] || keyboard[SDL_SCANCODE_KP_MINUS];
     return input;
 }
 

@@ -3,7 +3,9 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <cstdio>
 
 namespace pokered {
 namespace {
@@ -53,7 +55,7 @@ void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog)
 
 void draw_developer_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
                           BattleAnimationLab& lab, WorldState& maps,
-                          const char* renderer_name) {
+                          PresentationSettings& presentation, const char* renderer_name) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     constexpr float margin = 12.0F;
     constexpr float top = 42.0F;
@@ -72,6 +74,24 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Separator();
         ImGui::Text("Renderer: %s", renderer_name);
         ImGui::TextUnformatted("Fixed simulation: 60 Hz");
+        ImGui::Text("Render rate: %.1f FPS", static_cast<double>(ImGui::GetIO().Framerate));
+        ImGui::Checkbox("Show FPS overlay", &presentation.show_fps);
+        ImGui::Checkbox("Motion interpolation", &presentation.motion_interpolation);
+        ImGui::Checkbox("VSync", &presentation.vsync);
+        constexpr std::array render_rates{60, 120, 144, 165, 240};
+        int selected_rate = static_cast<int>(
+            std::find(render_rates.begin(), render_rates.end(), presentation.render_rate_limit) -
+            render_rates.begin());
+        if (selected_rate >= static_cast<int>(render_rates.size())) selected_rate = 2;
+        if (ImGui::Combo("Frame limit", &selected_rate,
+                         "60 Hz\0"
+                         "120 Hz\0"
+                         "144 Hz\0"
+                         "165 Hz\0"
+                         "240 Hz\0"))
+            presentation.render_rate_limit = render_rates[static_cast<std::size_t>(selected_rate)];
+        ImGui::Text("Effective hard cap: %d Hz", effective_render_rate(presentation));
+        ImGui::TextDisabled("Simulation remains fixed-rate; rendering is independent.");
         ImGui::Separator();
         const WorldMap* map = selected_map(maps);
         ImGui::Text("Map: %.*s", static_cast<int>(selected_map_name(maps).size()),
@@ -87,16 +107,14 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
             ImGui::Text("Tiles: %u x %u", static_cast<unsigned>(map->width_tiles),
                         static_cast<unsigned>(map->height_tiles));
             ImGui::Text("Tileset: %u", static_cast<unsigned>(map->tileset_id));
-            ImGui::Text("World origin: %d, %d tiles", map->global_x_tiles,
-                        map->global_y_tiles);
-            ImGui::Text("World component: %u",
-                        static_cast<unsigned>(map->world_component));
+            ImGui::Text("World origin: %d, %d tiles", map->global_x_tiles, map->global_y_tiles);
+            ImGui::Text("World component: %u", static_cast<unsigned>(map->world_component));
         }
         if (ImGui::Button("Previous Map")) select_previous_map(maps);
         ImGui::SameLine();
         if (ImGui::Button("Next Map")) select_next_map(maps);
         if (ImGui::Button(maps.view == WorldView::world ? "Show Selected Map"
-                                                       : "Show Connected World"))
+                                                        : "Show Connected World"))
             toggle_world_view(maps);
         ImGui::Text("Current zoom: %.2fx", maps.zoom);
         ImGui::SliderFloat("Target zoom", &maps.target_zoom, 0.05F, 64.0F, "%.2fx",
@@ -181,7 +199,8 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 }
 
 void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                BattleAnimationLab& lab, WorldState& maps, const char* renderer_name) {
+                BattleAnimationLab& lab, WorldState& maps, PresentationSettings& presentation,
+                const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
@@ -194,8 +213,7 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
                 "B Battle Lab   F1/F2 Tools   F11 Fullscreen");
         } else {
             const std::string_view animation = battle_animation_lab_name(lab);
-            ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()),
-                        animation.data());
+            ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()), animation.data());
             ImGui::Separator();
             const std::string_view species = battle_animation_lab_species_name(lab);
             ImGui::Text("Pokemon: %.*s", static_cast<int>(species.size()), species.data());
@@ -214,7 +232,15 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
     if (tools.layout == ToolLayout::player)
         draw_player_tools(tools, catalog);
     else if (tools.layout == ToolLayout::developer)
-        draw_developer_tools(tools, game, catalog, lab, maps, renderer_name);
+        draw_developer_tools(tools, game, catalog, lab, maps, presentation, renderer_name);
+
+    if (presentation.show_fps) {
+        std::array<char, 32> text{};
+        std::snprintf(text.data(), text.size(), "%.1f FPS",
+                      static_cast<double>(ImGui::GetIO().Framerate));
+        ImGui::GetForegroundDrawList()->AddText({8.0F, 25.0F}, IM_COL32(235, 245, 210, 255),
+                                                text.data());
+    }
     tools.arrange = false;
 }
 

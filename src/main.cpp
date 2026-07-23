@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <string_view>
@@ -86,8 +87,7 @@ int main(int argc, char** argv) {
     pokered::WorldState world;
     std::string map_error;
     const std::filesystem::path map_cache =
-        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" /
-        "world_maps.bin";
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "world_maps.bin";
     if (!pokered::load_world(map_cache, world, map_error))
         std::fprintf(stderr, "%s\n", map_error.c_str());
 
@@ -97,10 +97,12 @@ int main(int argc, char** argv) {
     if (world.loaded) {
         if (!pokered::render::upload_world_textures(window.frame.renderer, world,
                                                     world_resources)) {
-            std::fprintf(stderr, "could not upload imported map textures: %s\n",
-                         SDL_GetError());
+            std::fprintf(stderr, "could not upload imported map textures: %s\n", SDL_GetError());
             world.loaded = false;
         } else {
+            std::printf("World renderer: %zu chunks, %zu texture pages, %zu animated tiles\n",
+                        world_resources.terrain_chunks.size(), world_resources.terrain_pages.size(),
+                        world_resources.animated_tiles.size());
             game.mode = pokered::Mode::overworld;
         }
     }
@@ -110,6 +112,7 @@ int main(int argc, char** argv) {
             options.developer_tools ? pokered::ToolLayout::developer : pokered::ToolLayout::closed,
         .arrange = options.developer_tools,
     };
+    pokered::PresentationSettings presentation;
     const char* renderer_name = SDL_GetRendererName(window.frame.renderer);
     std::printf("SDL renderer: %s\n", renderer_name != nullptr ? renderer_name : "unknown");
     using Clock = std::chrono::steady_clock;
@@ -121,12 +124,16 @@ int main(int argc, char** argv) {
     bool render_failed = false;
 
     while (running) {
+        const std::uint64_t frame_started = SDL_GetTicksNS();
+        if (presentation.vsync != window.vsync &&
+            !pokered::apply_window_vsync(window, presentation.vsync)) {
+            std::fprintf(stderr, "could not change VSync: %s\n", SDL_GetError());
+            presentation.vsync = window.vsync;
+        }
         const auto now = Clock::now();
-        const double elapsed =
-            std::chrono::duration<double>(now - previous).count();
+        const double elapsed = std::chrono::duration<double>(now - previous).count();
         previous = now;
-        const float frame_seconds =
-            static_cast<float>(std::clamp(elapsed, 0.0, 0.1));
+        const float frame_seconds = static_cast<float>(std::clamp(elapsed, 0.0, 0.1));
 
         const pokered::WindowInput input = pokered::poll_window_events(window);
         if (input.quit) break;
@@ -150,23 +157,16 @@ int main(int argc, char** argv) {
             if (input.toggle_world_view) pokered::toggle_world_view(world);
             constexpr float zoom_speed = 2.0F;
             if (input.zoom_world_in)
-                pokered::zoom_world_view(
-                    world, std::exp(zoom_speed * frame_seconds));
+                pokered::zoom_world_view(world, std::exp(zoom_speed * frame_seconds));
             if (input.zoom_world_out)
-                pokered::zoom_world_view(
-                    world, std::exp(-zoom_speed * frame_seconds));
+                pokered::zoom_world_view(world, std::exp(-zoom_speed * frame_seconds));
             if (input.reset_world_view) pokered::reset_world_view(world);
-            const float pan_speed =
-                world.view == pokered::WorldView::world ? 3000.0F : 180.0F;
+            const float pan_speed = world.view == pokered::WorldView::world ? 3000.0F : 180.0F;
             const float pan_step = pan_speed * frame_seconds;
-            if (input.pan_world_left)
-                pokered::pan_world_view(world, -pan_step, 0.0F);
-            if (input.pan_world_right)
-                pokered::pan_world_view(world, pan_step, 0.0F);
-            if (input.pan_world_up)
-                pokered::pan_world_view(world, 0.0F, -pan_step);
-            if (input.pan_world_down)
-                pokered::pan_world_view(world, 0.0F, pan_step);
+            if (input.pan_world_left) pokered::pan_world_view(world, -pan_step, 0.0F);
+            if (input.pan_world_right) pokered::pan_world_view(world, pan_step, 0.0F);
+            if (input.pan_world_up) pokered::pan_world_view(world, 0.0F, -pan_step);
+            if (input.pan_world_down) pokered::pan_world_view(world, 0.0F, pan_step);
         }
         if (game.mode == pokered::Mode::battle && input.previous_species)
             pokered::previous_battle_species(animation_lab);
@@ -203,18 +203,24 @@ int main(int argc, char** argv) {
         imgui_new_frame();
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
                                            window.frame.render_width, window.frame.render_height,
-                                           game, catalog, animation_lab, world,
-                                           world_resources) ||
+                                           game, catalog, animation_lab, world, world_resources) ||
             !pokered::draw_window(window)) {
             std::fprintf(stderr, "could not render frame: %s\n", SDL_GetError());
             render_failed = true;
             break;
         }
 
-        pokered::draw_tools(tools, game, catalog, animation_lab, world,
+        pokered::draw_tools(tools, game, catalog, animation_lab, world, presentation,
                             renderer_name != nullptr ? renderer_name : "unknown");
         imgui_render_layer();
         pokered::present_window(window);
+
+        const int render_rate = pokered::effective_render_rate(presentation);
+        const std::uint64_t target_frame_nanoseconds =
+            std::uint64_t{1'000'000'000} / static_cast<std::uint64_t>(render_rate);
+        const std::uint64_t frame_elapsed = SDL_GetTicksNS() - frame_started;
+        if (frame_elapsed < target_frame_nanoseconds)
+            SDL_DelayPrecise(target_frame_nanoseconds - frame_elapsed);
 
         ++rendered_frames;
         if (options.render_smoke && rendered_frames >= 3) running = false;

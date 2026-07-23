@@ -1,8 +1,8 @@
 #pragma once
 
+#include "../maps.hpp"
 #include "battle_animation_lab.hpp"
 #include "catalog.hpp"
-#include "../maps.hpp"
 #include "render/maps.hpp"
 #include "state.hpp"
 
@@ -23,6 +23,6 @@ ViewLayout layout_view(int output_width, int output_height);
 bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width, int output_height,
                   const GameState& game, const content::CatalogSummary& catalog,
                   const BattleAnimationLab& lab, const WorldState& maps,
-                  const WorldRenderResources& world_resources);
+                  WorldRenderResources& world_resources);
 
 } // namespace pokered::render

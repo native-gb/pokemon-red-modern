@@ -14,8 +14,10 @@ campaigns remain independent of ROM layout.
 
 The repository currently provides:
 
-- a windowed 1280×720 GPU host with a centered 10:9 game view;
+- a windowed 1280×720 GPU host with independent 60 Hz simulation and
+  configurable 60–240 Hz rendering;
 - ImGui player tools on F1 and full-screen developer tools on F2;
+- VSync, motion-interpolation, render-cap, and FPS-overlay controls;
 - fullscreen toggle on F11;
 - a flat source tree with a concrete `render/` module;
 - incremental Debug, Release, and sanitizer builds;
@@ -31,9 +33,10 @@ The repository currently provides:
 - a portable Gen I picture decoder which emits readable species/trainer
   bindings and a decoded local runtime cache for 151 species and 47 trainer
   classes;
-- a GPU world renderer for all 36 ROM-derived outdoor maps, with connection-
-  derived global coordinates, visible-chunk culling, smooth pan/zoom, and
-  ROM-derived water and flower animation;
+- a tile-authoritative GPU world renderer for all 36 ROM-derived outdoor maps,
+  with connection-derived global coordinates, fixed world-space render caches,
+  visible-chunk culling, smooth pan/zoom, and ROM-derived water and flower
+  animation;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.
@@ -63,3 +66,5 @@ campaign coroutine design is in
 
 The current visual development entry point is the
 [battle animation lab](docs/BATTLE_ANIMATION_LAB.md).
+The connected terrain and camera design is documented in
+[the world renderer contract](docs/WORLD_RENDERER.md).

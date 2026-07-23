@@ -369,10 +369,9 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
     const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
     const ImportedPokemonVisual* pokemon = battle_animation_lab_species(lab);
-    const bool show_player =
-        lab.ui.mode == BattleUiMode::safari
-            ? lab.ui.definition.safari_commands.show_player
-            : lab.ui.definition.standard_commands.show_player;
+    const bool show_player = lab.ui.mode == BattleUiMode::safari
+                                 ? lab.ui.definition.safari_commands.show_player
+                                 : lab.ui.definition.standard_commands.show_player;
     if (attacker != nullptr && show_player)
         draw_battler(renderer, scene_view, *attacker, true, screen_palette, lab.imported_assets,
                      pokemon);
@@ -418,7 +417,7 @@ ViewLayout layout_view(int output_width, int output_height) {
 bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width, int output_height,
                   const GameState& game, const content::CatalogSummary& catalog,
                   const BattleAnimationLab& lab, const WorldState& maps,
-                  const WorldRenderResources& world_resources) {
+                  WorldRenderResources& world_resources) {
     if (renderer == nullptr || target == nullptr) return false;
     if (!SDL_SetRenderTarget(renderer, target)) return false;
 

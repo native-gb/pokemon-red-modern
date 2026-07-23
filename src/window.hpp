@@ -6,6 +6,13 @@
 
 namespace pokered {
 
+struct PresentationSettings {
+    bool vsync{true};
+    bool motion_interpolation{true};
+    bool show_fps{true};
+    int render_rate_limit{144};
+};
+
 struct WindowInput {
     bool quit{};
     bool toggle_player_tools{};
@@ -35,9 +42,12 @@ struct WindowInput {
 struct HostWindow {
     GubsyRuntime runtime;
     GubsyFrame frame;
+    bool vsync{true};
 };
 
+int effective_render_rate(const PresentationSettings& settings);
 bool initialize_window(HostWindow& window, const std::filesystem::path& data_root);
+bool apply_window_vsync(HostWindow& window, bool enabled);
 WindowInput poll_window_events(HostWindow& window);
 void update_window(HostWindow& window, double elapsed);
 bool draw_window(HostWindow& window);
