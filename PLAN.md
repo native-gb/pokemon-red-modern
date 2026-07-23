@@ -29,6 +29,8 @@ rendering or memory constraints.
 - Verify supported ROM identity and header.
 - Define pack manifest, schema versions, cache keys, and provenance.
 - Emit deterministic readable source for every imported content/program domain.
+- Complete the semantic naming and cross-domain reference pass tracked in
+  [docs/CONTENT_FOLLOW_UPS.md](docs/CONTENT_FOLLOW_UPS.md).
 - Compile the readable source into a startup-ready runtime pack.
 - Import text, species, moves, types, items, trainers, encounters, growth,
   maps, tiles, sprites, palettes, audio, and scripts into typed indexes.
