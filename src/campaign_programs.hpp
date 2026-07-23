@@ -40,10 +40,12 @@ enum class CampaignOpcode : std::uint8_t {
     nickname_last_party_member_if_yes,
     player_path,
     give_item,
+    try_give_item,
     take_item,
     place_actor,
     actor_path,
     jump_if_player_y,
+    jump_if_item_grant_failed,
     jump,
     wait_ticks,
     actor_path_by_player_x,
@@ -94,6 +96,7 @@ struct CampaignProgramCatalog {
     std::filesystem::path source;
     NamingProfile naming;
     std::string nickname_heading;
+    std::uint16_t inventory_stack_capacity{};
     std::vector<CampaignProgram> programs;
     bool loaded{};
 };

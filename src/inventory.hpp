@@ -12,6 +12,7 @@ struct InventoryStack {
 
 struct InventoryState {
     std::vector<InventoryStack> stacks;
+    std::uint16_t stack_capacity{};
 };
 
 bool give_inventory_item(InventoryState& inventory, std::uint16_t item_id,

@@ -43,6 +43,7 @@ struct CampaignFiberState {
     bool waiting_battle{};
     std::uint8_t naming_party_index{};
     std::uint8_t last_choice{};
+    bool last_item_grant_succeeded{};
     bool active{};
 };
 

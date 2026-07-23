@@ -136,6 +136,7 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.actor_path.empty() &&
                !instruction.player_path.empty();
     case CampaignOpcode::give_item:
+    case CampaignOpcode::try_give_item:
     case CampaignOpcode::take_item:
         return instruction.a != 0U && instruction.b == 0U &&
                instruction.value != 0U &&
@@ -154,6 +155,7 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                !instruction.actor_path.empty() &&
                instruction.player_path.empty();
     case CampaignOpcode::jump_if_player_y:
+    case CampaignOpcode::jump_if_item_grant_failed:
         return instruction.b == 0U && instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
@@ -254,7 +256,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '7'}) {
+        magic != std::array{'P', 'C', 'P', '8'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -274,8 +276,10 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
         !read_string(input, loaded.naming.lowercase_action) ||
         !read_u8(input, loaded.naming.maximum_length) ||
         !read_string(input, loaded.nickname_heading) ||
+        !read_u16(input, loaded.inventory_stack_capacity) ||
+        loaded.inventory_stack_capacity == 0U ||
         !valid_naming_profile(loaded.naming)) {
-        error = "campaign naming profile is invalid";
+        error = "campaign metadata is invalid";
         return false;
     }
     if (!read_u16(input, program_count) || program_count == 0U ||
@@ -364,7 +368,9 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
              program.instructions) {
             if ((instruction.opcode == CampaignOpcode::jump ||
                  instruction.opcode ==
-                     CampaignOpcode::jump_if_player_y) &&
+                     CampaignOpcode::jump_if_player_y ||
+                 instruction.opcode ==
+                     CampaignOpcode::jump_if_item_grant_failed) &&
                 instruction.value >= program.instructions.size()) {
                 error =
                     "campaign program jump leaves its instruction range";
@@ -412,6 +418,9 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
         error.clear();
         return true;
     }
+    if (campaign.inventory.stack_capacity == 0U)
+        campaign.inventory.stack_capacity =
+            programs.inventory_stack_capacity;
 
     CampaignFiberState& fiber = campaign.fiber;
     if (!fiber.active) {
@@ -428,6 +437,7 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 .waiting_battle = false,
                 .naming_party_index = 0U,
                 .last_choice = 0U,
+                .last_item_grant_succeeded = false,
                 .active = true,
             };
             break;
@@ -665,6 +675,14 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 return false;
             }
             break;
+        case CampaignOpcode::try_give_item:
+            fiber.last_item_grant_succeeded =
+                give_inventory_item(
+                    campaign.inventory,
+                    static_cast<std::uint16_t>(
+                        instruction.value),
+                    instruction.a);
+            break;
         case CampaignOpcode::take_item:
             if (!take_inventory_item(
                     campaign.inventory,
@@ -700,6 +718,10 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
         case CampaignOpcode::jump_if_player_y:
             if (world.player.y ==
                 static_cast<std::int32_t>(instruction.a))
+                fiber.instruction_index = instruction.value;
+            break;
+        case CampaignOpcode::jump_if_item_grant_failed:
+            if (!fiber.last_item_grant_succeeded)
                 fiber.instruction_index = instruction.value;
             break;
         case CampaignOpcode::jump:

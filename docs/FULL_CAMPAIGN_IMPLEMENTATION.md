@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first twelve imported story fibers are executable from the ordinary
+The first seventeen imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -723,6 +723,18 @@ encounter. The imported branch:
   flags;
 - exits without granting progression after player defeat.
 
+After winning on Route 22, activating Oak imports his source check-and-set
+event, grants the decoded stack of five Poké Balls, presents the complete
+catching explanation, and switches later activations to his follow-up text.
+Blue's House now has all three Daisy states needed for this opening:
+
+- before the Pokédex, Daisy reports that Blue is at the lab;
+- after the Pokédex, she offers the ROM-decoded Town Map item and hides its
+  imported world actor only when the grant succeeds;
+- at the imported 20-stack bag limit, she presents the full-bag response and
+  leaves the event and actor untouched so the player can retry;
+- after receipt, she presents the imported Town Map usage text.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -738,11 +750,15 @@ activates Oak from below, and verifies parcel removal, the selected Blue path,
 Pokédex progression, all affected actor toggles, and Route 22 gate state. It
 then enters the exact Route 22 rectangle, verifies the imported two-Pokémon
 RIVAL1 party, returns a battle victory to the campaign continuation, and
-verifies Blue's path, visibility, and event mutations.
+verifies Blue's path, visibility, and event mutations. It returns to Oak and
+verifies the five-Poké-Ball stack, then fills the imported bag to capacity,
+verifies Daisy's failure branch, frees space, retries, and verifies the Town
+Map item, flag, and actor removal.
 
 This is not full-campaign completion. The next campaign blocker begins with
-Oak's subsequent Poké Ball delivery and the Blue's House/Town Map/Daisy
-gates. Every later map program still requires
+Pallet's post-reward per-map flag updates and Daisy sitting-to-walking actor
+transition, followed by systematic Route 1/Viridian Forest/Pewter campaign
+lifting. Every later map program still requires
 semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance

@@ -85,6 +85,22 @@ constexpr std::size_t kRoute22BeforeBattleTextOffset = 0x0511ADU;
 constexpr std::size_t kRoute22AfterBattleTextOffset = 0x0511B2U;
 constexpr std::size_t kRoute22DefeatedTextOffset = 0x0511B7U;
 constexpr std::size_t kRoute22VictoryTextOffset = 0x0511BCU;
+constexpr std::size_t kBagInventoryCapacityOffset = 0x00CE19U;
+constexpr std::size_t kItemNamesOffset = 0x00472BU;
+constexpr std::size_t kOakLabRoute22BeatCheckOffset = 0x01D280U;
+constexpr std::size_t kOakLabPokeballGrantFlagOffset = 0x01D2D0U;
+constexpr std::size_t kOakLabPokeballGrantOffset = 0x01D2D9U;
+constexpr std::size_t kOakLabGivePokeballsTextOffset = 0x01D30EU;
+constexpr std::size_t kOakLabComeSeeMeTextOffset = 0x01D318U;
+constexpr std::size_t kBluesHouseDaisyChecksOffset = 0x019B5EU;
+constexpr std::size_t kBluesHouseTownMapGrantOffset = 0x019B7AU;
+constexpr std::size_t kBluesHouseTownMapToggleOffset = 0x019B82U;
+constexpr std::size_t kBluesHouseTownMapFlagOffset = 0x019B92U;
+constexpr std::size_t kBluesHouseRivalAtLabTextOffset = 0x019BAAU;
+constexpr std::size_t kBluesHouseOfferMapTextOffset = 0x019BAFU;
+constexpr std::size_t kBluesHouseGotMapTextOffset = 0x019BB4U;
+constexpr std::size_t kBluesHouseBagFullTextOffset = 0x019BBAU;
+constexpr std::size_t kBluesHouseUseMapTextOffset = 0x019BBFU;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -125,10 +141,12 @@ enum class Opcode : std::uint8_t {
     nickname_last_party_member_if_yes,
     player_path,
     give_item,
+    try_give_item,
     take_item,
     place_actor,
     actor_path,
     jump_if_player_y,
+    jump_if_item_grant_failed,
     jump,
     wait_ticks,
     actor_path_by_player_x,
@@ -254,6 +272,29 @@ struct Route22FirstRivalProgram {
     DecodedTextProgram defeated;
     DecodedTextProgram victory;
     DecodedTextProgram after_battle;
+};
+
+struct OakPokeballProgram {
+    std::uint32_t beat_route_22_rival_flag{};
+    std::uint32_t got_pokeballs_flag{};
+    std::uint16_t item_id{};
+    std::uint8_t quantity{};
+    DecodedTextProgram give_pokeballs;
+    DecodedTextProgram come_see_me;
+};
+
+struct DaisyTownMapProgram {
+    std::uint32_t got_pokedex_flag{};
+    std::uint32_t got_town_map_flag{};
+    std::uint16_t item_id{};
+    std::uint8_t quantity{};
+    ToggleActor town_map_actor;
+    std::string item_name;
+    DecodedTextProgram rival_at_lab;
+    DecodedTextProgram offer_map;
+    DecodedTextProgram got_map;
+    DecodedTextProgram bag_full;
+    DecodedTextProgram use_map;
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -406,6 +447,60 @@ bool decode_naming_string(std::span<const std::uint8_t> rom,
         result += decode_text_glyph(rom[cursor]);
     }
     return false;
+}
+
+bool decode_inventory_stack_capacity(
+    std::span<const std::uint8_t> rom,
+    std::uint16_t& result, std::string& error) {
+    constexpr std::array<std::uint8_t, 5> signature{
+        0xD3U, 0xBCU, 0x20U, 0x02U, 0x16U};
+    if (kBagInventoryCapacityOffset < signature.size() ||
+        kBagInventoryCapacityOffset >= rom.size() ||
+        !has_bytes(
+            rom,
+            kBagInventoryCapacityOffset - signature.size(),
+            signature) ||
+        rom[kBagInventoryCapacityOffset] == 0U) {
+        error =
+            "bag inventory capacity does not match the verified ROM";
+        return false;
+    }
+    result = rom[kBagInventoryCapacityOffset];
+    return true;
+}
+
+bool decode_item_name(std::span<const std::uint8_t> rom,
+                      std::uint16_t item_id,
+                      std::string& result,
+                      std::string& error) {
+    if (item_id == 0U) {
+        error = "item name lookup has an invalid item ID";
+        return false;
+    }
+    std::size_t cursor = kItemNamesOffset;
+    for (std::uint16_t current = 1U; current <= item_id;
+         ++current) {
+        result.clear();
+        bool terminated = false;
+        for (std::size_t length = 0U; length < 64U; ++length) {
+            if (cursor >= rom.size()) {
+                error = "item name table extends outside the verified ROM";
+                return false;
+            }
+            const std::uint8_t encoded = rom[cursor++];
+            if (encoded == 0x50U) {
+                terminated = true;
+                break;
+            }
+            result += decode_text_glyph(encoded);
+        }
+        if (!terminated || result.empty()) {
+            error =
+                "item name table contains an invalid entry";
+            return false;
+        }
+    }
+    return true;
 }
 
 bool decode_naming_alphabet(
@@ -1226,6 +1321,176 @@ bool decode_route_22_first_rival(
     return true;
 }
 
+bool decode_oak_pokeball_program(
+    std::span<const std::uint8_t> rom,
+    const Route22FirstRivalProgram& route,
+    OakPokeballProgram& result, std::string& error) {
+    result = {};
+    if (!decode_checked_event(
+            rom, kOakLabRoute22BeatCheckOffset,
+            result.beat_route_22_rival_flag, error)) {
+        error = "Oak Pokeball gate: " + error;
+        return false;
+    }
+    if (
+        result.beat_route_22_rival_flag !=
+            route.beat_rival_flag ||
+        kOakLabPokeballGrantFlagOffset + 9U > rom.size() ||
+        rom[kOakLabPokeballGrantFlagOffset] != 0x21U ||
+        rom[kOakLabPokeballGrantFlagOffset + 3U] != 0xCBU ||
+        rom[kOakLabPokeballGrantFlagOffset + 5U] != 0xCBU) {
+        if (error.empty())
+            error =
+                "Oak Pokeball progression checks do not match the verified ROM";
+        return false;
+    }
+    const std::uint16_t address =
+        static_cast<std::uint16_t>(
+            rom[kOakLabPokeballGrantFlagOffset + 1U] |
+            static_cast<std::uint16_t>(
+                rom[kOakLabPokeballGrantFlagOffset + 2U])
+                << 8U);
+    const std::uint8_t checked_opcode =
+        rom[kOakLabPokeballGrantFlagOffset + 4U];
+    const std::uint8_t set_opcode =
+        rom[kOakLabPokeballGrantFlagOffset + 6U];
+    if (checked_opcode < 0x46U ||
+        (checked_opcode - 0x46U) % 8U != 0U ||
+        set_opcode < 0xC6U ||
+        (set_opcode - 0xC6U) % 8U != 0U ||
+        (checked_opcode - 0x46U) / 8U !=
+            (set_opcode - 0xC6U) / 8U) {
+        error =
+            "Oak Pokeball check-and-set event is invalid";
+        return false;
+    }
+    result.got_pokeballs_flag =
+        static_cast<std::uint32_t>(address) * 8U +
+        (checked_opcode - 0x46U) / 8U;
+
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    if (kOakLabPokeballGrantOffset + 6U > rom.size() ||
+        rom[kOakLabPokeballGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kOakLabPokeballGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "Oak Pokeball item grant does not match the verified ROM";
+        return false;
+    }
+    result.quantity =
+        rom[kOakLabPokeballGrantOffset + 1U];
+    result.item_id =
+        rom[kOakLabPokeballGrantOffset + 2U];
+    if (result.quantity == 0U || result.item_id == 0U ||
+        !decode_text_program(
+            rom, 0x07U, kOakLabGivePokeballsTextOffset,
+            result.give_pokeballs) ||
+        !decode_text_program(
+            rom, 0x07U, kOakLabComeSeeMeTextOffset,
+            result.come_see_me) ||
+        result.give_pokeballs.pages.empty() ||
+        result.come_see_me.pages.empty()) {
+        if (error.empty())
+            error =
+                "Oak Pokeball dialogue could not be decoded from the pinned ROM";
+        return false;
+    }
+    return true;
+}
+
+bool decode_daisy_town_map_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ToggleActor>& toggle_actors,
+    const OakReturnProgram& oak_return,
+    DaisyTownMapProgram& result, std::string& error) {
+    result = {};
+    if (!decode_checked_event(
+            rom, kBluesHouseDaisyChecksOffset,
+            result.got_town_map_flag, error)) {
+        error = "Daisy Town Map owned check: " + error;
+        return false;
+    }
+    if (!decode_checked_event(
+            rom, kBluesHouseDaisyChecksOffset + 7U,
+            result.got_pokedex_flag, error)) {
+        error = "Daisy Pokedex check: " + error;
+        return false;
+    }
+    if (
+        result.got_pokedex_flag !=
+            oak_return.got_pokedex_flag) {
+        if (error.empty())
+            error =
+                "Daisy Town Map predicates do not match the verified ROM";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    if (kBluesHouseTownMapGrantOffset + 6U > rom.size() ||
+        rom[kBluesHouseTownMapGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kBluesHouseTownMapGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "Daisy Town Map item grant does not match the verified ROM";
+        return false;
+    }
+    result.quantity =
+        rom[kBluesHouseTownMapGrantOffset + 1U];
+    result.item_id =
+        rom[kBluesHouseTownMapGrantOffset + 2U];
+    if (result.quantity == 0U || result.item_id == 0U ||
+        !decode_item_name(
+            rom, result.item_id, result.item_name, error))
+        return false;
+
+    std::uint32_t set_town_map_flag = 0U;
+    if (!decode_set_event(
+            rom, kBluesHouseTownMapFlagOffset,
+            set_town_map_flag, error) ||
+        set_town_map_flag != result.got_town_map_flag ||
+        !decode_toggle_operation(
+            rom, kBluesHouseTownMapToggleOffset, 0x11U,
+            toggle_actors, result.town_map_actor, error))
+        return false;
+
+    const std::array<std::pair<std::size_t, DecodedTextProgram*>, 5>
+        text_programs{{
+            {kBluesHouseRivalAtLabTextOffset,
+             &result.rival_at_lab},
+            {kBluesHouseOfferMapTextOffset, &result.offer_map},
+            {kBluesHouseGotMapTextOffset, &result.got_map},
+            {kBluesHouseBagFullTextOffset, &result.bag_full},
+            {kBluesHouseUseMapTextOffset, &result.use_map},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(rom, 0x06U, offset, *text) ||
+            text->pages.empty()) {
+            error =
+                "Daisy Town Map dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    for (std::string& page : result.got_map.pages) {
+        const std::size_t position = page.find("{ram_");
+        const std::size_t end =
+            position == std::string::npos
+                ? std::string::npos
+                : page.find('}', position);
+        if (end != std::string::npos) {
+            std::string replacement = result.item_name;
+            if (position != 0U &&
+                page[position - 1U] != '\n')
+                replacement.insert(replacement.begin(), '\n');
+            page.replace(position, end - position + 1U,
+                         replacement);
+        }
+    }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -1833,6 +2098,108 @@ GeneratedFile readable_route_22_first_rival_source(
     };
 }
 
+GeneratedFile readable_oak_pokeball_source(
+    const OakPokeballProgram& oak) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Oak text program.\n"
+        << "; Gate, check-and-set event, item grant, quantity, and dialogue are ROM-derived.\n\n"
+        << "campaign_program oaks_lab_give_pokeballs\n"
+        << "    source bank_07 0x01d280\n"
+        << "    trigger map oaks_lab actor_activation 5\n"
+        << "    required_flag 0x" << std::hex
+        << oak.beat_route_22_rival_flag << '\n'
+        << "    absent_flag 0x" << oak.got_pokeballs_flag
+        << std::dec << '\n'
+        << "    lock_input\n"
+        << "    set_flag 0x" << std::hex
+        << oak.got_pokeballs_flag << std::dec << '\n'
+        << "    try_give_item rom_id " << oak.item_id
+        << " quantity "
+        << static_cast<unsigned>(oak.quantity) << '\n'
+        << "    say\n"
+        << page_source(oak.give_pokeballs.pages, "        ")
+        << "    unlock_input\n"
+        << "    end\n\n"
+        << "campaign_program oaks_lab_after_pokeballs\n"
+        << "    trigger map oaks_lab actor_activation 5\n"
+        << "    required_flag 0x" << std::hex
+        << oak.got_pokeballs_flag << std::dec << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(oak.come_see_me.pages, "        ")
+        << "    unlock_input\n"
+        << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/oaks_lab_pokeballs.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
+GeneratedFile readable_daisy_town_map_source(
+    const DaisyTownMapProgram& daisy) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Blue's House program.\n"
+        << "; Predicates, capacity branch, item, actor toggle, event, and dialogue are ROM-derived.\n\n"
+        << "campaign_program blues_house_daisy_before_pokedex\n"
+        << "    source bank_06 0x019b5d\n"
+        << "    trigger map blues_house actor_activation 1\n"
+        << "    absent_flag 0x" << std::hex
+        << daisy.got_pokedex_flag << std::dec << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(daisy.rival_at_lab.pages, "        ")
+        << "    unlock_input\n"
+        << "    end\n\n"
+        << "campaign_program blues_house_daisy_give_town_map\n"
+        << "    trigger map blues_house actor_activation 1\n"
+        << "    required_flag 0x" << std::hex
+        << daisy.got_pokedex_flag << '\n'
+        << "    absent_flag 0x" << daisy.got_town_map_flag
+        << std::dec << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(daisy.offer_map.pages, "        ")
+        << "    try_give_item " << source_quote(daisy.item_name)
+        << " rom_id " << daisy.item_id << " quantity "
+        << static_cast<unsigned>(daisy.quantity) << '\n'
+        << "    if_item_grant_failed\n"
+        << "        say\n"
+        << page_source(daisy.bag_full.pages, "            ")
+        << "        unlock_input\n"
+        << "        end\n"
+        << "    hide_actor map blues_house actor "
+        << static_cast<unsigned>(
+               daisy.town_map_actor.actor_index)
+        << '\n'
+        << "    say\n"
+        << page_source(daisy.got_map.pages, "        ")
+        << "    set_flag 0x" << std::hex
+        << daisy.got_town_map_flag << std::dec << '\n'
+        << "    unlock_input\n"
+        << "    end\n\n"
+        << "campaign_program blues_house_daisy_after_town_map\n"
+        << "    trigger map blues_house actor_activation 1\n"
+        << "    required_flag 0x" << std::hex
+        << daisy.got_town_map_flag << std::dec << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(daisy.use_map.pages, "        ")
+        << "    unlock_input\n"
+        << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/blues_house_daisy_town_map.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -1842,6 +2209,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
 
     std::vector<ToggleActor> toggle_actors;
     if (!decode_toggle_actors(rom, toggle_actors, error))
+        return false;
+    std::uint16_t inventory_stack_capacity = 0U;
+    if (!decode_inventory_stack_capacity(
+            rom, inventory_stack_capacity, error))
         return false;
 
     NamingProfile naming_profile;
@@ -1954,6 +2325,16 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_route_22_first_rival(
             rom, starter_choices, toggle_actors, oak_return,
             route_22_first_rival, error))
+        return false;
+    OakPokeballProgram oak_pokeballs;
+    if (!decode_oak_pokeball_program(
+            rom, route_22_first_rival, oak_pokeballs,
+            error))
+        return false;
+    DaisyTownMapProgram daisy_town_map;
+    if (!decode_daisy_town_map_program(
+            rom, toggle_actors, oak_return, daisy_town_map,
+            error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -2467,8 +2848,129 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(rival));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '7'};
+    Program oak_balls;
+    oak_balls.key = "oaks_lab_give_pokeballs";
+    oak_balls.trigger_kind = TriggerKind::actor_activation;
+    oak_balls.trigger_map = 40U;
+    oak_balls.trigger_x = 5U;
+    oak_balls.required_flag =
+        oak_pokeballs.beat_route_22_rival_flag;
+    oak_balls.absent_flag =
+        oak_pokeballs.got_pokeballs_flag;
+    oak_balls.instructions.push_back(
+        operation(Opcode::lock_input));
+    oak_balls.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        oak_pokeballs.got_pokeballs_flag));
+    oak_balls.instructions.push_back(operation(
+        Opcode::try_give_item, oak_pokeballs.quantity,
+        0U, oak_pokeballs.item_id));
+    oak_balls.instructions.push_back(
+        dialogue(oak_pokeballs.give_pokeballs.pages));
+    oak_balls.instructions.push_back(
+        operation(Opcode::unlock_input));
+    oak_balls.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(oak_balls));
+
+    Program oak_after_balls;
+    oak_after_balls.key = "oaks_lab_after_pokeballs";
+    oak_after_balls.trigger_kind =
+        TriggerKind::actor_activation;
+    oak_after_balls.trigger_map = 40U;
+    oak_after_balls.trigger_x = 5U;
+    oak_after_balls.required_flag =
+        oak_pokeballs.got_pokeballs_flag;
+    oak_after_balls.instructions.push_back(
+        operation(Opcode::lock_input));
+    oak_after_balls.instructions.push_back(
+        dialogue(oak_pokeballs.come_see_me.pages));
+    oak_after_balls.instructions.push_back(
+        operation(Opcode::unlock_input));
+    oak_after_balls.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(oak_after_balls));
+
+    Program daisy_before;
+    daisy_before.key = "blues_house_daisy_before_pokedex";
+    daisy_before.trigger_kind =
+        TriggerKind::actor_activation;
+    daisy_before.trigger_map = 39U;
+    daisy_before.trigger_x = 1U;
+    daisy_before.absent_flag =
+        daisy_town_map.got_pokedex_flag;
+    daisy_before.instructions.push_back(
+        operation(Opcode::lock_input));
+    daisy_before.instructions.push_back(
+        dialogue(daisy_town_map.rival_at_lab.pages));
+    daisy_before.instructions.push_back(
+        operation(Opcode::unlock_input));
+    daisy_before.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(daisy_before));
+
+    Program daisy_gift;
+    daisy_gift.key = "blues_house_daisy_give_town_map";
+    daisy_gift.trigger_kind =
+        TriggerKind::actor_activation;
+    daisy_gift.trigger_map = 39U;
+    daisy_gift.trigger_x = 1U;
+    daisy_gift.required_flag =
+        daisy_town_map.got_pokedex_flag;
+    daisy_gift.absent_flag =
+        daisy_town_map.got_town_map_flag;
+    daisy_gift.instructions.push_back(
+        operation(Opcode::lock_input));
+    daisy_gift.instructions.push_back(
+        dialogue(daisy_town_map.offer_map.pages));
+    daisy_gift.instructions.push_back(operation(
+        Opcode::try_give_item, daisy_town_map.quantity,
+        0U, daisy_town_map.item_id));
+    const std::size_t bag_full_jump =
+        daisy_gift.instructions.size();
+    daisy_gift.instructions.push_back(
+        operation(Opcode::jump_if_item_grant_failed));
+    daisy_gift.instructions.push_back(operation(
+        Opcode::hide_actor,
+        daisy_town_map.town_map_actor.actor_index, 0U,
+        daisy_town_map.town_map_actor.map_id));
+    daisy_gift.instructions.push_back(
+        dialogue(daisy_town_map.got_map.pages));
+    daisy_gift.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        daisy_town_map.got_town_map_flag));
+    daisy_gift.instructions.push_back(
+        operation(Opcode::unlock_input));
+    daisy_gift.instructions.push_back(operation(Opcode::end));
+    const std::size_t bag_full_branch =
+        daisy_gift.instructions.size();
+    daisy_gift.instructions[bag_full_jump].value =
+        static_cast<std::uint32_t>(bag_full_branch);
+    daisy_gift.instructions.push_back(
+        dialogue(daisy_town_map.bag_full.pages));
+    daisy_gift.instructions.push_back(
+        operation(Opcode::unlock_input));
+    daisy_gift.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(daisy_gift));
+
+    Program daisy_after;
+    daisy_after.key =
+        "blues_house_daisy_after_town_map";
+    daisy_after.trigger_kind =
+        TriggerKind::actor_activation;
+    daisy_after.trigger_map = 39U;
+    daisy_after.trigger_x = 1U;
+    daisy_after.required_flag =
+        daisy_town_map.got_town_map_flag;
+    daisy_after.instructions.push_back(
+        operation(Opcode::lock_input));
+    daisy_after.instructions.push_back(
+        dialogue(daisy_town_map.use_map.pages));
+    daisy_after.instructions.push_back(
+        operation(Opcode::unlock_input));
+    daisy_after.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(daisy_after));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '8'};
     write_naming_profile(cache, naming_profile, nickname_heading);
+    write_u16(cache, inventory_stack_capacity);
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
 
@@ -2501,6 +3003,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                 route_22_rival_keys[index],
                 route_22_first_rival,
                 route_22_first_rival.battles[index]));
+    result.files.push_back(
+        readable_oak_pokeball_source(oak_pokeballs));
+    result.files.push_back(
+        readable_daisy_town_map_source(daisy_town_map));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

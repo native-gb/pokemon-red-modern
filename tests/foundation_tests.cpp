@@ -1736,6 +1736,7 @@ void test_local_pallet_campaign_program(TestState& state) {
           "campaign fixture loads imported programs");
     check(state,
           programs.naming.maximum_length == 10U &&
+              programs.inventory_stack_capacity == 20U &&
               programs.naming.uppercase.front() == "A" &&
               programs.naming.lowercase.front() == "a" &&
               programs.naming.uppercase.back() == "END" &&
@@ -1770,7 +1771,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 12> source_names{
+    constexpr std::array<std::string_view, 14> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1783,6 +1784,8 @@ void test_local_pallet_campaign_program(TestState& state) {
         "route_22_first_rival_after_charmander.sexpr",
         "route_22_first_rival_after_squirtle.sexpr",
         "route_22_first_rival_after_bulbasaur.sexpr",
+        "oaks_lab_pokeballs.sexpr",
+        "blues_house_daisy_town_map.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2293,6 +2296,115 @@ void test_local_pallet_campaign_program(TestState& state) {
               !pokered::campaign_flag(campaign, 0x6BF5FU) &&
               !actor_visible(33U, 1U),
           "Route 22 victory records the beat flag and completes Blue's imported exit");
+
+    // Return to Oak after the Route 22 victory. His source check-and-set event
+    // and item tuple grant the imported five Poke Balls.
+    check(state,
+          pokered::enter_world_at(world, 40U, 5, 3, error),
+          "campaign fixture returns below Oak");
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Oak's post-Route-22 reward program starts");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Oak's Poke Ball reward advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BA5CU) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 4U) == 5U,
+          "Oak grants the imported five-Poke-Ball stack and event");
+
+    // Fill every remaining imported bag slot before asking Daisy for the Town
+    // Map. Her failed grant must retain the map actor and progression, then a
+    // second activation after space is freed must complete the source branch.
+    for (std::uint16_t item_id = 100U;
+         item_id < 119U; ++item_id)
+        check(state,
+              pokered::give_inventory_item(
+                  campaign.inventory, item_id, 1U),
+              "campaign fixture fills one imported bag slot");
+    check(state,
+          campaign.inventory.stacks.size() ==
+              campaign.inventory.stack_capacity,
+          "campaign fixture reaches imported bag capacity");
+    check(state,
+          pokered::enter_world_at(world, 39U, 2, 4, error),
+          "campaign fixture enters Blue's House below Daisy");
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Daisy full-bag program starts");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Daisy full-bag branch advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              !pokered::campaign_flag(campaign, 0x6BA50U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 5U) == 0U &&
+              actor_visible(39U, 3U),
+          "Daisy's imported full-bag branch retains the Town Map");
+
+    for (std::uint16_t item_id = 100U;
+         item_id < 119U; ++item_id)
+        check(state,
+              pokered::take_inventory_item(
+                  campaign.inventory, item_id, 1U),
+              "campaign fixture frees one imported bag slot");
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Daisy Town Map program starts again");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Daisy Town Map gift advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BA50U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 5U) == 1U &&
+              !actor_visible(39U, 3U),
+          "Daisy grants the imported Town Map and hides its world actor");
 }
 
 } // namespace

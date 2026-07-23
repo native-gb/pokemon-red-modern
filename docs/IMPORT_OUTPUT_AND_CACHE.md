@@ -151,11 +151,13 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
-twelve programs import Pallet Town's Oak interception, all three Oak's Lab
+seventeen programs import Pallet Town's Oak interception, all three Oak's Lab
 starter-ball branches, all three first-rival battle branches, the Viridian
 Mart Oak's Parcel handoff, Oak's parcel-return/Pokédex request, and all three
-starter-dependent branches of the first Route 22 rival encounter. The Pallet
-and opening-lab programs include
+starter-dependent branches of the first Route 22 rival encounter. They also
+import Oak's post-Route-22 Poké Ball grant/repeat dialogue and Daisy's
+before-Pokédex, Town Map gift, full-bag, and repeat branches. The Pallet and
+opening-lab programs include
 both Pallet dialogue programs, Oak/player movement streams, the ordinary lab
 warp, Oak's two lab actor placements, both lab entry paths, the four
 choose-a-Pokemon speeches, each starter prompt, player/rival receipt text, both
@@ -190,6 +192,14 @@ continuations, and loss exits execute those records. Forced source movement
 may cross collision terrain while retaining map bounds and actor collision
 checks, which permits cartridge exit paths without weakening ordinary
 movement.
+The campaign cache imports the bag's 20-stack capacity from the inventory
+routine. Generic attempted-item grants expose success to bounded content
+branches: Daisy retains the Town Map actor and event when the bag is full, and
+the same actor activation can retry after space is freed. The Town Map name is
+decoded from the item-name table and resolves the dynamic receipt buffer in
+generated source. Oak's source check-and-set behavior is retained: his event,
+five-item tuple, complete explanation, and subsequent dialogue are all
+content records rather than item-aware engine branches.
 The cache also initializes all 228 records from the cartridge toggleable-object
 table, including its 32 default-hidden actors. The readable accounting peer is
 `source/world/initial_actor_visibility.sexpr`; runtime initialization does not

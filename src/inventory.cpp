@@ -13,6 +13,10 @@ bool give_inventory_item(InventoryState& inventory, std::uint16_t item_id,
             return stack.item_id == item_id;
         });
     if (found == inventory.stacks.end()) {
+        if (inventory.stack_capacity != 0U &&
+            inventory.stacks.size() >=
+                inventory.stack_capacity)
+            return false;
         inventory.stacks.push_back({item_id, quantity});
         return true;
     }
