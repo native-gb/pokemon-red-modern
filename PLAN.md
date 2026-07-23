@@ -52,7 +52,9 @@ compiled pack without reparsing the ROM or source tree.
 ## Milestone 2 — Pallet Town vertical slice
 
 - Title/new game/naming flow.
-- World rendering, collisions, actors, warps, doors, and smooth movement.
+- Complete-world-space player-following camera, collisions, resident actors,
+  connected-map traversal, warps, doors, smooth interpolation, and directional
+  walking clips.
 - Text boxes, choices, menus, inventory, party view, and save/load.
 - Script VM with blocking movement, dialogue, flags, inventory, and transitions.
 - Oak encounter through starter selection.
@@ -84,6 +86,9 @@ and reachable-content audits passing.
 
 - Color and animation profiles.
 - Independent text/game speeds and accessibility.
+- Left-trigger fast-forward with scaled game time and unscaled real,
+  presentation, audio, and music clocks.
+- Content-authored non-blocking camera regions and optional automatic framing.
 - Optional bug fixes and compatibility presets.
 - Expanded availability/no-exclusive rules behind explicit settings.
 - Original mod packages compiled into the same typed indexes.

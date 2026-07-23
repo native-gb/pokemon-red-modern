@@ -103,8 +103,9 @@ preserves valid assignments.
 
 Default controller bindings use the D-pad, south face button for confirm/Game
 Boy A, east face button for back/Game Boy B, Start, Back/Select, and left
-trigger for optional fast-forward. Fast-forward is disabled unless enabled in
-settings and must not accelerate music playback.
+trigger for fast-forward. Fast-forward defaults to hold behavior. The controls
+enhancements expose enable/disable, hold/toggle, and multiplier settings. It
+must not accelerate music playback.
 
 Controller acceptance covers title-to-campaign flow, every semantic action,
 hot-plug, detach, rescan, edited bindings, both profiles, persistence after a
@@ -279,10 +280,90 @@ atlas may splay disconnected spaces using presentation-only offsets. Those
 offsets never affect actor coordinates, collision, triggers, encounters, or
 warps.
 
+The complete connected current world space is the default gameplay view. The
+camera follows the player in that view at every zoom, including when zoomed far
+enough to see the complete space. Selecting a single-map inspection view is a
+developer action, not the normal campaign presentation.
+
+Maps joined by authored edge connections occupy one continuous space. Walking
+across the edge is ordinary continuous movement; it must not invoke a warp,
+fade, loading transition, or player relocation. The destination map's triggers,
+encounters, palette, music, and map-entry policies update at the deterministic
+boundary without breaking visual interpolation.
+
+A cave or dungeon may place all of its connected floors in one world space,
+with importer-derived or source-authored offsets that splay the floors without
+overlap. When the player zooms out, every floor in that space can be visible
+simultaneously. The camera remains centered on the player's interpolated world
+position rather than the bounding rectangle's center. If the topology cannot
+form one useful non-overlapping space, the importer reports that fact and
+creates explicit warp-connected spaces instead of guessing.
+
 Only the current world space is simulated and drawn as the active gameplay
-surface by default. An enhancement may retain additional spaces, but campaign
-semantics do not depend on screen streaming or cartridge activation distance.
-All active actors within the current space remain resident.
+surface by default. Campaign semantics do not depend on screen streaming or
+cartridge activation distance. All active actors within the current space
+remain resident.
+
+## Camera director
+
+Manual pan/zoom, player following, and content-directed framing are distinct
+camera inputs resolved by a general camera director.
+
+Default behavior is:
+
+- draw the complete current world space;
+- follow the player's smooth presentation position;
+- preserve the user's chosen zoom across connected-map boundaries;
+- center on the player even when the entire space fits on screen;
+- never block, pause, or take movement input merely to reframe the camera.
+
+Content may define optional camera regions and sequences:
+
+```text
+camera_region pallet_town_entry
+    world_space kanto_surface
+    area 0 0 20 18
+    enter_animation pallet_town_reveal
+    automatic_zoom 2.0
+    only_when automatic_framing_enabled
+    unless manual_zoom_active
+
+camera_animation pallet_town_reveal
+    parallel
+        tween_zoom 0.75 40 ease_out
+        follow player
+```
+
+This permits a town entrance to reveal the surrounding area and settle toward
+the player, or a long narrow route to choose a useful default framing. Camera
+programs are imported/authored content, not map-name switches in C++.
+
+Automatic framing is an enhancement and respects manual intent. Once the user
+changes zoom, automatic zoom changes stop until the user resets the camera,
+enters a policy that explicitly allows reframing, or enables an “always frame
+areas” setting. Camera animations continue concurrently with player movement
+unless an independent campaign script intentionally locks input.
+
+## Movement presentation and clips
+
+Logical collision remains fixed-step and cell based. Presentation movement is
+smooth and cannot snap or pause between cells or connected maps.
+
+The visual asset import and animation indexes include:
+
+- directional idle and walk clips for the player and every mobile NPC;
+- alternating walk-foot phases;
+- run/bicycle/surf/fishing clips where applicable;
+- ledge, door, stair, ladder, hole, warp, spin, bump, and field-action clips;
+- trainer approach, scripted path, following, and synchronized movement clips;
+- grass, water, terrain, healing, and other movement-coupled effects.
+
+Walking animation phase follows distance traveled, not render-frame count.
+Fixed-step positions retain previous/current transforms and the renderer
+interpolates them using the unscaled presentation clock. Scripted movement and
+ambient NPC movement use the same movement operation and clip selection as
+player movement. Entering a connected map cannot reset the foot phase or cause
+a one-cell visual stop.
 
 ## Spatial indexes and triggers
 
@@ -340,6 +421,10 @@ Stepping onto an enabled warp:
 Doors, stairs, ladders, elevators, holes, teleporters, ships, Fly, Dig, Escape
 Rope, blackout, and scripted relocation use the same transition executor with
 typed transition policies.
+
+Connections are not warps. A connection transform only changes map ownership
+inside the same continuous world space; it does not run this transition
+sequence.
 
 ## F3 world and script diagnostics
 
@@ -415,6 +500,22 @@ The semantic save records:
 - party, storage, bag, Pokédex, badges, flags, variables, and mutations;
 - play time, options, and deterministic RNG streams.
 
+The runtime maintains separate clock domains:
+
+- `game_time` is deterministic simulated time. Fast-forward advances it by the
+  selected multiplier and gameplay timers use it.
+- `real_time` is monotonic unscaled play/session time. It ignores
+  fast-forward, is retained for statistics and diagnostics, and is never used
+  to change deterministic campaign outcomes.
+- `presentation_time` is unscaled rendering/interpolation time.
+- `audio_time` is unscaled device/sequencer time, so music tempo and pitch do
+  not change under fast-forward.
+
+Fast-forward increases fixed simulation steps per real second rather than
+changing the duration of a simulation step. Audio events produced by those
+steps remain ordered, while music continues on `audio_time`. Settings and
+debug tools display both game and real elapsed time.
+
 UI-only settings and bindings live in host settings, not campaign saves.
 Original save import/export is a separate adapter with explicit loss reporting.
 Future local native link features require compatible campaign/rule manifests.
@@ -439,6 +540,10 @@ Future local native link features require compatible campaign/rule manifests.
 - compile map placements into named spaces;
 - support placement overrides without engine hardcoding;
 - load/render/simulate interiors, caves, dungeons, and special rooms;
+- default to a player-following complete-space view and support simultaneous
+  cave/dungeon floor layouts;
+- preserve smooth movement and directional clips across connected-map edges;
+- implement non-blocking, content-authored camera regions and sequences;
 - implement transitions and all warp policies.
 
 ### 4. Executors and campaign programs
@@ -466,6 +571,8 @@ Future local native link features require compatible campaign/rule manifests.
 - finish F3 overlays and F2 inspector;
 - add behavior presets, granular compatibility fixes, and categorized optional
   enhancements;
+- add left-trigger fast-forward with separate game, real, presentation, and
+  audio clocks;
 - add modern typed naming, bag filtering/search, and richer information views.
 
 ### 8. Verification and release gates
@@ -492,6 +599,10 @@ open. Completion means a user can:
 - create names, choose a starter, and complete Oak's opening scripts;
 - walk seamlessly across connected maps and warp through every required
   building, cave, dungeon, ship, gate, and special space;
+- retain smooth directional walking animation while the complete current world
+  space follows the player at arbitrary zoom;
+- hold left trigger to accelerate gameplay without accelerating music and
+  inspect both scaled game time and unscaled real time;
 - inspect party/Pokédex/bag/options, buy/use/store items, save, and continue;
 - encounter, battle, capture, train, evolve, switch, heal, and manage Pokemon;
 - obtain badges and HMs, use field actions, complete story gates, defeat the

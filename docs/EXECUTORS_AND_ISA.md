@@ -21,6 +21,8 @@ The engine needs these reusable executors:
 - `scripts`: campaign fibers, calls, waits, results, and input ownership;
 - `world`: complete maps, connections, cells, and mutable world state;
 - `movement`: player/NPC movement, paths, collision, facing, and following;
+- `camera`: player following, manual zoom/pan, world-space framing, and
+  non-blocking content-directed camera programs;
 - `interaction`: actors, signs, counters, triggers, and trainer sight;
 - `transitions`: doors, stairs, warps, fades, and map handoff;
 - `dialogue`: text tokens, pagination, prompts, and choices;
@@ -280,6 +282,7 @@ start_trainer_battle rival_lab
 play_animation heal_party
 play_sound item_received
 start_music oaks_lab_theme
+play_camera pallet_town_reveal
 save_game
 ```
 
@@ -633,6 +636,34 @@ A normal fixed step is:
 10. record debug traces and update play time.
 
 Rendering may interpolate state but cannot add or remove simulation steps.
+
+## Clock domains and fast-forward
+
+Executors receive explicit clocks rather than reading wall time:
+
+```text
+game_time
+real_time
+presentation_time
+audio_time
+```
+
+`game_time` advances once per deterministic simulation step and therefore
+advances faster during fast-forward. `real_time`, `presentation_time`, and
+`audio_time` remain unscaled. Music sequencing uses `audio_time`; movement
+interpolation and camera tweens use `presentation_time`; campaign timers use
+`game_time`.
+
+Fast-forward schedules multiple ordinary fixed steps per real second. It does
+not enlarge a step, change deterministic instruction budgets, or multiply
+music tempo. A left-trigger semantic action requests fast-forward through the
+host settings; campaign scripts cannot infer which physical control produced
+that request.
+
+Camera programs yield only when a campaign script explicitly waits for their
+operation ID. Area-entry framing normally runs concurrently with movement.
+Manual zoom sets a presentation override that automatic camera regions must
+respect.
 
 ## Debugging
 

@@ -118,9 +118,31 @@ updates only the actors due in that slot, then schedules each actor's next
 decision. This keeps cost proportional to active work even when every outdoor
 actor remains resident.
 
-Logical positions are integer world cells. Presentation positions converge
-toward them independently, providing smooth movement without weakening
-deterministic collision or script activation.
+Logical positions are integer world cells. Presentation positions interpolate
+continuously between previous and current logical transforms. Directional walk
+clips advance by distance traveled, so neither a render-rate change nor a
+connected-map boundary can introduce a jerk, pause, or foot-phase reset.
+
+## Gameplay camera policy
+
+The complete connected current world space is the default view. The camera
+follows the player's interpolated presentation position in both ordinary and
+whole-space zooms. Fitting every map in the space changes scale; it does not
+change the camera target from the player to the space's bounding-box center.
+
+Maps joined by connections remain one continuous movement surface. Crossing a
+connection is not a warp and does not fade, load, snap, or reset camera or
+walking interpolation.
+
+Interiors, caves, and dungeons use named world spaces. Connected floors may be
+placed with authored offsets and shown simultaneously when zoom permits.
+Presentation-only atlas offsets for unrelated spaces never alter gameplay
+coordinates.
+
+Future camera regions and sequences are content records interpreted by the
+camera director. They may reveal a town or choose a useful default zoom without
+locking movement. Automatic zoom respects a manual-zoom override until the
+user resets it or explicitly enables automatic reframing.
 
 ## Presentation cadence
 
@@ -139,7 +161,8 @@ simulation step count or environmental animation timing.
 
 ## Controls
 
-The selected player map is the initial view when its local cache exists.
+The complete connected player world space is the initial view when its local
+cache exists.
 
 - `WASD` or arrow keys move and face the player.
 - `E`, `Z`, `X`, or Enter activates the faced actor/background interaction and

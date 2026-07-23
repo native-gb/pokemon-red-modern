@@ -60,6 +60,8 @@ struct Catalog {
     Index<TerrainId, TerrainDef> terrain;
     Index<TilesetId, TilesetDef> tilesets;
     Index<MapId, MapDef> maps;
+    Index<WorldSpaceId, WorldSpaceDef> world_spaces;
+    Index<MapPlacementId, MapPlacementDef> map_placements;
     Index<ConnectionId, ConnectionDef> connections;
     Index<WarpId, WarpDef> warps;
     Index<TriggerId, TriggerDef> triggers;
@@ -102,6 +104,8 @@ struct Catalog {
     Index<SpriteClipId, SpriteClipDef> sprite_clips;
     Index<PaletteId, PaletteDef> palettes;
     Index<AnimationId, AnimationProgram> animations;
+    Index<CameraRegionId, CameraRegionDef> camera_regions;
+    Index<CameraProgramId, CameraProgram> camera_programs;
 
     Index<InstrumentId, InstrumentDef> instruments;
     Index<MusicId, MusicProgram> music;
@@ -203,6 +207,39 @@ connection pallet_town_north
     destination_edge south
     offset 0
 ```
+
+Maps that share continuous coordinates belong to one world space:
+
+```text
+world_space kanto_surface
+    environment outdoor
+
+map_placement route_1
+    map route_1
+    world_space kanto_surface
+    origin 0 -18
+    layer 0
+```
+
+Crossing a connection inside one world space is ordinary movement, not a warp.
+Cave/dungeon floors may be splayed into non-overlapping placements in one
+space and remain simultaneously visible. Separate spaces are joined by warps.
+Gameplay placement is independent from any presentation-only all-spaces atlas.
+
+Camera regions are optional content:
+
+```text
+camera_region pallet_town_entry
+    world_space kanto_surface
+    area 0 0 20 18
+    program pallet_town_reveal
+    only_when automatic_framing_enabled
+    respect_manual_zoom true
+```
+
+Camera programs target a general camera executor. They never encode a map-name
+switch in engine code and do not lock movement unless a campaign script
+separately requests an input lock.
 
 Warps, triggers, and actor placements are first-class keyed records:
 
