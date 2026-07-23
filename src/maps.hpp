@@ -141,6 +141,8 @@ struct WorldMapCellIndex {
     std::vector<std::int32_t> actor_by_cell;
     // Zero means no trigger; nonzero values are map-local interaction program IDs.
     std::vector<std::uint8_t> background_program_by_cell;
+    // Runtime actor indexes whose imported sight ray includes each cell.
+    std::vector<std::vector<std::size_t>> trainer_sight_actors_by_cell;
 };
 
 struct DialogueState {
@@ -159,6 +161,14 @@ struct WorldOpponentRequest {
     std::uint8_t map_id{};
     std::uint8_t actor_index{};
     bool pending{};
+};
+
+struct WorldTrainerApproach {
+    std::size_t actor_runtime_index{};
+    std::uint8_t steps_remaining{};
+    std::uint8_t step_cooldown{};
+    WorldDirection direction{WorldDirection::down};
+    bool active{};
 };
 
 struct WorldStepInput {
@@ -183,6 +193,7 @@ struct WorldState {
     WorldWarpState last_warp;
     WorldActorActivation last_actor_activation;
     WorldOpponentRequest opponent_request;
+    WorldTrainerApproach trainer_approach;
     std::size_t current{};
     std::uint16_t current_space{};
     WorldView view{WorldView::world};

@@ -193,8 +193,10 @@ ownership, sight range, defeated flag, and before/end/after text. Activating
 an undefeated resolved owner presents its imported text, starts its owned
 battle after acknowledgement, and commits the imported defeated flag only on
 victory. Static encounters use the same path without masquerading as trainer
-parties. Sight approach and the remaining special scripted opponents stay
-explicit campaign-script work.
+parties. Imported nonzero sight ranges are materialized into per-cell indexes;
+entering one locks world movement while the resident actor approaches
+cell-by-cell, then emits the same battle activation. The remaining special
+scripted opponents stay explicit campaign-script work.
 
 The import report keeps status programs at zero and reports 25 bound source
 move effects until the remaining effect domains are genuinely executable.

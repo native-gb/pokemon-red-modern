@@ -110,6 +110,8 @@ bool begin_world_wild_battle(
     std::string& error) {
     began = false;
     if (!world.player_completed_step ||
+        world.trainer_approach.active ||
+        world.opponent_request.pending ||
         !party_has_usable_pokemon(campaign.party)) {
         error.clear();
         return true;

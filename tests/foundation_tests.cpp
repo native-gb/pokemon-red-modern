@@ -485,6 +485,99 @@ void test_world_spaces_and_warps(TestState& state) {
                                      std::vector<std::string>{
                                          "Hello PLAYER. RIVAL is waiting."},
           "world dialogue consumes campaign-owned naming results");
+
+    // Trainer sight is indexed by world cell and owns the approach before it
+    // emits the same activation used by direct conversation.
+    pokered::WorldState sight_world;
+    sight_world.loaded = true;
+    sight_world.tilesets.push_back({
+        .id = 0,
+        .tile_count = 1,
+        .animation_mode = 0,
+        .passable_tiles = {0},
+        .pixels = std::vector<std::uint8_t>(64U, 0),
+        .animation_pixels = {},
+    });
+    sight_world.spaces = {
+        {.id = 0, .key = "sight_fixture", .outdoor = true},
+    };
+    sight_world.maps.push_back({
+        .id = 9,
+        .tileset_id = 0,
+        .width_blocks = 1,
+        .height_blocks = 1,
+        .width_tiles = 4,
+        .height_tiles = 4,
+        .key = "sight_map",
+        .display_name = "Sight",
+        .global_x_tiles = 0,
+        .global_y_tiles = 0,
+        .world_space = 0,
+        .tiles = std::vector<std::uint8_t>(16U, 0),
+        .warps = {},
+        .actors =
+            {{
+                .index = 1,
+                .sprite_id = 1,
+                .x = 1,
+                .y = 0,
+                .movement = 0xFF,
+                .direction_or_axis = 0xD0,
+                .text_id = 1,
+                .parameter_a = 201,
+                .parameter_b = 1,
+                .kind = pokered::WorldActorKind::trainer_or_pokemon,
+                .movement_bounds = std::nullopt,
+            }},
+    });
+    pokered::InteractionCatalog sight_interactions;
+    sight_interactions.loaded = true;
+    sight_interactions.maps.push_back({
+        .map_id = 9,
+        .decoded = true,
+        .backgrounds = {},
+        .actors =
+            {{.index = 1, .x = 1, .y = 0, .program_id = 1}},
+        .trainers =
+            {{
+                .actor_index = 1,
+                .sight_range = 1,
+                .defeated_flag = 100,
+                .before_pages = {"Fight."},
+                .after_pages = {"Done."},
+                .end_pages = {"Lost."},
+            }},
+        .programs =
+            {{
+                .status = pokered::InteractionProgramStatus::dialogue,
+                .pages = {"Fight."},
+            }},
+    });
+    check(state,
+          pokered::initialize_world_runtime(
+              sight_world, sight_interactions, error),
+          "trainer sight fixture initializes its spatial index");
+    sight_world.player.x = 0;
+    sight_world.player.y = 1;
+    sight_world.player.map_index = 0;
+    sight_world.player.move_cooldown = 0;
+    pokered::step_world(sight_world, sight_interactions, campaign,
+                        {.right = true});
+    check(state, sight_world.trainer_approach.active,
+          "entering an imported sight ray starts trainer approach");
+    bool sight_activated = false;
+    for (std::size_t tick = 0U; tick < 20U && !sight_activated;
+         ++tick) {
+        pokered::step_world(sight_world, sight_interactions, campaign,
+                            {});
+        sight_activated =
+            sight_world.last_actor_activation.occurred;
+    }
+    check(state,
+          sight_activated &&
+              sight_world.last_actor_activation.map_id == 9U &&
+              sight_world.last_actor_activation.actor_index == 1U,
+          "completed trainer approach emits its indexed actor activation");
 }
 
 void test_local_encounter_cache(TestState& state) {

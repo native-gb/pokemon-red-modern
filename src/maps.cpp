@@ -564,6 +564,7 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
         const std::size_t cells = static_cast<std::size_t>(index.width) * index.height;
         index.actor_by_cell.assign(cells, -1);
         index.background_program_by_cell.assign(cells, 0U);
+        index.trainer_sight_actors_by_cell.assign(cells, {});
         if (const MapInteractions* bindings = find_map_interactions(interactions, map.id);
             bindings != nullptr) {
             for (const InteractionOwner& owner : bindings->backgrounds) {
@@ -600,6 +601,41 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
                 const std::size_t slot = (30U + actor_index * 17U) % world.roam_schedule.size();
                 world.roam_schedule[slot].push_back(actor_index);
             }
+        }
+    }
+
+    // Materialize map-local sight rays once. Runtime checks only the player's
+    // current cell, while defeated-state predicates remain campaign-owned.
+    for (std::size_t actor_index = 0U;
+         actor_index < world.actors.size(); ++actor_index) {
+        const WorldActorState& actor = world.actors[actor_index];
+        const WorldMap& map = world.maps[actor.map_index];
+        const WorldActorSpawn& spawn =
+            map.actors[actor.spawn_index];
+        const TrainerInteractionRule* trainer =
+            find_trainer_interaction(interactions, map.id, spawn.index);
+        if (trainer == nullptr || trainer->sight_range == 0U) continue;
+        std::int32_t dx = 0;
+        std::int32_t dy = 0;
+        direction_delta(actor.facing, dx, dy);
+        WorldMapCellIndex& cells = world.spatial[actor.map_index];
+        for (std::uint8_t distance = 1U;
+             distance <= trainer->sight_range; ++distance) {
+            const std::int32_t x =
+                actor.x + dx * static_cast<std::int32_t>(distance);
+            const std::int32_t y =
+                actor.y + dy * static_cast<std::int32_t>(distance);
+            const std::int32_t global_x =
+                map.global_x_tiles / 2 + x;
+            const std::int32_t global_y =
+                map.global_y_tiles / 2 + y;
+            if (!inside(cells, x, y) ||
+                !is_passable(world, actor.map_index, global_x,
+                             global_y))
+                break;
+            cells.trainer_sight_actors_by_cell[
+                cell_offset(cells, x, y)]
+                .push_back(actor_index);
         }
     }
 
@@ -713,6 +749,59 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         return;
     }
 
+    // Trainer approach owns movement until the imported sight owner reaches
+    // the adjacent cell. Actor visual positions interpolate independently.
+    if (world.trainer_approach.active) {
+        WorldTrainerApproach& approach = world.trainer_approach;
+        if (approach.step_cooldown > 0U) {
+            --approach.step_cooldown;
+            return;
+        }
+        if (approach.actor_runtime_index >= world.actors.size()) {
+            approach = {};
+            return;
+        }
+        WorldActorState& actor =
+            world.actors[approach.actor_runtime_index];
+        const WorldMap& map = world.maps[actor.map_index];
+        const WorldActorSpawn& spawn =
+            map.actors[actor.spawn_index];
+        if (approach.steps_remaining == 0U) {
+            world.last_actor_activation = {
+                .map_id = map.id,
+                .actor_index = spawn.index,
+                .occurred = true,
+            };
+            approach = {};
+            return;
+        }
+        std::int32_t dx = 0;
+        std::int32_t dy = 0;
+        direction_delta(approach.direction, dx, dy);
+        WorldMapCellIndex& cells = world.spatial[actor.map_index];
+        const std::int32_t target_x = actor.x + dx;
+        const std::int32_t target_y = actor.y + dy;
+        if (!inside(cells, target_x, target_y) ||
+            cells.actor_by_cell[
+                cell_offset(cells, target_x, target_y)] >= 0 ||
+            (world.player.map_index == actor.map_index &&
+             world.player.x == target_x &&
+             world.player.y == target_y)) {
+            approach = {};
+            return;
+        }
+        cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] = -1;
+        actor.x = target_x;
+        actor.y = target_y;
+        actor.facing = approach.direction;
+        cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] =
+            static_cast<std::int32_t>(
+                approach.actor_runtime_index);
+        --approach.steps_remaining;
+        approach.step_cooldown = 7U;
+        return;
+    }
+
     if (input.activate) {
         std::int32_t dx = 0;
         std::int32_t dy = 0;
@@ -789,6 +878,42 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                         !activate_world_warp(world);
                 }
             }
+        }
+    }
+
+    // A completed player step performs one indexed trainer-sight lookup.
+    if (world.player_completed_step &&
+        !world.opponent_request.pending) {
+        const WorldMapCellIndex& cells =
+            world.spatial[world.player.map_index];
+        const std::size_t player_cell =
+            cell_offset(cells, world.player.x, world.player.y);
+        for (const std::size_t actor_index :
+             cells.trainer_sight_actors_by_cell[player_cell]) {
+            if (actor_index >= world.actors.size()) continue;
+            const WorldActorState& actor = world.actors[actor_index];
+            const WorldMap& map = world.maps[actor.map_index];
+            const WorldActorSpawn& spawn =
+                map.actors[actor.spawn_index];
+            const TrainerInteractionRule* trainer =
+                find_trainer_interaction(interactions, map.id,
+                                         spawn.index);
+            if (trainer == nullptr ||
+                campaign_flag(campaign, trainer->defeated_flag))
+                continue;
+            const std::int32_t distance =
+                std::abs(actor.x - world.player.x) +
+                std::abs(actor.y - world.player.y);
+            if (distance <= 0 || distance > 255) continue;
+            world.trainer_approach = {
+                .actor_runtime_index = actor_index,
+                .steps_remaining = static_cast<std::uint8_t>(
+                    distance - 1),
+                .step_cooldown = 15U,
+                .direction = actor.facing,
+                .active = true,
+            };
+            break;
         }
     }
 

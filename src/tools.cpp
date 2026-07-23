@@ -346,6 +346,33 @@ void draw_world_annotations(const WorldState& world) {
                        map_text.data());
         }
 
+        if (const WorldMapCellIndex* cells =
+                find_spatial_index(world, map.id);
+            cells != nullptr) {
+            for (std::uint16_t y = 0U; y < cells->height; ++y) {
+                for (std::uint16_t x = 0U; x < cells->width; ++x) {
+                    const std::size_t cell =
+                        static_cast<std::size_t>(y) * cells->width + x;
+                    if (cell >=
+                            cells->trainer_sight_actors_by_cell.size() ||
+                        cells->trainer_sight_actors_by_cell[cell].empty())
+                        continue;
+                    const ImVec2 sight_top_left = screen_point(
+                        map_x + static_cast<float>(x) * 16.0F,
+                        map_y + static_cast<float>(y) * 16.0F);
+                    const ImVec2 sight_bottom_right = screen_point(
+                        map_x + static_cast<float>(x + 1U) * 16.0F,
+                        map_y + static_cast<float>(y + 1U) * 16.0F);
+                    draw->AddRectFilled(
+                        sight_top_left, sight_bottom_right,
+                        IM_COL32(255, 64, 72, 52));
+                    draw->AddRect(
+                        sight_top_left, sight_bottom_right,
+                        IM_COL32(255, 88, 96, 165));
+                }
+            }
+        }
+
         for (const WorldWarp& warp : map.warps) {
             const ImVec2 center = screen_point(map_x + static_cast<float>(warp.x) * 16.0F + 8.0F,
                                                map_y + static_cast<float>(warp.y) * 16.0F + 8.0F);
@@ -405,8 +432,8 @@ void draw_world_annotations(const WorldState& world) {
     }
 
     draw->AddText({8.0F, 43.0F}, IM_COL32(230, 245, 255, 255),
-                  "F3 annotations: map bounds | orange roam bounds | cyan warps | green NPCs | "
-                  "red trainers | gold items");
+                  "F3 annotations: map bounds | orange roam bounds | cyan warps | red sight | "
+                  "green NPCs | red trainers | gold items");
 }
 
 } // namespace
