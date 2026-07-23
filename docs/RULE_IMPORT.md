@@ -158,6 +158,26 @@ turn now owns speed ordering, PP consumption, deterministic RNG, fainting,
 replacement, victory/defeat, and experience awards transactionally.
 Unsupported effects reject the turn without consuming PP or HP.
 
+Wild encounters now join that battle owner through a separate exhaustive
+import. `encounters.bin` accounts for all 248 map slots, all 55 active land
+tables, all three active water tables, and all 580 explicit species/level
+slots. The generated source exposes the exact ten cumulative slot thresholds
+and each map's separate land/water rates:
+
+```text
+source/encounters/probabilities.sexpr
+source/encounters/maps.sexpr
+```
+
+Terrain selection constants and indoor-map policy are imported from the
+cartridge. After a completed world step, the runtime selects terrain, applies
+the rate and slot rolls, applies repel by leading level, and materializes the
+result through the imported species, stat, starting-move, and learnset tables.
+The resulting owned wild party enters the same `BattleState` used by trainer
+battles. Real battle presentation binds the two owned species pictures, names,
+levels, HP, status, move names, types, and PP; the animation lab is a separate
+developer mode.
+
 The import report keeps status programs at zero and reports exactly one bound
 source move effect until those domains are genuinely executable.
 

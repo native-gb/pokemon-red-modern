@@ -14,6 +14,7 @@ enum class Mode {
     title,
     overworld,
     battle,
+    battle_lab,
 };
 
 struct GameState {
@@ -29,6 +30,7 @@ struct CampaignState {
     std::string player_name;
     std::string rival_name;
     std::array<std::uint8_t, 3> options{};
+    std::uint16_t trainer_id{};
     PartyState party;
     BattleState battle;
     std::vector<std::uint8_t> flags;

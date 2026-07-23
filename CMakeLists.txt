@@ -87,8 +87,10 @@ add_executable(native-gb-pokemon-red-modern
     src/animations.cpp
     src/battle.cpp
     src/battle_animation_lab.cpp
+    src/battle_controller.cpp
     src/battle_rules.cpp
     src/battle_ui.cpp
+    src/battle_view.cpp
     src/boot.cpp
     src/catalog.cpp
     src/capture_rules.cpp
@@ -138,8 +140,10 @@ if(BUILD_TESTING)
         src/animations.cpp
         src/battle.cpp
         src/battle_animation_lab.cpp
+        src/battle_controller.cpp
         src/battle_rules.cpp
         src/battle_ui.cpp
+        src/battle_view.cpp
         src/boot.cpp
         src/catalog.cpp
         src/capture_rules.cpp

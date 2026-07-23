@@ -368,16 +368,19 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     // Draw a fixed Pokémon battle composition; animation state supplies only overrides.
     const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
     const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
-    const ImportedPokemonVisual* pokemon = battle_animation_lab_species(lab);
+    const ImportedPokemonVisual* player_pokemon =
+        battle_view_player_species(lab);
+    const ImportedPokemonVisual* enemy_pokemon =
+        battle_view_enemy_species(lab);
     const bool show_player = lab.ui.mode == BattleUiMode::safari
                                  ? lab.ui.definition.safari_commands.show_player
                                  : lab.ui.definition.standard_commands.show_player;
     if (attacker != nullptr && show_player)
         draw_battler(renderer, scene_view, *attacker, true, screen_palette, lab.imported_assets,
-                     pokemon);
+                     player_pokemon);
     if (defender != nullptr)
         draw_battler(renderer, scene_view, *defender, false, screen_palette, lab.imported_assets,
-                     pokemon);
+                     enemy_pokemon);
 
     // Draw the battle interface before transient effects so attacks can cross its region.
     if (!draw_battle_ui(renderer, scene_view, lab, screen_palette)) {
@@ -437,7 +440,8 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
     if (game.mode == Mode::title && boot_content.loaded && boot.active)
         return draw_boot(renderer, view, boot_content, boot, boot_resources);
 
-    if (game.mode == Mode::battle && lab.loaded) {
+    if ((game.mode == Mode::battle || game.mode == Mode::battle_lab) &&
+        lab.loaded) {
         draw_battle_lab(renderer, view, lab);
         return true;
     }

@@ -74,8 +74,11 @@ struct BattleAnimationLab {
     AnimationState animation;
     std::size_t current{};
     std::size_t current_species{};
+    std::size_t player_species{};
+    std::size_t enemy_species{};
     std::uint32_t finished_ticks{};
     bool auto_advance{true};
+    bool distinct_battlers{};
     bool loaded{};
 };
 
@@ -92,9 +95,14 @@ void cycle_battle_ui_mode(BattleAnimationLab& lab);
 void next_battle_ui_menu_selection(BattleAnimationLab& lab);
 void previous_battle_ui_menu_selection(BattleAnimationLab& lab);
 void cycle_battle_ui_status(BattleAnimationLab& lab);
+void prepare_battle_view(BattleAnimationLab& lab);
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab);
 std::string_view battle_animation_lab_species_name(const BattleAnimationLab& lab);
 const ImportedPokemonVisual* battle_animation_lab_species(const BattleAnimationLab& lab);
+const ImportedPokemonVisual* battle_view_player_species(
+    const BattleAnimationLab& lab);
+const ImportedPokemonVisual* battle_view_enemy_species(
+    const BattleAnimationLab& lab);
 const ImportedAnimationVisual* find_imported_animation_visual(const ImportedAnimationAssets& assets,
                                                               const Symbol& name);
 

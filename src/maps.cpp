@@ -498,6 +498,10 @@ std::uint32_t next_random(WorldState& world) {
 
 } // namespace
 
+std::uint8_t next_world_random_byte(WorldState& world) {
+    return static_cast<std::uint8_t>(next_random(world) >> 24U);
+}
+
 bool load_world(const std::filesystem::path& path, WorldState& result, std::string& error) {
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};

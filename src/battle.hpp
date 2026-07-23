@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -87,6 +88,9 @@ bool begin_wild_battle(const RuleCatalog& rules,
                        const WildEncounterResult& encounter,
                        std::uint32_t random_seed, BattleState& result,
                        std::string& error);
+std::optional<std::size_t> first_executable_move_slot(
+    const RuleCatalog& rules, const BattleRuleCatalog& battle_rules,
+    const PokemonState& pokemon);
 bool execute_battle_turn(const RuleCatalog& rules,
                          const BattleRuleCatalog& battle_rules,
                          std::uint16_t player_trainer_id,

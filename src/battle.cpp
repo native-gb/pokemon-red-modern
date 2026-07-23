@@ -445,6 +445,21 @@ bool begin_wild_battle(const RuleCatalog& rules,
                         BattleKind::wild, state, result, error);
 }
 
+std::optional<std::size_t> first_executable_move_slot(
+    const RuleCatalog& rules, const BattleRuleCatalog& battle_rules,
+    const PokemonState& pokemon) {
+    for (std::size_t index = 0; index < pokemon.moves.size(); ++index) {
+        const PokemonMoveState& owned = pokemon.moves[index];
+        const MoveRule* move = find_move(rules, owned.move_id);
+        if (owned.pp != 0U && move != nullptr &&
+            find_move_effect_program(battle_rules, move->effect_id) !=
+                nullptr) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
 bool execute_battle_turn(const RuleCatalog& rules,
                          const BattleRuleCatalog& battle_rules,
                          std::uint16_t player_trainer_id,

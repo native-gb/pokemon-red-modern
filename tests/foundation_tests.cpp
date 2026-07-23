@@ -1,7 +1,9 @@
 #include "animations.hpp"
 #include "battle.hpp"
 #include "battle_animation_lab.hpp"
+#include "battle_controller.hpp"
 #include "battle_rules.hpp"
+#include "battle_view.hpp"
 #include "boot.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
@@ -610,6 +612,66 @@ void test_local_encounter_cache(TestState& state) {
               battle.enemy_party.members.front().current_hp ==
                   battle.enemy_party.members.front().stats.hp,
           "wild battle materializes imported species, level, moves, and stats");
+
+    pokered::BattleAnimationLab battle_view;
+    pokered::Diagnostics diagnostics;
+    const std::filesystem::path animation_source =
+        root.parent_path() / "source" / "animations" / "battle_moves";
+    check(state,
+          pokered::load_battle_animation_lab(
+              animation_source, battle_view, diagnostics),
+          "imported battle presentation loads for owned battle");
+    if (!battle_view.loaded || !battle.active) return;
+    pokered::CampaignState campaign;
+    campaign.initialized = true;
+    campaign.trainer_id = 7U;
+    campaign.party = std::move(party);
+    campaign.battle = std::move(battle);
+    battle_view.ui.mode = pokered::BattleUiMode::command;
+    pokered::prepare_battle_view(battle_view);
+    check(state,
+          pokered::sync_battle_view(
+              rules, battle_rules, campaign.party, campaign.battle,
+              battle_view, error),
+          "owned battle binds imported pictures and UI");
+    check(state,
+          battle_view.distinct_battlers &&
+              battle_view.player_species == 0U &&
+              battle_view.enemy_species == 15U &&
+              battle_view.ui.player.name == "BULBASAUR" &&
+              battle_view.ui.enemy.name == "PIDGEY" &&
+              battle_view.ui.enemy.level == 3U,
+          "battle view reflects campaign-owned battlers");
+
+    const auto fight = std::find_if(
+        battle_view.ui.definition.standard_commands.slots.begin(),
+        battle_view.ui.definition.standard_commands.slots.end(),
+        [](const pokered::BattleCommandSlot& command) {
+            return command.on_select.text == "battle_choose_move";
+        });
+    check(state,
+          fight != battle_view.ui.definition.standard_commands.slots.end(),
+          "imported command menu exposes move selection");
+    if (fight ==
+        battle_view.ui.definition.standard_commands.slots.end())
+        return;
+    battle_view.ui.definition.standard_commands.selected =
+        static_cast<std::size_t>(fight -
+                                 battle_view.ui.definition.standard_commands
+                                     .slots.begin());
+    pokered::BattleControlResult control_result;
+    check(state,
+          pokered::control_battle(
+              rules, battle_rules, campaign, battle_view,
+              {.confirm = true}, control_result, error) &&
+              battle_view.ui.mode == pokered::BattleUiMode::moves,
+          "battle command enters the imported move menu");
+    check(state,
+          pokered::control_battle(
+              rules, battle_rules, campaign, battle_view,
+              {.confirm = true}, control_result, error) &&
+              campaign.battle.turn == 1U,
+          "battle control resolves an ordinary owned turn");
 }
 
 void test_local_rule_cache(TestState& state) {

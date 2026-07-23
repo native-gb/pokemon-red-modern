@@ -204,6 +204,7 @@ void pan_world_view(WorldState& world, float x, float y);
 void reset_world_view(WorldState& world);
 void update_world_view(WorldState& world, double elapsed_seconds);
 void step_world_animation(WorldState& world);
+std::uint8_t next_world_random_byte(WorldState& world);
 const WorldMap* selected_map(const WorldState& world);
 const WorldSpace* current_world_space(const WorldState& world);
 const MapTileset* find_tileset(const WorldState& world, std::uint8_t id);

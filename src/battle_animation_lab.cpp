@@ -437,6 +437,14 @@ void cycle_battle_ui_status(BattleAnimationLab& lab) {
     (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
 }
 
+void prepare_battle_view(BattleAnimationLab& lab) {
+    if (!lab.loaded) return;
+    lab.animation = {};
+    const auto targets = battle_targets();
+    lab.animation.targets.assign(targets.begin(), targets.end());
+    lab.animation.finished = true;
+}
+
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab) {
     if (!lab.loaded || lab.current >= lab.entries.size()) return "unavailable";
     return lab.entries[lab.current].name.text;
@@ -450,6 +458,24 @@ std::string_view battle_animation_lab_species_name(const BattleAnimationLab& lab
 const ImportedPokemonVisual* battle_animation_lab_species(const BattleAnimationLab& lab) {
     if (lab.current_species >= lab.imported_assets.pokemon.size()) return nullptr;
     return &lab.imported_assets.pokemon[lab.current_species];
+}
+
+const ImportedPokemonVisual* battle_view_player_species(
+    const BattleAnimationLab& lab) {
+    if (!lab.distinct_battlers)
+        return battle_animation_lab_species(lab);
+    if (lab.player_species >= lab.imported_assets.pokemon.size())
+        return nullptr;
+    return &lab.imported_assets.pokemon[lab.player_species];
+}
+
+const ImportedPokemonVisual* battle_view_enemy_species(
+    const BattleAnimationLab& lab) {
+    if (!lab.distinct_battlers)
+        return battle_animation_lab_species(lab);
+    if (lab.enemy_species >= lab.imported_assets.pokemon.size())
+        return nullptr;
+    return &lab.imported_assets.pokemon[lab.enemy_species];
 }
 
 const ImportedAnimationVisual* find_imported_animation_visual(const ImportedAnimationAssets& assets,

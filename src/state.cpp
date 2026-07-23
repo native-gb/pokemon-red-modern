@@ -20,6 +20,17 @@ bool begin_new_campaign(CampaignState& campaign, std::string player_name,
     started.player_name = std::move(player_name);
     started.rival_name = std::move(rival_name);
     started.options = options;
+    std::uint32_t identity = 2166136261U;
+    for (char byte : started.player_name)
+        identity =
+            (identity ^ static_cast<std::uint8_t>(byte)) * 16777619U;
+    for (char byte : started.rival_name)
+        identity =
+            (identity ^ static_cast<std::uint8_t>(byte)) * 16777619U;
+    for (std::uint8_t byte : options)
+        identity = (identity ^ byte) * 16777619U;
+    started.trainer_id = static_cast<std::uint16_t>(
+        identity ^ (identity >> 16U));
     started.initialized = true;
     campaign = std::move(started);
     error.clear();
@@ -65,6 +76,8 @@ const char* label(Mode mode) {
         return "Overworld";
     case Mode::battle:
         return "Battle";
+    case Mode::battle_lab:
+        return "Battle lab";
     }
     return "Unknown";
 }
