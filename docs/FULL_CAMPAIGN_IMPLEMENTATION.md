@@ -763,6 +763,23 @@ badge-state bits, the gym trainer event, Route 22 event reset, and the two
 source actor removals come from the imported program. The gym guide also owns
 his cartridge YES/NO advice split and post-Brock response.
 
+Pewter City's pre-Brock gates are now imported as campaign programs. The
+museum guide owns the cartridge YES/NO branch, escorts the player to the
+museum entrance after NO, presents the arrival page, exits, and returns to his
+imported spawn. The roaming Repel NPC owns both cartridge answer branches.
+The gym guide responds both to direct activation and to all four ROM-authored
+east-exit cells, escorts the player to the gym entrance, presents the arrival
+page, exits, and returns to his imported spawn. Brock's imported event disables
+all five guide triggers and retains the existing permanent actor removal.
+
+The modern executor does not reinterpret Red's simulated joypad frame counts
+as tile counts. Generated content instead stores the imported actor owner,
+trigger cells, map-warp destination, dialogue, exit stream, and event guard.
+A generic `escort_player_to` operation finds passable local paths for the
+player and guide and feeds them to the existing smooth scripted-motion owner.
+The explicitly scripted `MoveSprite` exit retains its source ability to ignore
+ordinary terrain collision; autonomous NPC roaming remains collision-bound.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -792,11 +809,13 @@ The Forest's three trainer actors are also required to resolve to imported
 trainer-interaction records. It then drives Brock through the imported trainer
 party, deliberately fails the TM grant with a full bag while retaining the
 badge, frees a slot, retries TM34, and verifies the final advice state.
+Before entering the gym, it also enters an exact imported east-gate cell,
+advances the smooth city escort, verifies the imported gym-door destination,
+and checks that the guide returns without leaving input locked.
 
 This is not full-campaign completion. The next campaign blocker begins with
-Pewter City's progression gates and the Route 3/Mt. Moon campaign slice. Every
-later map program still requires semantic lifting and the remaining acceptance
-gates above stay open.
+Route 3 and the Mt. Moon campaign slice. Every later map program still requires
+semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance
 

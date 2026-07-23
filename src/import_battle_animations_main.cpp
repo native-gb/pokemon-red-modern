@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
                     << "evolutions " << rules.evolutions << '\n'
                     << "growth_curves " << rules.growth_curves << '\n'
                     << "machines " << rules.machines << '\n'
-                    << "map_program_importer_version 16\n"
+                    << "map_program_importer_version 17\n"
                     << "campaign_programs "
                     << campaign_programs.programs << '\n'
                     << "map_slots " << scripts.map_slots << '\n'

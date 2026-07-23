@@ -147,6 +147,17 @@ constexpr std::size_t kPewterGymGuideBeginAdviceTextOffset = 0x05C51AU;
 constexpr std::size_t kPewterGymGuideAdviceTextOffset = 0x05C51FU;
 constexpr std::size_t kPewterGymGuideFreeServiceTextOffset = 0x05C524U;
 constexpr std::size_t kPewterGymGuidePostBattleTextOffset = 0x05C529U;
+constexpr std::size_t kPewterCityObjectOffset = 0x018577U;
+constexpr std::size_t kPewterCityEastGateCoordsOffset = 0x019277U;
+constexpr std::size_t kPewterCityMuseumQuestionTextOffset = 0x0193F1U;
+constexpr std::size_t kPewterCityMuseumYesTextOffset = 0x0193F6U;
+constexpr std::size_t kPewterCityMuseumNoTextOffset = 0x0193FBU;
+constexpr std::size_t kPewterCityMuseumArrivalTextOffset = 0x019400U;
+constexpr std::size_t kPewterCityRepelQuestionTextOffset = 0x019427U;
+constexpr std::size_t kPewterCityRepelYesTextOffset = 0x01942CU;
+constexpr std::size_t kPewterCityRepelNoTextOffset = 0x019431U;
+constexpr std::size_t kPewterCityGymFollowTextOffset = 0x01945DU;
+constexpr std::size_t kPewterCityGymArrivalTextOffset = 0x019462U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -204,6 +215,7 @@ enum class Opcode : std::uint8_t {
     say_if_player_lost,
     end_if_player_lost,
     heal_party,
+    escort_player_to,
     unlock_input,
     end,
 };
@@ -396,6 +408,34 @@ struct PewterGymProgram {
     DecodedTextProgram guide_advice;
     DecodedTextProgram guide_free_service;
     DecodedTextProgram guide_post_battle;
+};
+
+struct PewterCityProgram {
+    struct Position {
+        std::uint8_t x{};
+        std::uint8_t y{};
+    };
+
+    std::uint8_t map_id{};
+    std::uint8_t museum_actor_index{};
+    std::uint8_t repel_actor_index{};
+    std::uint8_t gym_guide_actor_index{};
+    std::uint32_t beat_brock_flag{};
+    Position museum_actor_origin;
+    Position repel_actor_origin;
+    Position gym_guide_actor_origin;
+    Position museum_player_target;
+    Position gym_player_target;
+    std::array<Position, 4> east_gate_cells;
+    DecodedTextProgram museum_question;
+    DecodedTextProgram museum_yes;
+    DecodedTextProgram museum_no;
+    DecodedTextProgram museum_arrival;
+    DecodedTextProgram repel_question;
+    DecodedTextProgram repel_yes;
+    DecodedTextProgram repel_no;
+    DecodedTextProgram gym_follow;
+    DecodedTextProgram gym_arrival;
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -1989,6 +2029,145 @@ bool decode_pewter_gym_program(
     return true;
 }
 
+bool decode_pewter_city_program(
+    std::span<const std::uint8_t> rom,
+    const PewterGymProgram& gym, PewterCityProgram& result,
+    std::string& error) {
+    result = {};
+    result.map_id = 2U;
+    result.museum_actor_index = 3U;
+    result.repel_actor_index = 4U;
+    result.gym_guide_actor_index = 5U;
+    result.beat_brock_flag = gym.beat_brock_flag;
+    if (gym.gym_guide.map_id != result.map_id ||
+        gym.gym_guide.actor_index !=
+            result.gym_guide_actor_index ||
+        kPewterCityObjectOffset + 2U > rom.size()) {
+        error =
+            "Pewter City guide state disagrees with imported Pewter Gym state";
+        return false;
+    }
+
+    std::size_t cursor = kPewterCityObjectOffset + 1U;
+    const std::uint8_t warp_count = rom[cursor++];
+    if (warp_count != 7U ||
+        cursor + static_cast<std::size_t>(warp_count) * 4U >
+            rom.size()) {
+        error =
+            "Pewter City warp table does not match the verified ROM";
+        return false;
+    }
+    for (std::uint8_t index = 1U; index <= warp_count; ++index) {
+        const std::uint8_t y = rom[cursor];
+        const std::uint8_t x = rom[cursor + 1U];
+        if (index == 1U)
+            result.museum_player_target = {x,
+                static_cast<std::uint8_t>(y + 1U)};
+        else if (index == 3U)
+            result.gym_player_target = {x,
+                static_cast<std::uint8_t>(y + 1U)};
+        cursor += 4U;
+    }
+    if (cursor >= rom.size()) {
+        error =
+            "Pewter City object table is truncated after its warps";
+        return false;
+    }
+    const std::uint8_t background_count = rom[cursor++];
+    if (background_count != 7U ||
+        cursor + static_cast<std::size_t>(background_count) * 3U + 1U >
+            rom.size()) {
+        error =
+            "Pewter City background table does not match the verified ROM";
+        return false;
+    }
+    cursor += static_cast<std::size_t>(background_count) * 3U;
+    const std::uint8_t actor_count = rom[cursor++];
+    if (actor_count != 5U) {
+        error =
+            "Pewter City actor count does not match the verified ROM";
+        return false;
+    }
+    for (std::uint8_t actor_index = 1U;
+         actor_index <= actor_count; ++actor_index) {
+        if (cursor + 6U > rom.size()) {
+            error = "Pewter City actor table is truncated";
+            return false;
+        }
+        ++cursor; // sprite id
+        const std::uint8_t stored_y = rom[cursor++];
+        const std::uint8_t stored_x = rom[cursor++];
+        cursor += 2U; // movement and facing/axis
+        const std::uint8_t encoded_text = rom[cursor++];
+        if (stored_x < 4U || stored_y < 4U) {
+            error = "Pewter City actor has an invalid biased position";
+            return false;
+        }
+        const PewterCityProgram::Position position{
+            static_cast<std::uint8_t>(stored_x - 4U),
+            static_cast<std::uint8_t>(stored_y - 4U)};
+        if (actor_index == result.museum_actor_index)
+            result.museum_actor_origin = position;
+        else if (actor_index == result.repel_actor_index)
+            result.repel_actor_origin = position;
+        else if (actor_index == result.gym_guide_actor_index)
+            result.gym_guide_actor_origin = position;
+        const std::uint8_t kind =
+            static_cast<std::uint8_t>(encoded_text & 0xC0U);
+        const std::size_t parameters =
+            kind == 0x40U ? 2U : kind == 0x80U ? 1U : 0U;
+        if (kind == 0xC0U || cursor + parameters > rom.size()) {
+            error =
+                "Pewter City actor parameters do not match the verified ROM";
+            return false;
+        }
+        cursor += parameters;
+    }
+
+    cursor = kPewterCityEastGateCoordsOffset;
+    for (PewterCityProgram::Position& cell :
+         result.east_gate_cells) {
+        if (cursor + 2U > rom.size() ||
+            rom[cursor] == 0xFFU) {
+            error =
+                "Pewter City east-gate coordinate table is truncated";
+            return false;
+        }
+        cell = {rom[cursor + 1U], rom[cursor]};
+        cursor += 2U;
+    }
+    if (cursor >= rom.size() || rom[cursor] != 0xFFU) {
+        error =
+            "Pewter City east-gate coordinate table has an unexpected extent";
+        return false;
+    }
+
+    const std::array<std::pair<std::size_t, DecodedTextProgram*>, 9>
+        text_programs{{
+            {kPewterCityMuseumQuestionTextOffset,
+             &result.museum_question},
+            {kPewterCityMuseumYesTextOffset, &result.museum_yes},
+            {kPewterCityMuseumNoTextOffset, &result.museum_no},
+            {kPewterCityMuseumArrivalTextOffset,
+             &result.museum_arrival},
+            {kPewterCityRepelQuestionTextOffset,
+             &result.repel_question},
+            {kPewterCityRepelYesTextOffset, &result.repel_yes},
+            {kPewterCityRepelNoTextOffset, &result.repel_no},
+            {kPewterCityGymFollowTextOffset, &result.gym_follow},
+            {kPewterCityGymArrivalTextOffset,
+             &result.gym_arrival},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(rom, 0x06U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Pewter City dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -2832,6 +3011,84 @@ GeneratedFile readable_loose_item_source(
     };
 }
 
+GeneratedFile readable_pewter_city_source(
+    const PewterCityProgram& city) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Pewter City program.\n"
+        << "; Actor origins, gate cells, destinations, flags, and dialogue are ROM-derived.\n"
+        << "; escort_player_to is a modern semantic lowering over the imported map collision graph.\n\n"
+        << "campaign_program pewter_city_museum_guide\n"
+        << "    trigger map pewter_city actor_activation "
+        << static_cast<unsigned>(city.museum_actor_index) << '\n'
+        << "    ask_yes_no\n"
+        << page_source(city.museum_question.pages, "        ")
+        << "    if_yes\n"
+        << "        say\n"
+        << page_source(city.museum_yes.pages, "            ")
+        << "    if_no\n"
+        << "        say\n"
+        << page_source(city.museum_no.pages, "            ")
+        << "        escort_player_to "
+        << static_cast<unsigned>(city.museum_player_target.x)
+        << ' '
+        << static_cast<unsigned>(city.museum_player_target.y)
+        << " actor_side left\n"
+        << "        say\n"
+        << page_source(city.museum_arrival.pages, "            ")
+        << "        move_actor down 4 hide_at_end\n"
+        << "        restore_actor "
+        << static_cast<unsigned>(city.museum_actor_origin.x)
+        << ' '
+        << static_cast<unsigned>(city.museum_actor_origin.y)
+        << "\n\n"
+        << "campaign_program pewter_city_repel_explanation\n"
+        << "    trigger map pewter_city actor_activation "
+        << static_cast<unsigned>(city.repel_actor_index) << '\n'
+        << "    ask_yes_no\n"
+        << page_source(city.repel_question.pages, "        ")
+        << "    if_yes\n"
+        << "        say\n"
+        << page_source(city.repel_yes.pages, "            ")
+        << "    if_no\n"
+        << "        say\n"
+        << page_source(city.repel_no.pages, "            ")
+        << '\n'
+        << "campaign_template pewter_city_gym_escort\n"
+        << "    absent_flag 0x" << std::hex
+        << city.beat_brock_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(city.gym_follow.pages, "        ")
+        << "    escort_player_to "
+        << static_cast<unsigned>(city.gym_player_target.x)
+        << ' '
+        << static_cast<unsigned>(city.gym_player_target.y)
+        << " actor_side right\n"
+        << "    say\n"
+        << page_source(city.gym_arrival.pages, "        ")
+        << "    move_actor right 5 hide_at_end\n"
+        << "    restore_actor "
+        << static_cast<unsigned>(city.gym_guide_actor_origin.x)
+        << ' '
+        << static_cast<unsigned>(city.gym_guide_actor_origin.y)
+        << "\n    triggers\n"
+        << "        actor_activation "
+        << static_cast<unsigned>(city.gym_guide_actor_index)
+        << '\n';
+    for (const PewterCityProgram::Position& cell :
+         city.east_gate_cells)
+        source << "        player_cell "
+               << static_cast<unsigned>(cell.x) << ' '
+               << static_cast<unsigned>(cell.y) << '\n';
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/pewter_city.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -3083,6 +3340,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_pewter_gym_program(
             rom, toggle_actors, item_names,
             route_22_first_rival, pewter_gym, error))
+        return false;
+    PewterCityProgram pewter_city;
+    if (!decode_pewter_city_program(
+            rom, pewter_gym, pewter_city, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -4012,7 +4273,189 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(guide_after));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'C'};
+    Program museum_guide;
+    museum_guide.key = "pewter_city_museum_guide";
+    museum_guide.trigger_kind =
+        TriggerKind::actor_activation;
+    museum_guide.trigger_map = pewter_city.map_id;
+    museum_guide.trigger_x =
+        pewter_city.museum_actor_index;
+    museum_guide.instructions.push_back(
+        operation(Opcode::lock_input));
+    Instruction museum_question =
+        operation(Opcode::ask_yes_no);
+    museum_question.pages =
+        pewter_city.museum_question.pages;
+    museum_guide.instructions.push_back(
+        std::move(museum_question));
+    const std::size_t museum_no_jump =
+        museum_guide.instructions.size();
+    museum_guide.instructions.push_back(
+        operation(Opcode::jump_if_choice_no));
+    museum_guide.instructions.push_back(
+        dialogue(pewter_city.museum_yes.pages));
+    const std::size_t museum_done_jump =
+        museum_guide.instructions.size();
+    museum_guide.instructions.push_back(
+        operation(Opcode::jump));
+    museum_guide.instructions[museum_no_jump].value =
+        static_cast<std::uint32_t>(
+            museum_guide.instructions.size());
+    museum_guide.instructions.push_back(
+        dialogue(pewter_city.museum_no.pages));
+    museum_guide.instructions.push_back(operation(
+        Opcode::escort_player_to,
+        pewter_city.museum_actor_index, 2U,
+        static_cast<std::uint32_t>(
+            pewter_city.museum_player_target.x) |
+            static_cast<std::uint32_t>(
+                pewter_city.museum_player_target.y)
+                << 8U));
+    museum_guide.instructions.push_back(
+        dialogue(pewter_city.museum_arrival.pages));
+    Instruction museum_exit =
+        operation(Opcode::actor_path,
+                  pewter_city.museum_actor_index,
+                  pewter_city.map_id, 3U);
+    museum_exit.actor_path.assign(
+        4U, PathCommand::down);
+    museum_guide.instructions.push_back(
+        std::move(museum_exit));
+    museum_guide.instructions.push_back(operation(
+        Opcode::place_actor,
+        pewter_city.museum_actor_index,
+        pewter_city.map_id,
+        packed_position(
+            pewter_city.museum_actor_origin.x,
+            pewter_city.museum_actor_origin.y)));
+    museum_guide.instructions.push_back(operation(
+        Opcode::show_actor,
+        pewter_city.museum_actor_index, 0U,
+        pewter_city.map_id));
+    museum_guide.instructions[museum_done_jump].value =
+        static_cast<std::uint32_t>(
+            museum_guide.instructions.size());
+    museum_guide.instructions.push_back(
+        operation(Opcode::unlock_input));
+    museum_guide.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(museum_guide));
+
+    Program repel_guide;
+    repel_guide.key = "pewter_city_repel_explanation";
+    repel_guide.trigger_kind =
+        TriggerKind::actor_activation;
+    repel_guide.trigger_map = pewter_city.map_id;
+    repel_guide.trigger_x =
+        pewter_city.repel_actor_index;
+    repel_guide.instructions.push_back(
+        operation(Opcode::lock_input));
+    Instruction repel_question =
+        operation(Opcode::ask_yes_no);
+    repel_question.pages =
+        pewter_city.repel_question.pages;
+    repel_guide.instructions.push_back(
+        std::move(repel_question));
+    const std::size_t repel_no_jump =
+        repel_guide.instructions.size();
+    repel_guide.instructions.push_back(
+        operation(Opcode::jump_if_choice_no));
+    repel_guide.instructions.push_back(
+        dialogue(pewter_city.repel_yes.pages));
+    const std::size_t repel_done_jump =
+        repel_guide.instructions.size();
+    repel_guide.instructions.push_back(
+        operation(Opcode::jump));
+    repel_guide.instructions[repel_no_jump].value =
+        static_cast<std::uint32_t>(
+            repel_guide.instructions.size());
+    repel_guide.instructions.push_back(
+        dialogue(pewter_city.repel_no.pages));
+    repel_guide.instructions[repel_done_jump].value =
+        static_cast<std::uint32_t>(
+            repel_guide.instructions.size());
+    repel_guide.instructions.push_back(
+        operation(Opcode::unlock_input));
+    repel_guide.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(repel_guide));
+
+    const auto gym_escort_instructions = [&]() {
+        std::vector<Instruction> escort;
+        escort.push_back(operation(Opcode::lock_input));
+        escort.push_back(
+            dialogue(pewter_city.gym_follow.pages));
+        escort.push_back(operation(
+            Opcode::escort_player_to,
+            pewter_city.gym_guide_actor_index, 3U,
+            static_cast<std::uint32_t>(
+                pewter_city.gym_player_target.x) |
+                static_cast<std::uint32_t>(
+                    pewter_city.gym_player_target.y)
+                    << 8U));
+        escort.push_back(
+            dialogue(pewter_city.gym_arrival.pages));
+        Instruction exit =
+            operation(Opcode::actor_path,
+                      pewter_city.gym_guide_actor_index,
+                      pewter_city.map_id, 3U);
+        exit.actor_path.assign(5U, PathCommand::right);
+        escort.push_back(std::move(exit));
+        escort.push_back(operation(
+            Opcode::place_actor,
+            pewter_city.gym_guide_actor_index,
+            pewter_city.map_id,
+            packed_position(
+                pewter_city.gym_guide_actor_origin.x,
+                pewter_city.gym_guide_actor_origin.y)));
+        escort.push_back(operation(
+            Opcode::show_actor,
+            pewter_city.gym_guide_actor_index, 0U,
+            pewter_city.map_id));
+        escort.push_back(
+            operation(Opcode::unlock_input));
+        escort.push_back(
+            operation(Opcode::end));
+        return escort;
+    };
+
+    Program direct_gym_guide;
+    direct_gym_guide.key =
+        "pewter_city_gym_guide_activation";
+    direct_gym_guide.trigger_kind =
+        TriggerKind::actor_activation;
+    direct_gym_guide.trigger_map = pewter_city.map_id;
+    direct_gym_guide.trigger_x =
+        pewter_city.gym_guide_actor_index;
+    direct_gym_guide.absent_flag =
+        pewter_city.beat_brock_flag;
+    direct_gym_guide.instructions =
+        gym_escort_instructions();
+    programs.push_back(std::move(direct_gym_guide));
+
+    for (std::size_t index = 0U;
+         index < pewter_city.east_gate_cells.size(); ++index) {
+        Program east_gate;
+        east_gate.key =
+            "pewter_city_east_gate_" +
+            std::to_string(index + 1U);
+        east_gate.trigger_kind =
+            TriggerKind::player_rectangle;
+        east_gate.trigger_map = pewter_city.map_id;
+        east_gate.trigger_x =
+            pewter_city.east_gate_cells[index].x;
+        east_gate.trigger_y =
+            pewter_city.east_gate_cells[index].y;
+        east_gate.trigger_width = 1U;
+        east_gate.trigger_height = 1U;
+        east_gate.absent_flag =
+            pewter_city.beat_brock_flag;
+        east_gate.instructions =
+            gym_escort_instructions();
+        programs.push_back(std::move(east_gate));
+    }
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'D'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u16(cache, item_names.size());
@@ -4068,6 +4511,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             item_names, found_item, no_item_room));
     result.files.push_back(
         readable_pewter_gym_source(pewter_gym));
+    result.files.push_back(
+        readable_pewter_city_source(pewter_city));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

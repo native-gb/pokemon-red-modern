@@ -57,6 +57,7 @@ enum class CampaignOpcode : std::uint8_t {
     say_if_player_lost,
     end_if_player_lost,
     heal_party,
+    escort_player_to,
     unlock_input,
     end,
 };

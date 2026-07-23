@@ -1745,7 +1745,7 @@ void test_local_pallet_campaign_program(TestState& state) {
     check(state,
           programs.naming.maximum_length == 10U &&
               programs.inventory_stack_capacity == 20U &&
-              programs.programs.size() == 28U &&
+              programs.programs.size() == 35U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
               programs.item_names.front().name == "MASTER BALL" &&
@@ -1790,7 +1790,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 16> source_names{
+    constexpr std::array<std::string_view, 17> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1807,6 +1807,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "blues_house_daisy_town_map.sexpr",
         "pallet_reward_updates.sexpr",
         "route_1_potion.sexpr",
+        "pewter_city.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2565,6 +2566,44 @@ void test_local_pallet_campaign_program(TestState& state) {
               !actor_visible(51U, 7U),
           "generic Forest Poké Ball pickup stacks and hides");
     world.dialogue = {};
+
+    // Pewter's east exit is blocked until Brock is defeated. The imported
+    // trigger cell and gym warp become a semantic escort destination; the
+    // generic world owner supplies collision-aware smooth paths.
+    check(state,
+          pokered::enter_world_at(world, 2U, 35, 17, error),
+          "campaign fixture reaches Pewter's east gate");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find("Follow me") !=
+                  std::string::npos,
+          "Pewter east gate starts the imported gym escort");
+    for (std::size_t guard = 0U;
+         guard < 4000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Pewter gym escort advances");
+        if (!error.empty()) {
+            std::fprintf(stderr, "Pewter escort error: %s\n",
+                         error.c_str());
+            break;
+        }
+    }
+    check(state,
+          error.empty() && !campaign.fiber.active &&
+              !campaign.input_locked &&
+              world.maps[world.player.map_index].id == 2U &&
+              world.player.x == 16 && world.player.y == 18 &&
+              actor_visible(2U, 5U),
+          "Pewter escort reaches the imported gym warp and restores its guide");
 
     // The Pewter guide's ROM branch is a small but useful conditional-fiber
     // check: NO selects the "free service" response, then rejoins the common

@@ -289,6 +289,10 @@ bool start_world_pair_alignment(WorldState& world,
                                 std::uint8_t actor_index,
                                 std::uint8_t target_x,
                                 std::string& error);
+bool start_world_escort_motion(
+    WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+    std::int32_t player_target_x, std::int32_t player_target_y,
+    WorldDirection actor_target_side, std::string& error);
 bool start_world_parallel_motion(
     WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
     const std::vector<WorldPathCommand>& actor_path,

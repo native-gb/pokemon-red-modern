@@ -151,9 +151,15 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
     case CampaignOpcode::actor_path:
-        return instruction.a != 0U && instruction.value <= 1U &&
+        return instruction.a != 0U && instruction.value <= 3U &&
                instruction.pages.empty() &&
                !instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::escort_player_to:
+        return instruction.a != 0U && instruction.b <= 3U &&
+               instruction.value <= 0xFFFFU &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
                instruction.player_path.empty();
     case CampaignOpcode::jump_if_player_y:
     case CampaignOpcode::jump_if_item_grant_failed:
@@ -321,7 +327,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'C'}) {
+        magic != std::array{'P', 'C', 'P', 'D'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -810,7 +816,9 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             if (!start_world_parallel_motion(
                     world, instruction.b, instruction.a,
                     instruction.actor_path, player_waits,
-                    instruction.value != 0U, error))
+                    (instruction.value & 1U) != 0U, error,
+                    (instruction.value & 2U) != 0U,
+                    (instruction.value & 2U) != 0U))
                 return false;
             fiber.waiting_motion = true;
             error.clear();
@@ -913,6 +921,21 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             break;
         case CampaignOpcode::heal_party:
             heal_party(campaign.party);
+            break;
+        case CampaignOpcode::escort_player_to:
+            if (!start_world_escort_motion(
+                    world, program.trigger_map_id, instruction.a,
+                    static_cast<std::int32_t>(
+                        instruction.value & 0xFFU),
+                    static_cast<std::int32_t>(
+                        (instruction.value >> 8U) & 0xFFU),
+                    direction(instruction.b), error))
+                return false;
+            fiber.waiting_motion = world.script_motion.active;
+            if (fiber.waiting_motion) {
+                error.clear();
+                return true;
+            }
             break;
         case CampaignOpcode::unlock_input:
             campaign.input_locked = false;

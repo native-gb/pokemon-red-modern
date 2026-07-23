@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <queue>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1092,6 +1093,82 @@ void append_axis_path(std::int32_t current, std::int32_t target, WorldPathComman
         path.push_back(command);
 }
 
+bool find_local_path(const WorldState& world, std::size_t map_index,
+                     std::int32_t start_x, std::int32_t start_y,
+                     std::int32_t target_x, std::int32_t target_y,
+                     std::size_t permitted_actor,
+                     std::vector<WorldPathCommand>& result) {
+    if (map_index >= world.maps.size() || map_index >= world.spatial.size())
+        return false;
+    const WorldMap& map = world.maps[map_index];
+    const WorldMapCellIndex& cells = world.spatial[map_index];
+    if (!inside(cells, start_x, start_y) ||
+        !inside(cells, target_x, target_y))
+        return false;
+
+    const std::size_t count =
+        static_cast<std::size_t>(cells.width) *
+        static_cast<std::size_t>(cells.height);
+    const std::size_t start = cell_offset(cells, start_x, start_y);
+    const std::size_t target = cell_offset(cells, target_x, target_y);
+    std::vector<std::int32_t> previous(count, -1);
+    std::vector<WorldPathCommand> entered_with(
+        count, WorldPathCommand::wait);
+    std::queue<std::size_t> open;
+    previous[start] = static_cast<std::int32_t>(start);
+    open.push(start);
+
+    constexpr std::array<std::int32_t, 4> dx{0, 0, -1, 1};
+    constexpr std::array<std::int32_t, 4> dy{1, -1, 0, 0};
+    constexpr std::array<WorldPathCommand, 4> commands{
+        WorldPathCommand::down, WorldPathCommand::up,
+        WorldPathCommand::left, WorldPathCommand::right};
+    while (!open.empty() && previous[target] < 0) {
+        const std::size_t current = open.front();
+        open.pop();
+        const std::int32_t x =
+            static_cast<std::int32_t>(
+                current % static_cast<std::size_t>(cells.width));
+        const std::int32_t y =
+            static_cast<std::int32_t>(
+                current / static_cast<std::size_t>(cells.width));
+        for (std::size_t direction = 0U;
+             direction < commands.size(); ++direction) {
+            const std::int32_t next_x = x + dx[direction];
+            const std::int32_t next_y = y + dy[direction];
+            if (!inside(cells, next_x, next_y))
+                continue;
+            const std::size_t next =
+                cell_offset(cells, next_x, next_y);
+            if (previous[next] >= 0)
+                continue;
+            const std::int32_t global_x =
+                map.global_x_tiles / 2 + next_x;
+            const std::int32_t global_y =
+                map.global_y_tiles / 2 + next_y;
+            const std::int32_t occupant =
+                cells.actor_by_cell[next];
+            if (!is_passable(world, map_index, global_x, global_y) ||
+                (occupant >= 0 &&
+                 static_cast<std::size_t>(occupant) !=
+                     permitted_actor))
+                continue;
+            previous[next] = static_cast<std::int32_t>(current);
+            entered_with[next] = commands[direction];
+            open.push(next);
+        }
+    }
+    if (previous[target] < 0)
+        return false;
+
+    result.clear();
+    for (std::size_t current = target; current != start;
+         current = static_cast<std::size_t>(previous[current]))
+        result.push_back(entered_with[current]);
+    std::reverse(result.begin(), result.end());
+    return true;
+}
+
 bool apply_actor_path_command(WorldState& world, std::size_t runtime_index,
                               WorldPathCommand command,
                               bool may_overlap_player,
@@ -1120,14 +1197,36 @@ bool apply_actor_path_command(WorldState& world, std::size_t runtime_index,
     const WorldMap& map = world.maps[actor.map_index];
     const std::int32_t global_x = map.global_x_tiles / 2 + target_x;
     const std::int32_t global_y = map.global_y_tiles / 2 + target_y;
-    if (!inside(cells, target_x, target_y) ||
+    const bool target_inside = inside(cells, target_x, target_y);
+    const std::int32_t occupant =
+        target_inside
+            ? cells.actor_by_cell[
+                  cell_offset(cells, target_x, target_y)]
+            : -1;
+    if (!target_inside ||
         (!ignores_terrain &&
          !is_passable(world, actor.map_index, global_x, global_y)) ||
-        cells.actor_by_cell[cell_offset(cells, target_x, target_y)] >= 0 ||
+        occupant >= 0 ||
         (!may_overlap_player &&
          world.player.map_index == actor.map_index &&
          world.player.x == target_x && world.player.y == target_y)) {
-        error = "campaign actor path is blocked";
+        error = "campaign actor path is blocked on map " +
+                std::to_string(map.id) + " at " +
+                std::to_string(target_x) + ',' +
+                std::to_string(target_y) + " by actor " +
+                std::to_string(occupant) + " (terrain " +
+                (is_passable(
+                     world, actor.map_index, global_x, global_y)
+                     ? "passable"
+                     : "blocked") +
+                ", player_overlap " +
+                (world.player.map_index == actor.map_index &&
+                         world.player.x == target_x &&
+                         world.player.y == target_y
+                     ? "yes"
+                     : "no") +
+                ", overlap_allowed " +
+                (may_overlap_player ? "yes" : "no") + ')';
         return false;
     }
     if (actor.visible) cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] = -1;
@@ -1279,6 +1378,52 @@ bool start_world_pair_alignment(WorldState& world, std::uint8_t map_id, std::uin
     player_path.insert(player_path.end(), static_cast<std::size_t>(count), command);
     return start_world_parallel_motion(world, map_id, actor_index, actor_path, player_path, false,
                                        error);
+}
+
+bool start_world_escort_motion(
+    WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+    std::int32_t player_target_x, std::int32_t player_target_y,
+    WorldDirection actor_target_side, std::string& error) {
+    std::size_t runtime_index = 0U;
+    if (!find_runtime_actor(world, map_id, actor_index, runtime_index) ||
+        world.player.map_index != world.actors[runtime_index].map_index) {
+        error = "escort path has an unavailable actor";
+        return false;
+    }
+    std::int32_t actor_target_x = player_target_x;
+    std::int32_t actor_target_y = player_target_y;
+    std::int32_t dx = 0;
+    std::int32_t dy = 0;
+    direction_delta(actor_target_side, dx, dy);
+    actor_target_x += dx;
+    actor_target_y += dy;
+
+    const WorldActorState& actor = world.actors[runtime_index];
+    std::vector<WorldPathCommand> actor_path;
+    std::vector<WorldPathCommand> player_path;
+    if (!find_local_path(
+            world, actor.map_index, actor.x, actor.y,
+            actor_target_x, actor_target_y, runtime_index,
+            actor_path) ||
+        !find_local_path(
+            world, world.player.map_index, world.player.x,
+            world.player.y, player_target_x, player_target_y,
+            runtime_index, player_path)) {
+        error = "escort destination has no passable local path";
+        return false;
+    }
+    const std::size_t step_count =
+        std::max(actor_path.size(), player_path.size());
+    actor_path.resize(step_count, WorldPathCommand::wait);
+    player_path.resize(step_count, WorldPathCommand::wait);
+    if (step_count == 0U) {
+        world.script_motion = {};
+        error.clear();
+        return true;
+    }
+    return start_world_parallel_motion(
+        world, map_id, actor_index, actor_path, player_path,
+        false, error, true, false);
 }
 
 bool start_world_parallel_motion(WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
