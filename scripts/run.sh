@@ -20,14 +20,17 @@ world_cache="$import_root/compiled/world_maps.bin"
 interaction_cache="$import_root/compiled/world_interactions.bin"
 rule_cache="$import_root/compiled/pokemon_rules.bin"
 battle_rule_cache="$import_root/compiled/battle_rules.bin"
+encounter_cache="$import_root/compiled/encounters.bin"
 boot_cache="$import_root/compiled/boot_content.bin"
 world_magic="$(head -c 4 "$world_cache" 2>/dev/null || true)"
 interaction_magic="$(head -c 4 "$interaction_cache" 2>/dev/null || true)"
 rule_magic="$(head -c 4 "$rule_cache" 2>/dev/null || true)"
 battle_rule_magic="$(head -c 4 "$battle_rule_cache" 2>/dev/null || true)"
+encounter_magic="$(head -c 4 "$encounter_cache" 2>/dev/null || true)"
 boot_magic="$(head -c 4 "$boot_cache" 2>/dev/null || true)"
-if [[ "$world_magic" != "PMV9" || "$interaction_magic" != "PWI1" ||
+if [[ "$world_magic" != "PMVA" || "$interaction_magic" != "PWI1" ||
       "$rule_magic" != "PRL1" || "$battle_rule_magic" != "PBR7" ||
+      "$encounter_magic" != "PEC1" ||
       "$boot_magic" != "PBT1" ]]; then
     rom="$repo_root/../native-gb-pokemon-red/roms/pokemon_red.gb"
     if [[ ! -f "$rom" ]]; then

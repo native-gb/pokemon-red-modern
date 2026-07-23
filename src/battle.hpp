@@ -12,6 +12,7 @@ namespace pokered {
 
 struct BattleRuleCatalog;
 struct RuleCatalog;
+struct WildEncounterResult;
 
 enum class BattleKind : std::uint8_t {
     wild,
@@ -80,6 +81,12 @@ bool begin_battle(const RuleCatalog& rules,
                   const PartyState& player_party, PartyState enemy_party,
                   BattleKind kind, std::uint32_t random_seed,
                   BattleState& result, std::string& error);
+bool begin_wild_battle(const RuleCatalog& rules,
+                       const BattleRuleCatalog& battle_rules,
+                       const PartyState& player_party,
+                       const WildEncounterResult& encounter,
+                       std::uint32_t random_seed, BattleState& result,
+                       std::string& error);
 bool execute_battle_turn(const RuleCatalog& rules,
                          const BattleRuleCatalog& battle_rules,
                          std::uint16_t player_trainer_id,

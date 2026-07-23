@@ -16,6 +16,7 @@ struct CampaignState;
 struct MapTileset {
     std::uint8_t id{};
     std::uint16_t tile_count{};
+    std::uint8_t grass_tile{0xFFU};
     std::uint8_t animation_mode{};
     std::vector<std::uint8_t> passable_tiles;
     std::vector<std::uint8_t> pixels;
@@ -180,6 +181,7 @@ struct WorldState {
     std::uint64_t animation_tick{};
     std::uint64_t simulation_tick{};
     std::uint32_t random_state{0xC001D00DU};
+    bool player_completed_step{};
     bool show_annotations{};
     bool follow_player{true};
     bool camera_initialized{};

@@ -70,6 +70,9 @@ data/runtime/imports/pokemon_red_us_rev_0/
             damage.sexpr
             status.sexpr
             unusual_moves.sexpr
+        encounters/
+            probabilities.sexpr
+            maps.sexpr
         animations/
             title.sexpr
             field.sexpr
@@ -89,6 +92,7 @@ data/runtime/imports/pokemon_red_us_rev_0/
     reports/
         battle_rule_import_summary.txt
         boot_import_summary.txt
+        encounter_import_summary.txt
         completeness.txt
         unresolved.txt
         source_ranges.txt
@@ -96,6 +100,7 @@ data/runtime/imports/pokemon_red_us_rev_0/
     compiled/
         battle_rules.bin
         boot_content.bin
+        encounters.bin
         world_maps.bin
         world_interactions.bin
         map_program_index.bin
@@ -114,7 +119,8 @@ data/runtime/imports/pokemon_red_us_rev_0/
 
 The exact chunk format can change without changing the readable source syntax.
 The current vertical slice loads `battle_rules.bin`, `boot_content.bin`,
-`world_maps.bin`, and `world_interactions.bin` directly. `battle_rules.bin`
+`encounters.bin`, `pokemon_rules.bin`, `world_maps.bin`, and
+`world_interactions.bin` directly. `battle_rules.bin`
 contains validated semantic ordinary-damage, critical-hit, capture, and
 experience-award formula programs, plus owned-Pokemon stat calculation and
 ordinary accuracy/evasion calculation with the cartridge-owned stage ratios.
@@ -122,6 +128,15 @@ It also contains the first source-effect binding and executable ordinary
 damage pipeline; unsupported source effects remain explicit import gaps.
 `boot_content.bin` contains normalized boot graphics, layouts, text programs,
 title timing tables, and initial-placement content.
+`pokemon_rules.bin` contains all imported type slots and interactions, species
+stats and starting moves, move definitions and effect bindings, ordered
+learnsets, evolutions, growth curves, and machine compatibility.
+`encounters.bin` accounts for every one of the 248 source map slots, including
+separate land/water rates and ten encounter slots when present. It also owns
+the cartridge-derived ten-slot cumulative probability curve and terrain
+selection policy. A resolved encounter is materialized as an owned Pokemon
+through the imported stat, species, starting-move, and learnset rules before
+the ordinary battle executor receives it.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Normal startup does not parse the readable `.sexpr` files.
 

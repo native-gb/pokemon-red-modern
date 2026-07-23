@@ -2,6 +2,7 @@
 #include "import_battle_animations_io.hpp"
 #include "import_battle_rules.hpp"
 #include "import_boot.hpp"
+#include "import_encounters.hpp"
 #include "import_maps.hpp"
 #include "import_pictures.hpp"
 #include "import_rules.hpp"
@@ -47,6 +48,7 @@ int main(int argc, char** argv) {
     pokered::import::BattleAnimationImport imported;
     pokered::import::BattleRuleImport battle_rules;
     pokered::import::BootImport boot;
+    pokered::import::EncounterImport encounters;
     pokered::import::MapImport maps;
     pokered::import::PictureImport pictures;
     pokered::import::RuleImport rules;
@@ -55,6 +57,7 @@ int main(int argc, char** argv) {
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
         !pokered::import::decode_battle_rule_import(rom, battle_rules, error) ||
         !pokered::import::decode_boot_import(rom, boot, error) ||
+        !pokered::import::decode_encounter_import(rom, encounters, error) ||
         !pokered::import::decode_picture_import(rom, pictures, error) ||
         !pokered::import::decode_map_import(rom, maps, error) ||
         !pokered::import::decode_rule_import(rom, rules, error) ||
@@ -68,6 +71,10 @@ int main(int argc, char** argv) {
         imported.files.end(),
         std::make_move_iterator(battle_rules.files.begin()),
         std::make_move_iterator(battle_rules.files.end()));
+    imported.files.insert(
+        imported.files.end(),
+        std::make_move_iterator(encounters.files.begin()),
+        std::make_move_iterator(encounters.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(pictures.files.begin()),
                           std::make_move_iterator(pictures.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(maps.files.begin()),
@@ -100,6 +107,13 @@ int main(int argc, char** argv) {
                     << battle_rules.accuracy_formulas << '\n'
                     << "move_effect_programs "
                     << battle_rules.move_effect_programs << '\n'
+                    << "encounter_importer_version 1\n"
+                    << "encounter_map_slots " << encounters.map_slots << '\n'
+                    << "active_land_encounter_tables "
+                    << encounters.active_land_tables << '\n'
+                    << "active_water_encounter_tables "
+                    << encounters.active_water_tables << '\n'
+                    << "encounter_slots " << encounters.slots << '\n'
                     << "boot_importer_version 1\n"
                     << "boot_images " << boot.images << '\n'
                     << "boot_title_species " << boot.title_species << '\n'
@@ -162,6 +176,11 @@ int main(int argc, char** argv) {
               << " move-effect program\n";
     std::cout << "Battle rule cache: "
               << output_root / "compiled" / "battle_rules.bin" << '\n';
+    std::cout << "Imported encounters for " << encounters.map_slots
+              << " map slots with " << encounters.slots
+              << " explicit land/water slots\n";
+    std::cout << "Encounter cache: "
+              << output_root / "compiled" / "encounters.bin" << '\n';
     std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"
               << '\n';
     std::cout << "Frame assets: " << output_root / "compiled" / "battle_animation_frames.bin"

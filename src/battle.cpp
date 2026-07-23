@@ -1,6 +1,7 @@
 #include "battle.hpp"
 
 #include "battle_rules.hpp"
+#include "encounters.hpp"
 #include "rules.hpp"
 
 #include <algorithm>
@@ -406,6 +407,42 @@ bool begin_battle(const RuleCatalog& rules,
     result = std::move(started);
     error.clear();
     return true;
+}
+
+bool begin_wild_battle(const RuleCatalog& rules,
+                       const BattleRuleCatalog& battle_rules,
+                       const PartyState& player_party,
+                       const WildEncounterResult& encounter,
+                       std::uint32_t random_seed, BattleState& result,
+                       std::string& error) {
+    const StatFormulaProgram* stats = find_stat_formula(
+        battle_rules, battle_rules.original_stat_formula);
+    if (!encounter.occurred || encounter.species_dex == 0U ||
+        encounter.level == 0U || stats == nullptr) {
+        error = "wild battle cannot begin from an incomplete encounter";
+        return false;
+    }
+
+    // The host seed materializes per-instance DVs before the battle begins.
+    // Species, level, initial moves, and stat behavior remain imported content.
+    std::uint32_t state = random_seed == 0U ? 1U : random_seed;
+    const std::uint8_t first = next_random_byte(state);
+    const std::uint8_t second = next_random_byte(state);
+    const std::array<std::uint8_t, 4> dvs{
+        static_cast<std::uint8_t>(first >> 4U),
+        static_cast<std::uint8_t>(first & 0x0FU),
+        static_cast<std::uint8_t>(second >> 4U),
+        static_cast<std::uint8_t>(second & 0x0FU),
+    };
+    PokemonState wild;
+    if (!build_pokemon(rules, *stats, encounter.species_dex,
+                       encounter.level, dvs, 0U, {}, wild, error)) {
+        return false;
+    }
+    PartyState enemy;
+    enemy.members.push_back(std::move(wild));
+    return begin_battle(rules, battle_rules, player_party, std::move(enemy),
+                        BattleKind::wild, state, result, error);
 }
 
 bool execute_battle_turn(const RuleCatalog& rules,

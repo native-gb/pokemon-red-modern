@@ -77,6 +77,7 @@ bool read_tilesets(std::istream& input, WorldState& world, std::string& error) {
         std::uint32_t animation_pixel_count = 0;
         std::uint8_t passable_count = 0;
         if (!read_u8(input, tileset.id) || !read_u16(input, tileset.tile_count) ||
+            !read_u8(input, tileset.grass_tile) ||
             !read_u8(input, tileset.animation_mode) || tileset.animation_mode > 2 ||
             !read_u8(input, passable_count) || passable_count == 0 ||
             !read_bytes(input, passable_count, tileset.passable_tiles) ||
@@ -501,7 +502,7 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', '9'}) {
+        magic != std::array{'P', 'M', 'V', 'A'}) {
         error = "world map cache is missing or has an invalid header";
         return false;
     }
@@ -691,6 +692,7 @@ bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
 void step_world(WorldState& world, const InteractionCatalog& interactions,
                 const CampaignState& campaign,
                 const WorldStepInput& input) {
+    world.player_completed_step = false;
     if (!campaign.initialized || !world.player.initialized ||
         world.spatial.size() != world.maps.size())
         return;
@@ -773,7 +775,8 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                     world.current = target_map;
                     world.follow_player = true;
                     world.player.move_cooldown = 7U;
-                    (void)activate_world_warp(world);
+                    world.player_completed_step =
+                        !activate_world_warp(world);
                 }
             }
         }

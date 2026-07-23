@@ -6,6 +6,7 @@
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "content_index.hpp"
+#include "encounters.hpp"
 #include "interactions.hpp"
 #include "maps.hpp"
 #include "overlays.hpp"
@@ -480,6 +481,135 @@ void test_world_spaces_and_warps(TestState& state) {
                                      std::vector<std::string>{
                                          "Hello PLAYER. RIVAL is waiting."},
           "world dialogue consumes campaign-owned naming results");
+}
+
+void test_local_encounter_cache(TestState& state) {
+    // When a local cartridge import is available, exercise the complete join
+    // from a rendered world cell through its imported encounter table.
+    const std::filesystem::path root =
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" /
+        "runtime" / "imports" / "pokemon_red_us_rev_0" / "compiled";
+    const std::filesystem::path encounter_path = root / "encounters.bin";
+    const std::filesystem::path world_path = root / "world_maps.bin";
+    if (!std::filesystem::exists(encounter_path) ||
+        !std::filesystem::exists(world_path)) {
+        std::puts("encounter cache test skipped: no local imported campaign");
+        return;
+    }
+
+    pokered::EncounterCatalog encounters;
+    pokered::WorldState world;
+    std::string error;
+    check(state, pokered::load_encounters(encounter_path, encounters, error),
+          "local encounter cache loads");
+    check(state, pokered::load_world(world_path, world, error),
+          "local world cache loads for encounters");
+    if (!encounters.loaded || !world.loaded) return;
+    check(state,
+          encounters.maps.size() == 248U &&
+              encounters.probabilities.size() == 10U &&
+              encounters.probabilities.front().inclusive_threshold == 50U &&
+              encounters.probabilities.back().inclusive_threshold == 255U,
+          "encounter cache covers every map and probability roll");
+
+    const auto map_it = std::find_if(
+        world.maps.begin(), world.maps.end(),
+        [](const pokered::WorldMap& map) { return map.id == 12U; });
+    check(state, map_it != world.maps.end(), "Route 1 map is imported");
+    if (map_it == world.maps.end()) return;
+    const pokered::MapTileset* tileset =
+        pokered::find_tileset(world, map_it->tileset_id);
+    check(state, tileset != nullptr && tileset->grass_tile != 0xFFU,
+          "Route 1 tileset supplies its imported grass tile");
+    if (tileset == nullptr) return;
+
+    bool found_grass = false;
+    std::int32_t grass_x = 0;
+    std::int32_t grass_y = 0;
+    for (std::int32_t y = 0; y < map_it->height_blocks * 2 && !found_grass; ++y) {
+        for (std::int32_t x = 0; x < map_it->width_blocks * 2; ++x) {
+            const std::size_t offset =
+                (static_cast<std::size_t>(y) * 2U + 1U) *
+                    map_it->width_tiles +
+                static_cast<std::size_t>(x) * 2U + 1U;
+            if (offset < map_it->tiles.size() &&
+                map_it->tiles[offset] == tileset->grass_tile) {
+                grass_x = x;
+                grass_y = y;
+                found_grass = true;
+                break;
+            }
+        }
+    }
+    check(state, found_grass, "Route 1 contains an imported grass cell");
+    if (!found_grass) return;
+
+    world.player.map_index =
+        static_cast<std::size_t>(map_it - world.maps.begin());
+    world.player.x = grass_x;
+    world.player.y = grass_y;
+    world.player_completed_step = true;
+    pokered::WildEncounterResult result;
+    check(state,
+          pokered::resolve_world_wild_encounter(
+              encounters, world, 0U, 0U, false, 0U, result, error),
+          "Route 1 encounter resolves");
+    check(state,
+          result.occurred && result.environment ==
+                                 pokered::EncounterEnvironment::land &&
+              result.encounter_rate == 25U && result.slot_index == 0U &&
+              result.species_dex == 16U && result.level == 3U,
+          "Route 1 first slot joins terrain, rate, species, and level");
+    const pokered::WildEncounterResult route_one_encounter = result;
+
+    check(state,
+          pokered::resolve_world_wild_encounter(
+              encounters, world, 25U, 0U, false, 0U, result, error) &&
+              !result.occurred &&
+              result.suppression ==
+                  pokered::WildEncounterSuppression::rate_roll,
+          "encounter rate uses the imported strict threshold");
+    check(state,
+          pokered::resolve_world_wild_encounter(
+              encounters, world, 0U, 0U, true, 4U, result, error) &&
+              !result.occurred &&
+              result.suppression ==
+                  pokered::WildEncounterSuppression::repel_level,
+          "repel suppresses an encounter below the leading level");
+
+    pokered::RuleCatalog rules;
+    pokered::BattleRuleCatalog battle_rules;
+    check(state, pokered::load_rules(root / "pokemon_rules.bin", rules, error),
+          "Pokemon rules load for wild battle");
+    check(state,
+          pokered::load_battle_rules(root / "battle_rules.bin",
+                                     battle_rules, error),
+          "battle rules load for wild battle");
+    const pokered::StatFormulaProgram* stats = pokered::find_stat_formula(
+        battle_rules, battle_rules.original_stat_formula);
+    if (!rules.loaded || !battle_rules.loaded || stats == nullptr) return;
+    pokered::PokemonState starter;
+    check(state,
+          pokered::build_pokemon(
+              rules, *stats, 1U, 5U, {15U, 14U, 13U, 12U}, 7U,
+              "PLAYER", starter, error),
+          "starter fixture builds from imported rules");
+    pokered::PartyState party;
+    party.members.push_back(std::move(starter));
+    pokered::BattleState battle;
+    check(state,
+          pokered::begin_wild_battle(
+              rules, battle_rules, party, route_one_encounter,
+              0x12345678U, battle, error),
+          "resolved world encounter begins an owned wild battle");
+    check(state,
+          battle.active && battle.kind == pokered::BattleKind::wild &&
+              battle.enemy_party.members.size() == 1U &&
+              battle.enemy_party.members.front().species_dex == 16U &&
+              battle.enemy_party.members.front().level == 3U &&
+              battle.enemy_party.members.front().current_hp ==
+                  battle.enemy_party.members.front().stats.hp,
+          "wild battle materializes imported species, level, moves, and stats");
 }
 
 void test_local_rule_cache(TestState& state) {
@@ -1169,6 +1299,7 @@ int main() {
     test_battle_ui(state);
     test_host_settings_and_clocks(state);
     test_world_spaces_and_warps(state);
+    test_local_encounter_cache(state);
     test_local_rule_cache(state);
     test_local_boot_cache(state);
     if (state.failures == 0) std::puts("foundation tests passed");

@@ -193,6 +193,7 @@ struct ImportedTileset {
     std::size_t graphics_offset{};
     std::size_t collision_offset{};
     std::size_t block_count{};
+    std::uint8_t grass_tile{};
     std::uint8_t animation_mode{};
     std::vector<std::uint8_t> passable_tiles;
     std::vector<std::uint8_t> block_tiles;
@@ -811,6 +812,7 @@ bool decode_tileset(std::span<const std::uint8_t> rom, const std::vector<Importe
     tileset.blocks_pointer = read_u16(rom, tileset.header_offset + 1U);
     tileset.graphics_pointer = read_u16(rom, tileset.header_offset + 3U);
     tileset.collision_pointer = read_u16(rom, tileset.header_offset + 5U);
+    tileset.grass_tile = rom[tileset.header_offset + 10U];
     tileset.animation_mode = rom[tileset.header_offset + 11U];
     if (tileset.animation_mode > 2) {
         error = "tileset has an invalid background-animation mode";
@@ -1000,6 +1002,8 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                        << "    block_count " << tileset.block_count << '\n'
                        << "    animation_mode " << static_cast<unsigned>(tileset.animation_mode)
                        << '\n'
+                       << "    grass_tile "
+                       << static_cast<unsigned>(tileset.grass_tile) << '\n'
                        << "    passable_tiles";
         for (const std::uint8_t tile : tileset.passable_tiles)
             tileset_source << ' ' << static_cast<unsigned>(tile);
@@ -1115,11 +1119,12 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedSprite>& sprites,
                         const std::vector<ImportedWorldSpace>& spaces,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '9'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', 'A'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
         write_u16(bytes, tileset.pixels.size() / 64U);
+        bytes.push_back(tileset.grass_tile);
         bytes.push_back(tileset.animation_mode);
         bytes.push_back(static_cast<std::uint8_t>(tileset.passable_tiles.size()));
         bytes.insert(bytes.end(), tileset.passable_tiles.begin(), tileset.passable_tiles.end());
