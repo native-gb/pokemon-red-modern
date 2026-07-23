@@ -636,6 +636,33 @@ Future local native link features require compatible campaign/rule manifests.
 - debug/release/sanitizer/WASM builds;
 - clean checkout requiring only the user's supported ROM.
 
+## Current campaign integration evidence
+
+The first imported story fiber is executable from the ordinary overworld. On
+the north edge of Pallet Town it:
+
+- evaluates the imported followed-Oak flag and locks player input;
+- reveals Oak, presents both cartridge dialogue programs, and moves him to the
+  player;
+- consumes the ROM-derived Oak/player walk-to-lab paths and the normal
+  Pallet-to-lab warp;
+- runs Oak's second lab actor up the imported entrance path, toggles to his
+  podium actor, and walks the player up the imported lab path;
+- presents the four imported starter-choice speeches and records the two
+  followed-Oak flags plus the choose-a-Pokemon gate.
+
+The runtime operations are generic. The C++ ROM importer emits the actor/map
+owners, flags, paths, text, and readable
+`source/scripts/campaign/pallet_oak_interception.sexpr`, then compiles the same
+records into `campaign_programs.bin`. A focused headless check drives this
+slice through its real warp and verifies its final map and progression state.
+
+This is not full-campaign completion. The next campaign blocker begins with
+the three starter-ball interactions, starter ownership/naming, rival choice,
+the first rival battle, and the rival exit sequence. Every later map program
+still requires semantic lifting and the remaining acceptance gates above stay
+open.
+
 ## Playable acceptance
 
 The project is not “wired up” merely because maps render or dialogue boxes

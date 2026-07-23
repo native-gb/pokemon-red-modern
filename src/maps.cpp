@@ -591,6 +591,7 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
                 .visual_global_y =
                     static_cast<float>(map.global_y_tiles / 2 + static_cast<int>(spawn.y)),
                 .facing = imported_facing(spawn.direction_or_axis),
+                .visible = true,
             };
             const std::size_t actor_index = world.actors.size();
             if (inside(cells, actor.x, actor.y))
@@ -802,6 +803,8 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         return;
     }
 
+    if (campaign.input_locked) return;
+
     if (input.activate) {
         std::int32_t dx = 0;
         std::int32_t dy = 0;
@@ -924,6 +927,12 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
     for (const std::size_t actor_index : scheduled) {
         if (actor_index >= world.actors.size()) continue;
         WorldActorState& actor = world.actors[actor_index];
+        if (!actor.visible) {
+            world.roam_schedule[(schedule_slot + 60U) %
+                                world.roam_schedule.size()]
+                .push_back(actor_index);
+            continue;
+        }
         const WorldMap& map = world.maps[actor.map_index];
         if (map.world_space != world.current_space) {
             world.roam_schedule[(schedule_slot + 60U) % world.roam_schedule.size()].push_back(
@@ -972,6 +981,278 @@ void open_world_dialogue(WorldState& world,
         world.dialogue.pages.push_back(
             substitute_campaign_text(page, campaign));
     world.dialogue.open = !world.dialogue.pages.empty();
+}
+
+bool set_world_actor_visible(WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+                             bool visible, std::string& error) {
+    for (std::size_t runtime_index = 0U; runtime_index < world.actors.size(); ++runtime_index) {
+        WorldActorState& actor = world.actors[runtime_index];
+        const WorldMap& map = world.maps[actor.map_index];
+        const WorldActorSpawn& spawn = map.actors[actor.spawn_index];
+        if (map.id != map_id || spawn.index != actor_index) continue;
+        WorldMapCellIndex& cells = world.spatial[actor.map_index];
+        const std::size_t cell = cell_offset(cells, actor.x, actor.y);
+        if (visible && !actor.visible) {
+            if (cells.actor_by_cell[cell] >= 0) {
+                error = "visible campaign actor would overlap another actor";
+                return false;
+            }
+            cells.actor_by_cell[cell] = static_cast<std::int32_t>(runtime_index);
+        } else if (!visible && actor.visible &&
+                   cells.actor_by_cell[cell] == static_cast<std::int32_t>(runtime_index)) {
+            cells.actor_by_cell[cell] = -1;
+        }
+        actor.visible = visible;
+        error.clear();
+        return true;
+    }
+    error = "campaign program references an unavailable actor";
+    return false;
+}
+
+bool face_world_actor(WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+                      WorldDirection direction, std::string& error) {
+    for (WorldActorState& actor : world.actors) {
+        const WorldMap& map = world.maps[actor.map_index];
+        const WorldActorSpawn& spawn = map.actors[actor.spawn_index];
+        if (map.id == map_id && spawn.index == actor_index) {
+            actor.facing = direction;
+            error.clear();
+            return true;
+        }
+    }
+    error = "campaign program cannot face an unavailable actor";
+    return false;
+}
+
+namespace {
+
+bool find_runtime_actor(const WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+                        std::size_t& result) {
+    for (std::size_t index = 0U; index < world.actors.size(); ++index) {
+        const WorldActorState& actor = world.actors[index];
+        const WorldMap& map = world.maps[actor.map_index];
+        const WorldActorSpawn& spawn = map.actors[actor.spawn_index];
+        if (map.id == map_id && spawn.index == actor_index) {
+            result = index;
+            return true;
+        }
+    }
+    return false;
+}
+
+void append_axis_path(std::int32_t current, std::int32_t target, WorldPathCommand negative,
+                      WorldPathCommand positive, std::vector<WorldPathCommand>& path) {
+    const WorldPathCommand command = current > target ? negative : positive;
+    const std::int32_t count = std::abs(current - target);
+    for (std::int32_t step = 0; step < count; ++step)
+        path.push_back(command);
+}
+
+bool apply_actor_path_command(WorldState& world, std::size_t runtime_index,
+                              WorldPathCommand command, std::string& error) {
+    if (runtime_index >= world.actors.size()) {
+        error = "campaign actor path lost its owner";
+        return false;
+    }
+    WorldActorState& actor = world.actors[runtime_index];
+    if (command == WorldPathCommand::wait) return true;
+    if (command == WorldPathCommand::face_down) {
+        actor.facing = WorldDirection::down;
+        return true;
+    }
+    const WorldDirection facing = command == WorldPathCommand::up      ? WorldDirection::up
+                                  : command == WorldPathCommand::left  ? WorldDirection::left
+                                  : command == WorldPathCommand::right ? WorldDirection::right
+                                                                       : WorldDirection::down;
+    std::int32_t dx = 0;
+    std::int32_t dy = 0;
+    direction_delta(facing, dx, dy);
+    WorldMapCellIndex& cells = world.spatial[actor.map_index];
+    const std::int32_t target_x = actor.x + dx;
+    const std::int32_t target_y = actor.y + dy;
+    const WorldMap& map = world.maps[actor.map_index];
+    const std::int32_t global_x = map.global_x_tiles / 2 + target_x;
+    const std::int32_t global_y = map.global_y_tiles / 2 + target_y;
+    if (!inside(cells, target_x, target_y) ||
+        !is_passable(world, actor.map_index, global_x, global_y) ||
+        cells.actor_by_cell[cell_offset(cells, target_x, target_y)] >= 0 ||
+        (world.player.map_index == actor.map_index && world.player.x == target_x &&
+         world.player.y == target_y)) {
+        error = "campaign actor path is blocked";
+        return false;
+    }
+    if (actor.visible) cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] = -1;
+    actor.x = target_x;
+    actor.y = target_y;
+    actor.facing = facing;
+    if (actor.visible)
+        cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] =
+            static_cast<std::int32_t>(runtime_index);
+    return true;
+}
+
+bool apply_player_path_command(WorldState& world, WorldPathCommand command,
+                               std::size_t permitted_actor, std::string& error) {
+    if (command == WorldPathCommand::wait) return true;
+    if (command == WorldPathCommand::face_down) {
+        world.player.facing = WorldDirection::down;
+        return true;
+    }
+    const WorldDirection facing = command == WorldPathCommand::up      ? WorldDirection::up
+                                  : command == WorldPathCommand::left  ? WorldDirection::left
+                                  : command == WorldPathCommand::right ? WorldDirection::right
+                                                                       : WorldDirection::down;
+    std::int32_t dx = 0;
+    std::int32_t dy = 0;
+    direction_delta(facing, dx, dy);
+    const WorldMap& map = world.maps[world.player.map_index];
+    const std::int32_t global_x = map.global_x_tiles / 2 + world.player.x + dx;
+    const std::int32_t global_y = map.global_y_tiles / 2 + world.player.y + dy;
+    const std::size_t target_map =
+        find_map_for_global_cell(world, world.player.map_index, global_x, global_y);
+    if (target_map >= world.maps.size() || !is_passable(world, target_map, global_x, global_y)) {
+        error = "campaign player path is blocked by terrain";
+        return false;
+    }
+    const WorldMap& target = world.maps[target_map];
+    const std::int32_t local_x = global_x - target.global_x_tiles / 2;
+    const std::int32_t local_y = global_y - target.global_y_tiles / 2;
+    const WorldMapCellIndex& cells = world.spatial[target_map];
+    const std::int32_t occupant = cells.actor_by_cell[cell_offset(cells, local_x, local_y)];
+    if (occupant >= 0 && static_cast<std::size_t>(occupant) != permitted_actor) {
+        error = "campaign player path is blocked by actor " + std::to_string(occupant) +
+                " on map " + std::to_string(target.id) + " at " + std::to_string(local_x) + ',' +
+                std::to_string(local_y);
+        return false;
+    }
+    world.player.map_index = target_map;
+    world.player.x = local_x;
+    world.player.y = local_y;
+    world.player.facing = facing;
+    world.current = target_map;
+    world.current_space = target.world_space;
+    world.follow_player = true;
+    world.player_completed_step = !activate_world_warp(world);
+    return true;
+}
+
+} // namespace
+
+bool start_world_actor_to_player_motion(WorldState& world, std::uint8_t map_id,
+                                        std::uint8_t actor_index, std::int8_t target_y_offset,
+                                        std::string& error) {
+    std::size_t runtime_index = 0U;
+    if (!find_runtime_actor(world, map_id, actor_index, runtime_index) ||
+        world.player.map_index != world.actors[runtime_index].map_index) {
+        error = "actor-to-player path has an unavailable owner";
+        return false;
+    }
+    const WorldActorState& actor = world.actors[runtime_index];
+    std::vector<WorldPathCommand> path;
+    append_axis_path(actor.x, world.player.x, WorldPathCommand::left, WorldPathCommand::right,
+                     path);
+    append_axis_path(actor.y, world.player.y + static_cast<std::int32_t>(target_y_offset),
+                     WorldPathCommand::up, WorldPathCommand::down, path);
+    world.script_motion = {
+        .actor_runtime_index = runtime_index,
+        .actor_path = std::move(path),
+        .player_path = {},
+        .actor_cursor = 0U,
+        .player_cursor = 0U,
+        .step_cooldown = 0U,
+        .hide_actor_at_end = false,
+        .active = true,
+    };
+    error.clear();
+    return true;
+}
+
+bool start_world_pair_alignment(WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+                                std::uint8_t target_x, std::string& error) {
+    std::size_t runtime_index = 0U;
+    if (!find_runtime_actor(world, map_id, actor_index, runtime_index) ||
+        world.player.map_index != world.actors[runtime_index].map_index) {
+        error = "pair alignment has an unavailable actor";
+        return false;
+    }
+    const std::int32_t count = std::abs(world.player.x - static_cast<std::int32_t>(target_x));
+    if (count == 0) {
+        world.script_motion = {};
+        error.clear();
+        return true;
+    }
+    const WorldPathCommand command =
+        world.player.x > target_x ? WorldPathCommand::left : WorldPathCommand::right;
+    std::vector<WorldPathCommand> actor_path(static_cast<std::size_t>(count), command);
+    actor_path.insert(actor_path.end(), static_cast<std::size_t>(count), WorldPathCommand::wait);
+    std::vector<WorldPathCommand> player_path(static_cast<std::size_t>(count),
+                                              WorldPathCommand::wait);
+    player_path.insert(player_path.end(), static_cast<std::size_t>(count), command);
+    return start_world_parallel_motion(world, map_id, actor_index, actor_path, player_path, false,
+                                       error);
+}
+
+bool start_world_parallel_motion(WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+                                 const std::vector<WorldPathCommand>& actor_path,
+                                 const std::vector<WorldPathCommand>& player_path,
+                                 bool hide_actor_at_end, std::string& error) {
+    std::size_t runtime_index = 0U;
+    if (!find_runtime_actor(world, map_id, actor_index, runtime_index) || actor_path.empty() ||
+        player_path.empty()) {
+        error = "parallel path has incomplete actor or command data";
+        return false;
+    }
+    world.script_motion = {
+        .actor_runtime_index = runtime_index,
+        .actor_path = actor_path,
+        .player_path = player_path,
+        .actor_cursor = 0U,
+        .player_cursor = 0U,
+        .step_cooldown = 0U,
+        .hide_actor_at_end = hide_actor_at_end,
+        .active = true,
+    };
+    error.clear();
+    return true;
+}
+
+bool step_world_script_motion(WorldState& world, std::string& error) {
+    WorldScriptMotion& motion = world.script_motion;
+    if (!motion.active) {
+        error.clear();
+        return true;
+    }
+    if (motion.step_cooldown > 0U) {
+        --motion.step_cooldown;
+        error.clear();
+        return true;
+    }
+    if (motion.actor_cursor < motion.actor_path.size() &&
+        !apply_actor_path_command(world, motion.actor_runtime_index,
+                                  motion.actor_path[motion.actor_cursor++], error))
+        return false;
+    if (motion.player_cursor < motion.player_path.size() &&
+        !apply_player_path_command(world, motion.player_path[motion.player_cursor++],
+                                   motion.actor_runtime_index, error))
+        return false;
+    if (motion.actor_cursor == motion.actor_path.size() &&
+        motion.player_cursor == motion.player_path.size()) {
+        const bool hide = motion.hide_actor_at_end;
+        const std::size_t runtime_index = motion.actor_runtime_index;
+        motion = {};
+        if (hide && runtime_index < world.actors.size()) {
+            const WorldActorState& actor = world.actors[runtime_index];
+            const WorldMap& map = world.maps[actor.map_index];
+            const WorldActorSpawn& spawn = map.actors[actor.spawn_index];
+            return set_world_actor_visible(world, map.id, spawn.index, false, error);
+        }
+        error.clear();
+        return true;
+    }
+    motion.step_cooldown = 7U;
+    error.clear();
+    return true;
 }
 
 void select_next_map(WorldState& world) {

@@ -102,6 +102,15 @@ enum class WorldDirection : std::uint8_t {
     right,
 };
 
+enum class WorldPathCommand : std::uint8_t {
+    down,
+    up,
+    left,
+    right,
+    wait,
+    face_down,
+};
+
 struct WorldActorState {
     std::size_t map_index{};
     std::size_t spawn_index{};
@@ -110,6 +119,7 @@ struct WorldActorState {
     float visual_global_x{};
     float visual_global_y{};
     WorldDirection facing{WorldDirection::down};
+    bool visible{true};
 };
 
 struct WorldPlayerState {
@@ -171,6 +181,17 @@ struct WorldTrainerApproach {
     bool active{};
 };
 
+struct WorldScriptMotion {
+    std::size_t actor_runtime_index{};
+    std::vector<WorldPathCommand> actor_path;
+    std::vector<WorldPathCommand> player_path;
+    std::size_t actor_cursor{};
+    std::size_t player_cursor{};
+    std::uint8_t step_cooldown{};
+    bool hide_actor_at_end{};
+    bool active{};
+};
+
 struct WorldStepInput {
     bool left{};
     bool right{};
@@ -194,6 +215,7 @@ struct WorldState {
     WorldActorActivation last_actor_activation;
     WorldOpponentRequest opponent_request;
     WorldTrainerApproach trainer_approach;
+    WorldScriptMotion script_motion;
     std::size_t current{};
     std::uint16_t current_space{};
     WorldView view{WorldView::world};
@@ -232,6 +254,26 @@ void step_world_animation(WorldState& world);
 void open_world_dialogue(WorldState& world,
                          const CampaignState& campaign,
                          const std::vector<std::string>& pages);
+bool set_world_actor_visible(WorldState& world, std::uint8_t map_id,
+                             std::uint8_t actor_index, bool visible,
+                             std::string& error);
+bool face_world_actor(WorldState& world, std::uint8_t map_id,
+                      std::uint8_t actor_index, WorldDirection direction,
+                      std::string& error);
+bool start_world_actor_to_player_motion(
+    WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+    std::int8_t target_y_offset, std::string& error);
+bool start_world_pair_alignment(WorldState& world,
+                                std::uint8_t map_id,
+                                std::uint8_t actor_index,
+                                std::uint8_t target_x,
+                                std::string& error);
+bool start_world_parallel_motion(
+    WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
+    const std::vector<WorldPathCommand>& actor_path,
+    const std::vector<WorldPathCommand>& player_path,
+    bool hide_actor_at_end, std::string& error);
+bool step_world_script_motion(WorldState& world, std::string& error);
 std::uint8_t next_world_random_byte(WorldState& world);
 const WorldMap* selected_map(const WorldState& world);
 const WorldSpace* current_world_space(const WorldState& world);

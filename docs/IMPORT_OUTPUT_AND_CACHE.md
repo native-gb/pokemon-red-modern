@@ -105,6 +105,7 @@ data/runtime/imports/pokemon_red_us_rev_0/
         boot_content.bin
         encounters.bin
         trainers.bin
+        campaign_programs.bin
         world_maps.bin
         world_interactions.bin
         map_program_index.bin
@@ -123,8 +124,8 @@ data/runtime/imports/pokemon_red_us_rev_0/
 
 The exact chunk format can change without changing the readable source syntax.
 The current vertical slice loads `battle_rules.bin`, `boot_content.bin`,
-`encounters.bin`, `pokemon_rules.bin`, `world_maps.bin`, and
-`world_interactions.bin` directly. `battle_rules.bin`
+`encounters.bin`, `pokemon_rules.bin`, `campaign_programs.bin`,
+`world_maps.bin`, and `world_interactions.bin` directly. `battle_rules.bin`
 contains validated semantic ordinary-damage, critical-hit, capture, and
 experience-award formula programs, plus owned-Pokemon stat calculation and
 ordinary accuracy/evasion calculation with the cartridge-owned stage ratios.
@@ -149,6 +150,14 @@ internal-species-to-Dex mapping. All 346 map-owned opponent actors resolve
 through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
+`campaign_programs.bin` contains semantically lifted story fibers. The first
+executable slice imports Pallet Town's Oak interception, both ROM dialogue
+programs, Oak/player movement streams, the ordinary lab warp, Oak's two lab
+actor placements, both lab entry paths, the four starter-choice speeches, and
+their progression flags. Its readable peer is
+`source/scripts/campaign/pallet_oak_interception.sexpr`. Map IDs, actor IDs,
+flags, source addresses, paths, and text are owned by the generated pack; the
+runtime implements only generic fiber and world-motion operations.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Its imported trainer-header index covers all 322 ordinary and
 static trainer interactions, including sight range, defeated flag, and

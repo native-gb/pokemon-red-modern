@@ -5,6 +5,7 @@
 #include "battle_rules.hpp"
 #include "battle_view.hpp"
 #include "boot.hpp"
+#include "campaign_programs.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "content_index.hpp"
@@ -25,6 +26,8 @@
 #include <array>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -82,6 +85,13 @@ void test_sexpr(TestState& state) {
     const std::string printed = pokered::sexpr::canonical(document);
     check(state, printed.find("(last_physical_damage target user)") != std::string::npos,
           "canonical output contains nested query");
+    pokered::sexpr::Document hexadecimal;
+    pokered::Diagnostics hexadecimal_diagnostics;
+    check(state,
+          pokered::sexpr::parse("hex.sexpr", "set_flag 0x6ba38\n",
+                                hexadecimal,
+                                hexadecimal_diagnostics),
+          "hexadecimal content IDs parse");
 
     // Reject spelling and indentation that would produce ambiguous generated source.
     pokered::sexpr::Document invalid;
@@ -1673,6 +1683,111 @@ void test_local_boot_cache(TestState& state) {
           "New Game placement comes from imported campaign content");
 }
 
+void test_local_pallet_campaign_program(TestState& state) {
+    // Exercise one imported campaign fiber end to end: trigger Oak, advance both
+    // dialogue sections, consume the ROM movement streams, and cross the
+    // ordinary Pallet-to-lab warp.
+    const std::filesystem::path root =
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" /
+        "runtime" / "imports" / "pokemon_red_us_rev_0" / "compiled";
+    const std::filesystem::path program_path =
+        root / "campaign_programs.bin";
+    if (!std::filesystem::exists(program_path)) {
+        std::puts(
+            "campaign program test skipped: no local imported campaign");
+        return;
+    }
+
+    pokered::WorldState world;
+    pokered::InteractionCatalog interactions;
+    pokered::CampaignProgramCatalog programs;
+    pokered::CampaignState campaign;
+    std::string error;
+    check(state, pokered::load_world(root / "world_maps.bin", world, error),
+          "campaign fixture loads imported world");
+    check(state,
+          pokered::load_interactions(root / "world_interactions.bin",
+                                     interactions, error),
+          "campaign fixture loads imported interactions");
+    check(state,
+          pokered::load_campaign_programs(program_path, programs, error),
+          "campaign fixture loads imported programs");
+    const std::filesystem::path source_path =
+        root.parent_path() / "source" / "scripts" / "campaign" /
+        "pallet_oak_interception.sexpr";
+    std::ifstream source_input(source_path);
+    const std::string source{
+        std::istreambuf_iterator<char>(source_input),
+        std::istreambuf_iterator<char>()};
+    pokered::sexpr::Document source_document;
+    pokered::Diagnostics source_diagnostics;
+    check(state,
+          source_input.good() || source_input.eof(),
+          "campaign fixture reads generated source");
+    check(state,
+          pokered::sexpr::parse(source_path.string(), source,
+                                source_document, source_diagnostics),
+          "generated campaign source reparses");
+    check(state,
+          pokered::begin_new_campaign(campaign, "RED", "BLUE", {}, error),
+          "campaign fixture owns New Game state");
+    if (!world.loaded || !interactions.loaded || !programs.loaded ||
+        !campaign.initialized)
+        return;
+    check(state,
+          pokered::initialize_world_runtime(world, interactions, error),
+          "campaign fixture initializes world indexes");
+    check(state,
+          pokered::initialize_campaign_program_runtime(programs, world,
+                                                       error),
+          "campaign fixture applies initial actor visibility");
+    check(state, pokered::enter_world_at(world, 0U, 10, 1, error),
+          "campaign fixture enters Pallet north exit");
+
+    constexpr std::uint32_t followed_oak_flag = 0x6BA38U;
+    constexpr std::uint32_t oak_appeared_flag = 0x6BA5FU;
+    constexpr std::uint32_t oak_asked_to_choose_flag = 0x6BA59U;
+    check(state,
+          pokered::service_campaign_programs(programs, world, campaign,
+                                             error),
+          "Pallet trigger starts its campaign fiber");
+    check(state,
+          campaign.input_locked &&
+              pokered::campaign_flag(campaign, oak_appeared_flag) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find("Hey! Wait!") !=
+                  std::string::npos,
+          "Pallet trigger locks input, records Oak, and opens ROM dialogue");
+
+    for (std::size_t guard = 0U;
+         guard < 2000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, world, campaign, error),
+              "Pallet campaign fiber advances");
+        if (!error.empty()) {
+            std::fprintf(stderr, "Pallet campaign error: %s\n",
+                         error.c_str());
+            break;
+        }
+    }
+    check(state, error.empty(), "Pallet campaign fiber reports no error");
+    check(state,
+          !campaign.fiber.active && !campaign.input_locked &&
+              pokered::campaign_flag(campaign, followed_oak_flag) &&
+              pokered::campaign_flag(campaign,
+                                     oak_asked_to_choose_flag),
+          "Pallet campaign fiber completes and records progression");
+    check(state,
+          world.player.map_index < world.maps.size() &&
+              world.maps[world.player.map_index].id == 40U &&
+              world.player.x == 5 && world.player.y == 3,
+          "ROM movement streams walk the player through the lab warp to the starters");
+}
+
 } // namespace
 
 int main() {
@@ -1690,6 +1805,7 @@ int main() {
     test_local_encounter_cache(state);
     test_local_rule_cache(state);
     test_local_boot_cache(state);
+    test_local_pallet_campaign_program(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

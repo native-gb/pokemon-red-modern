@@ -2,6 +2,7 @@
 #include "import_battle_animations_io.hpp"
 #include "import_battle_rules.hpp"
 #include "import_boot.hpp"
+#include "import_campaign_programs.hpp"
 #include "import_encounters.hpp"
 #include "import_maps.hpp"
 #include "import_pictures.hpp"
@@ -49,6 +50,7 @@ int main(int argc, char** argv) {
     pokered::import::BattleAnimationImport imported;
     pokered::import::BattleRuleImport battle_rules;
     pokered::import::BootImport boot;
+    pokered::import::CampaignProgramImport campaign_programs;
     pokered::import::EncounterImport encounters;
     pokered::import::MapImport maps;
     pokered::import::PictureImport pictures;
@@ -59,6 +61,8 @@ int main(int argc, char** argv) {
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
         !pokered::import::decode_battle_rule_import(rom, battle_rules, error) ||
         !pokered::import::decode_boot_import(rom, boot, error) ||
+        !pokered::import::decode_campaign_program_import(
+            rom, campaign_programs, error) ||
         !pokered::import::decode_encounter_import(rom, encounters, error) ||
         !pokered::import::decode_picture_import(rom, pictures, error) ||
         !pokered::import::decode_map_import(rom, maps, error) ||
@@ -70,6 +74,10 @@ int main(int argc, char** argv) {
     }
     imported.files.insert(imported.files.end(), std::make_move_iterator(boot.files.begin()),
                           std::make_move_iterator(boot.files.end()));
+    imported.files.insert(
+        imported.files.end(),
+        std::make_move_iterator(campaign_programs.files.begin()),
+        std::make_move_iterator(campaign_programs.files.end()));
     imported.files.insert(
         imported.files.end(),
         std::make_move_iterator(battle_rules.files.begin()),
@@ -147,7 +155,9 @@ int main(int argc, char** argv) {
                     << "evolutions " << rules.evolutions << '\n'
                     << "growth_curves " << rules.growth_curves << '\n'
                     << "machines " << rules.machines << '\n'
-                    << "map_program_importer_version 4\n"
+                    << "map_program_importer_version 5\n"
+                    << "campaign_programs "
+                    << campaign_programs.programs << '\n'
                     << "map_slots " << scripts.map_slots << '\n'
                     << "decoded_map_programs " << scripts.decoded_maps << '\n'
                     << "unused_map_slots " << scripts.unresolved_slots << '\n'

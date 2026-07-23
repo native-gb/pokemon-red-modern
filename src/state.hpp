@@ -3,6 +3,7 @@
 #include "battle.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -30,6 +31,14 @@ struct CampaignBattleOwner {
     bool active{};
 };
 
+struct CampaignFiberState {
+    std::size_t program_index{};
+    std::size_t instruction_index{};
+    bool waiting_dialogue{};
+    bool waiting_motion{};
+    bool active{};
+};
+
 // Campaign-owned state is separate from host presentation settings and from
 // transient world/render state. Imported programs address flags and variables
 // through typed numeric IDs; vectors grow only as validated programs require.
@@ -41,6 +50,7 @@ struct CampaignState {
     PartyState party;
     BattleState battle;
     CampaignBattleOwner battle_owner;
+    CampaignFiberState fiber;
     std::vector<std::uint8_t> flags;
     std::vector<std::uint16_t> variables;
     std::uint64_t play_steps{};

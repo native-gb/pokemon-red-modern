@@ -2,6 +2,7 @@
 #include "battle_controller.hpp"
 #include "battle_rules.hpp"
 #include "boot.hpp"
+#include "campaign_programs.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "controls.hpp"
@@ -120,6 +121,7 @@ int main(int argc, char** argv) {
     pokered::RuleCatalog rules;
     pokered::BattleRuleCatalog battle_rules;
     pokered::InteractionCatalog interactions;
+    pokered::CampaignProgramCatalog campaign_programs;
     std::string map_error;
     const std::filesystem::path map_cache =
         data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "world_maps.bin";
@@ -130,6 +132,14 @@ int main(int argc, char** argv) {
     std::string interaction_error;
     if (!pokered::load_interactions(interaction_cache, interactions, interaction_error))
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
+    const std::filesystem::path campaign_program_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" /
+        "campaign_programs.bin";
+    std::string campaign_program_error;
+    if (!pokered::load_campaign_programs(
+            campaign_program_cache, campaign_programs,
+            campaign_program_error))
+        std::fprintf(stderr, "%s\n", campaign_program_error.c_str());
     const std::filesystem::path rule_cache =
         data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "pokemon_rules.bin";
     std::string rule_error;
@@ -158,9 +168,14 @@ int main(int argc, char** argv) {
     if (world.loaded && interactions.loaded &&
         !pokered::initialize_world_runtime(world, interactions, interaction_error))
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
+    if (world.loaded && campaign_programs.loaded &&
+        !pokered::initialize_campaign_program_runtime(
+            campaign_programs, world, campaign_program_error))
+        std::fprintf(stderr, "%s\n", campaign_program_error.c_str());
     if (world.loaded && interactions.loaded && rules.loaded &&
         encounters.loaded && trainers.loaded &&
-        battle_rules.loaded && boot_content.loaded) {
+        battle_rules.loaded && boot_content.loaded &&
+        campaign_programs.loaded) {
         catalog.state = pokered::content::PackState::partial;
         catalog.campaign = "Pokemon Red";
         catalog.source = "Compiled local campaign pack";
@@ -431,6 +446,13 @@ int main(int argc, char** argv) {
                                         .activate = pending_world_activation,
                                     });
                 pending_world_activation = false;
+                std::string campaign_step_error;
+                if (!pokered::service_campaign_programs(
+                        campaign_programs, world, campaign,
+                        campaign_step_error)) {
+                    std::fprintf(stderr, "%s\n",
+                                 campaign_step_error.c_str());
+                }
                 bool actor_battle_began = false;
                 std::string actor_battle_error;
                 if (trainers.loaded &&

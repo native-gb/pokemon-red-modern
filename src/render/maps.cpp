@@ -589,7 +589,8 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
         }
     } else {
         for (const WorldActorState& actor : world.actors) {
-            if (actor.map_index >= world.maps.size()) continue;
+            if (!actor.visible || actor.map_index >= world.maps.size())
+                continue;
             const WorldMap& actor_map = world.maps[actor.map_index];
             if ((world.view == WorldView::selected && &actor_map != selected) ||
                 (world.view == WorldView::world &&

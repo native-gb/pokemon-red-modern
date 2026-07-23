@@ -22,6 +22,21 @@ struct OpenForm {
 };
 
 bool parse_integer(std::string_view token, std::int64_t& result) {
+    if (token.size() > 2U && token[0] == '0' &&
+        (token[1] == 'x' || token[1] == 'X')) {
+        std::uint64_t unsigned_result = 0U;
+        const char* begin = token.data() + 2;
+        const char* end = token.data() + token.size();
+        const auto parsed =
+            std::from_chars(begin, end, unsigned_result, 16);
+        if (parsed.ec != std::errc{} || parsed.ptr != end ||
+            unsigned_result >
+                static_cast<std::uint64_t>(
+                    std::numeric_limits<std::int64_t>::max()))
+            return false;
+        result = static_cast<std::int64_t>(unsigned_result);
+        return true;
+    }
     const char* begin = token.data();
     const char* end = token.data() + token.size();
     const auto parsed = std::from_chars(begin, end, result);
