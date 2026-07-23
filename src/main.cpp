@@ -13,6 +13,7 @@
 #include "render/boot.hpp"
 #include "render/frame.hpp"
 #include "render/maps.hpp"
+#include "render/naming.hpp"
 #include "rules.hpp"
 #include "settings.hpp"
 #include "src/imgui_layer.hpp"
@@ -236,6 +237,11 @@ int main(int argc, char** argv) {
     bool running = true;
     bool render_failed = false;
     bool pending_world_activation = false;
+    bool pending_world_erase = false;
+    bool pending_world_submit = false;
+    bool pending_world_toggle_case = false;
+    std::string pending_world_text;
+    std::string pending_boot_text;
     pokered::ControlButtons previous_controls;
     pokered::GameClocks clocks;
     bool fast_forward_toggle_active = false;
@@ -256,6 +262,15 @@ int main(int argc, char** argv) {
         const float frame_seconds = static_cast<float>(bounded_elapsed);
         pokered::advance_unscaled_clocks(clocks, elapsed);
 
+        const bool naming_input_active =
+            (game.mode == pokered::Mode::title &&
+             boot.screen == pokered::BootScreen::naming) ||
+            (game.mode == pokered::Mode::overworld &&
+             world.naming.open);
+        if (!pokered::set_window_text_input(window,
+                                             naming_input_active))
+            std::fprintf(stderr, "could not change text input: %s\n",
+                         SDL_GetError());
         const pokered::WindowInput input = pokered::poll_window_events(window);
         if (input.quit) break;
         pokered::update_window(window, bounded_elapsed);
@@ -278,8 +293,18 @@ int main(int argc, char** argv) {
         const bool tools_own_input = tools.layout != pokered::ToolLayout::closed;
         const bool confirm_pressed = controls.confirm && !previous_controls.confirm;
         if (!tools_own_input &&
-            game.mode == pokered::Mode::overworld)
+            game.mode == pokered::Mode::overworld) {
             pending_world_activation |= confirm_pressed;
+            pending_world_erase |=
+                input.erase_text ||
+                (controls.back && !previous_controls.back);
+            pending_world_submit |=
+                input.submit_text ||
+                (controls.start && !previous_controls.start);
+            pending_world_toggle_case |=
+                controls.select && !previous_controls.select;
+            pending_world_text += input.text;
+        }
         if (!tools_own_input && game.mode == pokered::Mode::title) {
             pending_boot_input.up_pressed |= controls.up && !previous_controls.up;
             pending_boot_input.down_pressed |= controls.down && !previous_controls.down;
@@ -292,6 +317,9 @@ int main(int argc, char** argv) {
                 controls.start && !previous_controls.start;
             pending_boot_input.select_pressed |=
                 controls.select && !previous_controls.select;
+            pending_boot_input.erase_pressed |= input.erase_text;
+            pending_boot_input.submit_pressed |= input.submit_text;
+            pending_boot_text += input.text;
             pending_boot_input.random =
                 static_cast<std::uint8_t>((game.step * 73U + 41U) & 0xFFU);
         }
@@ -412,6 +440,10 @@ int main(int argc, char** argv) {
             if (!game.paused && !tools_own_input &&
                 game.mode == pokered::Mode::title) {
                 pokered::BootStepResult boot_result;
+                pending_boot_input.text =
+                    pending_boot_text.empty()
+                        ? nullptr
+                        : pending_boot_text.c_str();
                 if (!pokered::step_boot(boot_content, pending_boot_input, boot,
                                         boot_result, boot_error)) {
                     std::fprintf(stderr, "%s\n", boot_error.c_str());
@@ -420,6 +452,7 @@ int main(int argc, char** argv) {
                     break;
                 }
                 pending_boot_input = {};
+                pending_boot_text.clear();
                 if (boot_result.new_game_requested) {
                     if (!pokered::begin_new_campaign(
                             campaign, boot.player_name, boot.rival_name,
@@ -444,8 +477,20 @@ int main(int argc, char** argv) {
                                         .up = controls.up,
                                         .down = controls.down,
                                         .activate = pending_world_activation,
+                                        .erase = pending_world_erase,
+                                        .submit = pending_world_submit,
+                                        .toggle_case =
+                                            pending_world_toggle_case,
+                                        .text =
+                                            pending_world_text.empty()
+                                                ? nullptr
+                                                : pending_world_text.c_str(),
                                     });
                 pending_world_activation = false;
+                pending_world_erase = false;
+                pending_world_submit = false;
+                pending_world_toggle_case = false;
+                pending_world_text.clear();
                 std::string campaign_step_error;
                 if (!pokered::service_campaign_programs(
                         campaign_programs, rules, battle_rules, world, campaign,
@@ -507,6 +552,7 @@ int main(int argc, char** argv) {
                             world, rules, presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_dialogue_overlay(world);
+        pokered::render::draw_naming_overlay(world);
         imgui_render_layer();
         pokered::present_window(window);
 

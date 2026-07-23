@@ -78,6 +78,7 @@ if(POKERED_MODERN_BUILD_IMPORTER)
         src/import_trainers.cpp
         src/import_scripts.cpp
         src/import_text.cpp
+        src/naming.cpp
     )
     target_include_directories(native-gb-pokemon-red-modern-import PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -106,6 +107,7 @@ add_executable(native-gb-pokemon-red-modern
     src/interactions.cpp
     src/main.cpp
     src/maps.cpp
+    src/naming.cpp
     src/overlays.cpp
     src/predicates.cpp
     src/pokemon.cpp
@@ -114,6 +116,7 @@ add_executable(native-gb-pokemon-red-modern
     src/render/boot.cpp
     src/render/dialogue.cpp
     src/render/maps.cpp
+    src/render/naming.cpp
     src/sexpr.cpp
     src/source_loader.cpp
     src/state.cpp
@@ -158,6 +161,7 @@ if(BUILD_TESTING)
         src/experience_rules.cpp
         src/interactions.cpp
         src/maps.cpp
+        src/naming.cpp
         src/overlays.cpp
         src/predicates.cpp
         src/pokemon.cpp

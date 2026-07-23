@@ -1,5 +1,7 @@
 #pragma once
 
+#include "naming.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -207,6 +209,10 @@ struct WorldStepInput {
     bool up{};
     bool down{};
     bool activate{};
+    bool erase{};
+    bool submit{};
+    bool toggle_case{};
+    const char* text{};
 };
 
 struct WorldState {
@@ -221,6 +227,7 @@ struct WorldState {
     WorldPlayerState player;
     DialogueState dialogue;
     WorldChoiceState choice;
+    NamingState naming;
     WorldWarpState last_warp;
     WorldActorActivation last_actor_activation;
     WorldOpponentRequest opponent_request;

@@ -1,6 +1,7 @@
 #include "import_campaign_programs.hpp"
 
 #include "import_text.hpp"
+#include "naming.hpp"
 
 #include <algorithm>
 #include <array>
@@ -36,6 +37,11 @@ constexpr std::size_t kRivalChallengeTextOffset = 0x095477U;
 constexpr std::size_t kRivalPlayerVictoryTextOffset = 0x0954B6U;
 constexpr std::size_t kRivalPlayerLossTextOffset = 0x0954E4U;
 constexpr std::size_t kRivalExitTextOffset = 0x095502U;
+constexpr std::size_t kNicknameQuestionTextOffset = 0x006557U;
+constexpr std::size_t kLowercaseAlphabetOffset = 0x00679EU;
+constexpr std::size_t kUppercaseAlphabetOffset = 0x0067D6U;
+constexpr std::size_t kNicknameLabelOffset = 0x006953U;
+constexpr std::size_t kPokemonNameLengthOffset = 0x0066DFU;
 constexpr std::array<std::size_t, 3> kStarterChoiceCodeOffsets{
     0x01D102U, 0x01D113U, 0x01D124U};
 constexpr std::array<std::size_t, 3> kRivalStarterPathOffsets{
@@ -75,6 +81,7 @@ enum class Opcode : std::uint8_t {
     end_if_choice_no,
     set_variable,
     give_pokemon,
+    nickname_last_party_member_if_yes,
     wait_ticks,
     actor_path_by_player_x,
     start_trainer_battle,
@@ -166,6 +173,82 @@ bool has_bytes(std::span<const std::uint8_t> rom, std::size_t offset,
     return offset <= rom.size() && expected.size() <= rom.size() - offset &&
            std::equal(expected.begin(), expected.end(),
                       rom.begin() + static_cast<std::ptrdiff_t>(offset));
+}
+
+bool decode_naming_string(std::span<const std::uint8_t> rom,
+                          std::size_t offset, std::size_t limit,
+                          std::string& result) {
+    result.clear();
+    for (std::size_t cursor = offset;
+         cursor < rom.size() && cursor - offset < limit; ++cursor) {
+        if (rom[cursor] == 0x50U) return !result.empty();
+        result += decode_text_glyph(rom[cursor]);
+    }
+    return false;
+}
+
+bool decode_naming_alphabet(
+    std::span<const std::uint8_t> rom, std::size_t offset,
+    std::array<std::string, kNamingCells>& cells,
+    std::string& action, std::string& error) {
+    constexpr std::size_t kSerializedAlphabetSize = 56U;
+    if (offset > rom.size() ||
+        kSerializedAlphabetSize > rom.size() - offset ||
+        rom[offset + kNamingCells - 1U] != 0xF0U ||
+        rom[offset + kSerializedAlphabetSize - 1U] != 0x50U) {
+        error = "naming alphabet does not match the verified ROM layout";
+        return false;
+    }
+    for (std::size_t index = 0U; index < kNamingCells; ++index)
+        cells[index] =
+            index + 1U == kNamingCells
+                ? "END"
+                : decode_text_glyph(rom[offset + index]);
+    if (!decode_naming_string(rom, offset + kNamingCells,
+                              kSerializedAlphabetSize - kNamingCells,
+                              action)) {
+        error = "naming alphabet action is unterminated";
+        return false;
+    }
+    return true;
+}
+
+bool decode_naming_profile(std::span<const std::uint8_t> rom,
+                           NamingProfile& profile,
+                           std::string& heading,
+                           std::string& error) {
+    constexpr std::array<std::uint8_t, 4> length_signature{
+        0xFAU, 0xE9U, 0xCEU, 0xFEU};
+    if (kPokemonNameLengthOffset < length_signature.size() ||
+        !has_bytes(rom,
+                   kPokemonNameLengthOffset - length_signature.size(),
+                   length_signature) ||
+        rom[kPokemonNameLengthOffset] == 0U ||
+        !decode_naming_alphabet(
+            rom, kUppercaseAlphabetOffset, profile.uppercase,
+            profile.lowercase_action, error) ||
+        !decode_naming_alphabet(
+            rom, kLowercaseAlphabetOffset, profile.lowercase,
+            profile.uppercase_action, error)) {
+        if (error.empty())
+            error =
+                "Pokemon nickname length program does not match the verified ROM";
+        return false;
+    }
+    profile.maximum_length = rom[kPokemonNameLengthOffset];
+
+    std::string nickname_label;
+    if (!decode_naming_string(rom, kNicknameLabelOffset, 32U,
+                              nickname_label)) {
+        error = "Pokemon nickname heading is unterminated";
+        return false;
+    }
+    heading = "{name_buffer}\n" + nickname_label;
+    if (!valid_naming_profile(profile)) {
+        error = "decoded Pokemon naming profile is invalid";
+        return false;
+    }
+    return true;
 }
 
 std::uint8_t dex_for_internal_species(
@@ -320,6 +403,19 @@ void write_pages(std::vector<std::uint8_t>& bytes, const std::vector<std::string
         write_string(bytes, page);
 }
 
+void write_naming_profile(std::vector<std::uint8_t>& bytes,
+                          const NamingProfile& profile,
+                          std::string_view heading) {
+    for (const std::string& cell : profile.uppercase)
+        write_string(bytes, cell);
+    for (const std::string& cell : profile.lowercase)
+        write_string(bytes, cell);
+    write_string(bytes, profile.uppercase_action);
+    write_string(bytes, profile.lowercase_action);
+    bytes.push_back(profile.maximum_length);
+    write_string(bytes, heading);
+}
+
 void write_path(std::vector<std::uint8_t>& bytes, const std::vector<PathCommand>& path) {
     write_u16(bytes, path.size());
     for (const PathCommand command : path)
@@ -443,30 +539,61 @@ bool decode_direct_npc_path(std::span<const std::uint8_t> rom, std::size_t offse
     return false;
 }
 
+std::string source_quote(std::string_view value) {
+    std::string result{"\""};
+    for (const char character : value) {
+        if (character == '\\')
+            result += "\\\\";
+        else if (character == '"')
+            result += "\\\"";
+        else if (character == '\n')
+            result += "\\n";
+        else if (character == '\r')
+            result += "\\r";
+        else if (character == '\t')
+            result += "\\t";
+        else
+            result.push_back(character);
+    }
+    result.push_back('"');
+    return result;
+}
+
 std::string page_source(const std::vector<std::string>& pages, std::string_view indentation) {
-    const auto quote = [](std::string_view value) {
-        std::string result{"\""};
-        for (const char character : value) {
-            if (character == '\\')
-                result += "\\\\";
-            else if (character == '"')
-                result += "\\\"";
-            else if (character == '\n')
-                result += "\\n";
-            else if (character == '\r')
-                result += "\\r";
-            else if (character == '\t')
-                result += "\\t";
-            else
-                result.push_back(character);
-        }
-        result.push_back('"');
-        return result;
-    };
     std::ostringstream output;
     for (const std::string& page : pages)
-        output << indentation << "page " << quote(page) << '\n';
+        output << indentation << "page " << source_quote(page) << '\n';
     return output.str();
+}
+
+GeneratedFile readable_naming_profile_source(
+    const NamingProfile& profile, std::string_view heading,
+    const DecodedTextProgram& nickname_question) {
+    std::ostringstream source;
+    source
+        << "; Decoded from the verified Pokemon Red US rev 0 naming tables.\n"
+        << "; Cells, case actions, length, and question text remain imported content.\n\n"
+        << "naming_profile pokemon_red_english\n"
+        << "    maximum_length "
+        << static_cast<unsigned>(profile.maximum_length) << '\n'
+        << "    nickname_heading " << source_quote(heading) << '\n'
+        << "    uppercase";
+    for (const std::string& cell : profile.uppercase)
+        source << ' ' << source_quote(cell);
+    source << "\n    lowercase";
+    for (const std::string& cell : profile.lowercase)
+        source << ' ' << source_quote(cell);
+    source << "\n    uppercase_action "
+           << source_quote(profile.uppercase_action)
+           << "\n    lowercase_action "
+           << source_quote(profile.lowercase_action)
+           << "\n    nickname_question\n"
+           << page_source(nickname_question.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path = "source/menus/naming.sexpr",
+        .bytes = std::vector<std::uint8_t>(text.begin(), text.end()),
+    };
 }
 
 GeneratedFile readable_pallet_source(const std::vector<std::string>& hey_wait,
@@ -562,6 +689,7 @@ GeneratedFile readable_starter_source(
     const DecodedTextProgram& prompt,
     const DecodedTextProgram& energetic,
     const DecodedTextProgram& player_received,
+    const DecodedTextProgram& nickname_question,
     const DecodedTextProgram& rival_takes,
     const DecodedTextProgram& rival_received,
     const std::vector<PathCommand>& rival_path) {
@@ -609,6 +737,10 @@ GeneratedFile readable_starter_source(
            << "    give_pokemon species_dex "
            << static_cast<unsigned>(choice.player_species)
            << " level 5\n"
+           << "    ask_yes_no species_dex "
+           << static_cast<unsigned>(choice.player_species) << '\n'
+           << page_source(nickname_question.pages, "        ")
+           << "    nickname_last_party_member_if_yes\n"
            << "    set_variable player_starter "
            << static_cast<unsigned>(choice.player_species) << '\n'
            << "    set_variable rival_starter "
@@ -720,6 +852,21 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                                     CampaignProgramImport& result, std::string& error) {
     result = {};
     if (!verify_pokemon_red_us_rev_0(rom, error)) return false;
+
+    NamingProfile naming_profile;
+    std::string nickname_heading;
+    DecodedTextProgram nickname_question;
+    if (!decode_naming_profile(rom, naming_profile, nickname_heading,
+                               error) ||
+        !decode_text_program(rom, 0x01U,
+                             kNicknameQuestionTextOffset,
+                             nickname_question) ||
+        nickname_question.pages.empty()) {
+        if (error.empty())
+            error =
+                "Pokemon nickname question could not be decoded from the pinned ROM";
+        return false;
+    }
 
     constexpr std::array<std::uint8_t, 12> default_signature{
         0xFAU, 0x47U, 0xD7U, 0xCBU, 0x47U, 0xC0U, 0xFAU, 0x61U, 0xD3U, 0xFEU, 0x01U, 0xC0U};
@@ -921,6 +1068,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             player_received.pages, choice.player_species));
         starter.instructions.push_back(operation(
             Opcode::give_pokemon, 5U, 0U, choice.player_species));
+        starter.instructions.push_back(ask_yes_no(
+            nickname_question.pages, choice.player_species));
+        starter.instructions.push_back(operation(
+            Opcode::nickname_last_party_member_if_yes));
         starter.instructions.push_back(operation(
             Opcode::set_variable, kPlayerStarterVariable, 0U,
             choice.player_species));
@@ -1002,18 +1153,22 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(rival));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '3'};
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '4'};
+    write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
 
     result.files.push_back(readable_pallet_source(hey_wait.pages, unsafe.pages, oak_path,
                                                   player_path, lab_oak_path, lab_player_path,
                                                   lab_choice_text));
+    result.files.push_back(readable_naming_profile_source(
+        naming_profile, nickname_heading, nickname_question));
     for (std::size_t index = 0U; index < starter_choices.size(); ++index)
         result.files.push_back(readable_starter_source(
             starter_keys[index], starter_choices[index],
             starter_prompts[index], starter_energetic,
-            player_received, rival_takes, rival_received,
+            player_received, nickname_question, rival_takes,
+            rival_received,
             rival_starter_paths[index]));
     for (std::size_t index = 0U; index < rival_battles.size(); ++index)
         result.files.push_back(readable_rival_battle_source(

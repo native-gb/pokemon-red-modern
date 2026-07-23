@@ -73,12 +73,21 @@ bool apply_window_vsync(HostWindow& window, bool enabled) {
     return true;
 }
 
+bool set_window_text_input(HostWindow& window, bool enabled) {
+    if (SDL_TextInputActive(window.frame.window) == enabled) return true;
+    return enabled ? SDL_StartTextInput(window.frame.window)
+                   : SDL_StopTextInput(window.frame.window);
+}
+
 WindowInput poll_window_events(HostWindow& window) {
     WindowInput input;
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         gubsy_process_sdl_event(window.runtime, event);
         if (event.type == SDL_EVENT_QUIT) input.quit = true;
+        if (event.type == SDL_EVENT_TEXT_INPUT &&
+            event.text.text != nullptr)
+            input.text += event.text.text;
         if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
             assign_unclaimed_gamepads(window.runtime);
             input.gamepad_changed = true;
@@ -86,6 +95,12 @@ WindowInput poll_window_events(HostWindow& window) {
             input.gamepad_changed = true;
         }
         if (event.type != SDL_EVENT_KEY_DOWN) continue;
+        if (!event.key.repeat && event.key.key == SDLK_BACKSPACE)
+            input.erase_text = true;
+        if (!event.key.repeat &&
+            (event.key.key == SDLK_RETURN ||
+             event.key.key == SDLK_KP_ENTER))
+            input.submit_text = true;
         if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
                  event.key.key == SDLK_KP_PLUS)
             input.zoom_world_in = true;

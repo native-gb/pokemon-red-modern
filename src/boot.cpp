@@ -1,5 +1,7 @@
 #include "boot.hpp"
 
+#include "naming.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -579,10 +581,15 @@ bool step_boot(const BootContent& content, const BootInput& input, BootState& st
             }
         }
     } else if (state.screen == BootScreen::naming) {
-        if (input.select_pressed) {
+        append_typed_naming_text(
+            state.naming_value,
+            input.text != nullptr ? input.text : "", 7U);
+        if (input.submit_pressed && !state.naming_value.empty()) {
+            finish_naming(state);
+        } else if (input.select_pressed) {
             state.naming_lowercase = !state.naming_lowercase;
-        } else if (input.cancel_pressed) {
-            if (!state.naming_value.empty()) state.naming_value.pop_back();
+        } else if (input.cancel_pressed || input.erase_pressed) {
+            erase_last_naming_character(state.naming_value);
         } else if (input.start_pressed && !state.naming_value.empty()) {
             finish_naming(state);
         } else if (input.up_pressed) {

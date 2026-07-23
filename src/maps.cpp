@@ -740,6 +740,23 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         return;
     ++world.simulation_tick;
 
+    if (world.naming.open) {
+        step_naming(
+            {
+                .left = input.left,
+                .right = input.right,
+                .up = input.up,
+                .down = input.down,
+                .confirm = input.activate,
+                .erase = input.erase,
+                .submit = input.submit,
+                .toggle_case = input.toggle_case,
+                .text = input.text != nullptr ? input.text : "",
+            },
+            world.naming);
+        return;
+    }
+
     if (world.choice.open) {
         if (world.choice.input_cooldown > 0U) {
             --world.choice.input_cooldown;

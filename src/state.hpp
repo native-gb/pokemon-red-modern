@@ -38,7 +38,9 @@ struct CampaignFiberState {
     bool waiting_dialogue{};
     bool waiting_motion{};
     bool waiting_choice{};
+    bool waiting_naming{};
     bool waiting_battle{};
+    std::uint8_t naming_party_index{};
     std::uint8_t last_choice{};
     bool active{};
 };

@@ -20,6 +20,7 @@ struct DecodedTextProgram {
 };
 
 // Decode Gen 1's bounded text-command and character data languages.
+std::string decode_text_glyph(std::uint8_t value);
 bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, std::size_t offset,
                          DecodedTextProgram& result);
 

@@ -1681,6 +1681,24 @@ void test_local_boot_cache(TestState& state) {
           content.new_game_map_id == 0x26U && content.new_game_x == 3U &&
               content.new_game_y == 6U,
           "New Game placement comes from imported campaign content");
+
+    pokered::BootState typed_name;
+    check(state, pokered::begin_boot(content, typed_name, error),
+          "typed-name fixture starts a boot owner");
+    typed_name.screen = pokered::BootScreen::naming;
+    typed_name.oak_stage = pokered::BootOakStage::player_name;
+    typed_name.naming_player = true;
+    check(state,
+          pokered::step_boot(content, {.text = "VEGA"}, typed_name,
+                             result, error) &&
+              typed_name.naming_value == "VEGA",
+          "Oak naming accepts ordinary typed input");
+    check(state,
+          pokered::step_boot(content, {.submit_pressed = true},
+                             typed_name, result, error) &&
+              typed_name.player_name == "VEGA" &&
+              typed_name.screen == pokered::BootScreen::oak_text,
+          "typed Oak name submits through the normal confirmation flow");
 }
 
 void test_local_pallet_campaign_program(TestState& state) {
@@ -1716,6 +1734,25 @@ void test_local_pallet_campaign_program(TestState& state) {
     check(state,
           pokered::load_campaign_programs(program_path, programs, error),
           "campaign fixture loads imported programs");
+    check(state,
+          programs.naming.maximum_length == 10U &&
+              programs.naming.uppercase.front() == "A" &&
+              programs.naming.lowercase.front() == "a" &&
+              programs.naming.uppercase.back() == "END" &&
+              programs.nickname_heading.find("{name_buffer}") !=
+                  std::string::npos,
+          "campaign fixture loads the ROM naming profile");
+    pokered::NamingState controller_name;
+    pokered::begin_naming(programs.naming, "NICKNAME?",
+                          controller_name);
+    pokered::step_naming({.confirm = true}, controller_name);
+    pokered::step_naming({.toggle_case = true}, controller_name);
+    pokered::step_naming({.confirm = true}, controller_name);
+    pokered::step_naming({.submit = true}, controller_name);
+    check(state,
+          controller_name.decided && !controller_name.open &&
+              controller_name.value == "Aa",
+          "imported naming profile supports controller-only editing");
     check(state,
           pokered::load_rules(root / "pokemon_rules.bin", rules, error),
           "campaign fixture loads imported Pokemon rules");
@@ -1760,6 +1797,20 @@ void test_local_pallet_campaign_program(TestState& state) {
                                     source_diagnostics),
               "generated campaign source reparses");
     }
+    const std::filesystem::path naming_source_path =
+        root.parent_path() / "source" / "menus" / "naming.sexpr";
+    std::ifstream naming_source_input(naming_source_path);
+    const std::string naming_source{
+        std::istreambuf_iterator<char>(naming_source_input),
+        std::istreambuf_iterator<char>()};
+    pokered::sexpr::Document naming_document;
+    pokered::Diagnostics naming_diagnostics;
+    check(state,
+          (naming_source_input.good() || naming_source_input.eof()) &&
+              pokered::sexpr::parse(
+                  naming_source_path.string(), naming_source,
+                  naming_document, naming_diagnostics),
+          "generated naming profile reparses");
     check(state,
           pokered::begin_new_campaign(campaign, "RED", "BLUE", {}, error),
           "campaign fixture owns New Game state");
@@ -1863,9 +1914,15 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::service_campaign_programs(
                   programs, rules, battle_rules, world, campaign, error),
               "accepted starter program advances");
-        pokered::step_world(
-            world, interactions, campaign,
-            {.activate = world.dialogue.open});
+        if (world.naming.open)
+            pokered::step_world(
+                world, interactions, campaign,
+                {.submit = true, .text = "EMBER"});
+        else
+            pokered::step_world(
+                world, interactions, campaign,
+                {.activate = world.dialogue.open ||
+                             world.choice.open});
         if (!error.empty()) break;
     }
     check(state, error.empty(), "starter campaign program reports no error");
@@ -1874,6 +1931,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               campaign.party.members.size() == 1U &&
               campaign.party.members.front().species_dex == 4U &&
               campaign.party.members.front().level == 5U &&
+              campaign.party.members.front().nickname == "EMBER" &&
               pokered::campaign_variable(campaign, 0U) == 4U &&
               pokered::campaign_variable(campaign, 1U) == 7U &&
               pokered::campaign_flag(campaign, 0x6BA5AU),

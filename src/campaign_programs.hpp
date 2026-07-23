@@ -34,6 +34,7 @@ enum class CampaignOpcode : std::uint8_t {
     end_if_choice_no,
     set_variable,
     give_pokemon,
+    nickname_last_party_member_if_yes,
     wait_ticks,
     actor_path_by_player_x,
     start_trainer_battle,
@@ -74,6 +75,8 @@ struct CampaignProgram {
 
 struct CampaignProgramCatalog {
     std::filesystem::path source;
+    NamingProfile naming;
+    std::string nickname_heading;
     std::vector<CampaignProgram> programs;
     bool loaded{};
 };

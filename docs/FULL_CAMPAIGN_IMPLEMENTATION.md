@@ -662,6 +662,10 @@ Each of the three starter-ball fibers then:
 - removes the chosen ball, presents the imported energetic/receipt text, and
   constructs the level-five owned Pokemon through the imported stat,
   learnset, move, and growth rules;
+- presents the ROM-decoded nickname question, then either preserves the
+  species name or hands the newest party member to the generic controller and
+  typed-input naming owner using the imported alphabet and ten-character
+  limit;
 - records player/rival starter variables, walks the rival through the
   ROM-derived route, removes his selected ball, and records the got-starter
   flag.
@@ -682,18 +686,19 @@ cartridge's y=6 challenge line:
 
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
-`source/scripts/campaign/*.sexpr` files, then compiles the same records into
-`campaign_programs.bin`. A focused headless check drives the slice through its
-real warp, declines once, accepts Charmander, executes the Squirtle rival
-battle through the real battle engine, and verifies party construction, rival
-selection, ball visibility, battle outcome, healing, rival exit, final map,
-and progression state.
+`source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
+compiles the same records into `campaign_programs.bin`. A focused headless
+check drives the slice through its real warp, declines once, accepts
+Charmander, enters a typed nickname, executes the Squirtle rival battle through
+the real battle engine, and verifies party construction, rival selection, ball
+visibility, battle outcome, healing, rival exit, final map, and progression
+state.
 
 This is not full-campaign completion. The next campaign blocker begins with
-starter nickname handling, the Viridian Mart parcel handoff, the return to Oak,
-Pokédex/Poké Ball delivery, and the remaining Pallet actors and gates. Every
-later map program still requires semantic lifting and the remaining acceptance
-gates above stay open.
+the Viridian Mart parcel handoff, the return to Oak, Pokédex/Poké Ball
+delivery, and the remaining Pallet actors and gates. Every later map program
+still requires semantic lifting and the remaining acceptance gates above stay
+open.
 
 ## Playable acceptance
 

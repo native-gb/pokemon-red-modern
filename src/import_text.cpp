@@ -413,6 +413,10 @@ std::string_view special_script_name(std::uint8_t command) {
 
 } // namespace
 
+std::string decode_text_glyph(std::uint8_t value) {
+    return glyph(value);
+}
+
 bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, std::size_t offset,
                          DecodedTextProgram& result) {
     result = {};

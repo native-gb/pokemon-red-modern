@@ -166,6 +166,12 @@ addresses, paths, text, species, opponent party, and branch ownership are
 generated-pack content; the runtime implements only generic fiber, choice,
 owned-Pokemon creation, trainer-battle handoff, conditional dialogue, and
 world-motion operations.
+The same cache owns the cartridge-decoded English naming profile: both 45-cell
+case tables, the case-switch labels, END action, Pokemon name-length limit,
+nickname heading, and nickname question. Its readable peer is
+`source/menus/naming.sexpr`. The runtime supplies generic controller navigation
+and typed UTF-8 editing without compiling Red's alphabet or species names into
+the gameplay executable.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Its imported trainer-header index covers all 322 ordinary and
 static trainer interactions, including sight range, defeated flag, and

@@ -122,6 +122,11 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::give_pokemon:
         return instruction.a != 0U && instruction.a <= 100U &&
                instruction.value != 0U && instruction.value <= 0xFFU;
+    case CampaignOpcode::nickname_last_party_member_if_yes:
+        return instruction.a == 0U && instruction.b == 0U &&
+               instruction.value == 0U && instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
     case CampaignOpcode::wait_ticks:
         return instruction.value != 0U;
     case CampaignOpcode::start_trainer_battle:
@@ -188,15 +193,37 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     std::uint16_t program_count = 0U;
+    CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '3'} || !read_u16(input, program_count) ||
-        program_count == 0U || program_count > 4096U) {
+        magic != std::array{'P', 'C', 'P', '4'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
 
-    CampaignProgramCatalog loaded;
     loaded.source = path;
+    for (std::string& cell : loaded.naming.uppercase)
+        if (!read_string(input, cell)) {
+            error = "campaign naming profile is truncated";
+            return false;
+        }
+    for (std::string& cell : loaded.naming.lowercase)
+        if (!read_string(input, cell)) {
+            error = "campaign naming profile is truncated";
+            return false;
+        }
+    if (!read_string(input, loaded.naming.uppercase_action) ||
+        !read_string(input, loaded.naming.lowercase_action) ||
+        !read_u8(input, loaded.naming.maximum_length) ||
+        !read_string(input, loaded.nickname_heading) ||
+        !valid_naming_profile(loaded.naming)) {
+        error = "campaign naming profile is invalid";
+        return false;
+    }
+    if (!read_u16(input, program_count) || program_count == 0U ||
+        program_count > 4096U) {
+        error = "campaign program cache has an invalid program count";
+        return false;
+    }
     loaded.programs.reserve(program_count);
     for (std::uint16_t index = 0U; index < program_count; ++index) {
         CampaignProgram program;
@@ -308,7 +335,9 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 .waiting_dialogue = false,
                 .waiting_motion = false,
                 .waiting_choice = false,
+                .waiting_naming = false,
                 .waiting_battle = false,
+                .naming_party_index = 0U,
                 .last_choice = 0U,
                 .active = true,
             };
@@ -360,6 +389,22 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             static_cast<std::uint8_t>(world.choice.selected);
         world.choice = {};
         fiber.waiting_choice = false;
+    }
+    if (fiber.waiting_naming) {
+        if (world.naming.open) {
+            error.clear();
+            return true;
+        }
+        if (!world.naming.decided ||
+            fiber.naming_party_index >= campaign.party.members.size()) {
+            error = "campaign naming screen closed without a result";
+            return false;
+        }
+        if (!world.naming.value.empty())
+            campaign.party.members[fiber.naming_party_index].nickname =
+                world.naming.value;
+        world.naming = {};
+        fiber.waiting_naming = false;
     }
     if (fiber.waiting_battle) {
         if (campaign.trainer_battle_request.pending ||
@@ -488,6 +533,29 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 return false;
             campaign.party.members.push_back(std::move(pokemon));
             break;
+        }
+        case CampaignOpcode::nickname_last_party_member_if_yes: {
+            if (fiber.last_choice != 0U) break;
+            if (campaign.party.members.empty()) {
+                error =
+                    "campaign cannot nickname an empty party";
+                return false;
+            }
+            PokemonState& pokemon = campaign.party.members.back();
+            std::string heading = programs.nickname_heading;
+            const std::string token = "{name_buffer}";
+            for (std::size_t position = heading.find(token);
+                 position != std::string::npos;
+                 position = heading.find(token, position + pokemon.nickname.size())) {
+                heading.replace(position, token.size(), pokemon.nickname);
+            }
+            begin_naming(programs.naming, std::move(heading),
+                         world.naming);
+            fiber.naming_party_index = static_cast<std::uint8_t>(
+                campaign.party.members.size() - 1U);
+            fiber.waiting_naming = true;
+            error.clear();
+            return true;
         }
         case CampaignOpcode::wait_ticks:
             fiber.waiting_ticks = instruction.value;

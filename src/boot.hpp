@@ -126,6 +126,9 @@ struct BootInput {
     bool cancel_pressed{};
     bool start_pressed{};
     bool select_pressed{};
+    bool erase_pressed{};
+    bool submit_pressed{};
+    const char* text{};
     std::uint8_t random{};
 };
 
