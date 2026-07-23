@@ -725,6 +725,51 @@ void test_local_rule_cache(TestState& state) {
                       {11U, 19U}, {11U, 23U}},
           "trainer classes join rewards, AI profiles, and indexed parties");
 
+    // Every trainer/static-Pokemon map actor must resolve through imported
+    // policy. This proves the engine needs no Pokemon Red opponent offset.
+    pokered::WorldState world;
+    check(state,
+          pokered::load_world(path.parent_path() / "world_maps.bin", world,
+                              error),
+          "complete world cache loads for actor opponents");
+    std::size_t opponent_actors = 0U;
+    std::size_t trainer_actors = 0U;
+    std::size_t static_pokemon_actors = 0U;
+    bool every_actor_resolved = world.loaded;
+    for (const pokered::WorldMap& map : world.maps) {
+        for (const pokered::WorldActorSpawn& actor : map.actors) {
+            if (actor.kind !=
+                pokered::WorldActorKind::trainer_or_pokemon)
+                continue;
+            ++opponent_actors;
+            pokered::ActorOpponentBinding binding;
+            if (!pokered::resolve_actor_opponent(
+                    trainers, actor.parameter_a, actor.parameter_b,
+                    binding, error)) {
+                every_actor_resolved = false;
+                continue;
+            }
+            if (binding.kind ==
+                pokered::ActorOpponentKind::trainer)
+                ++trainer_actors;
+            else
+                ++static_pokemon_actors;
+        }
+    }
+    if (!every_actor_resolved || opponent_actors != 346U ||
+        trainer_actors != 334U || static_pokemon_actors != 12U)
+        std::fprintf(stderr,
+                     "actor opponent counts: total=%zu trainers=%zu "
+                     "static=%zu last_error=%s\n",
+                     opponent_actors, trainer_actors,
+                     static_pokemon_actors, error.c_str());
+    check(state,
+          every_actor_resolved && opponent_actors == 346U &&
+              trainer_actors == 334U &&
+              static_pokemon_actors == 12U,
+          "all map-owned trainer and static-Pokemon actors resolve through "
+          "imported semantic bindings");
+
     const pokered::SpeciesRule* bulbasaur = pokered::find_species(rules, 1);
     check(state,
           bulbasaur != nullptr && bulbasaur->key == "bulbasaur" && bulbasaur->internal_id == 153 &&

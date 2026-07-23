@@ -143,10 +143,12 @@ selection policy. A resolved encounter is materialized as an owned Pokemon
 through the imported stat, species, starting-move, and learnset rules before
 the ordinary battle executor receives it.
 `trainers.bin` owns all 47 trainer classes, their cartridge rewards and AI-use
-profiles, and all 391 indexed parties containing 994 party members. Internal
-species IDs are resolved to the shared 151-species index during import. Map
-actor/script bindings will select these records by class and party index; the
-battle engine does not own trainer rosters.
+profiles, and all 391 indexed parties containing 994 party members. It also
+owns the imported actor-opponent encoding policy and the complete 190-slot
+internal-species-to-Dex mapping. All 346 map-owned opponent actors resolve
+through that policy: 334 select a trainer class and indexed party, while 12
+select a static species and level. The generic runtime therefore contains
+neither Pokemon Red's trainer offset nor Red trainer rosters.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Normal startup does not parse the readable `.sexpr` files.
 

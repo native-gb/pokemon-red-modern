@@ -1,5 +1,6 @@
 #include "trainers.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -57,14 +58,36 @@ bool load_trainers(const std::filesystem::path& path,
     std::uint8_t class_count = 0;
     if (!input.read(magic.data(),
                     static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'T', 'C', '1'} ||
-        !read_u8(input, class_count) || class_count != 47U) {
+        magic != std::array{'P', 'T', 'C', '2'}) {
         error = "trainer cache is missing or has an invalid header";
         return false;
     }
 
     TrainerCatalog loaded;
     loaded.source = path;
+    if (!read_u8(input, loaded.actor_trainer_offset) ||
+        loaded.actor_trainer_offset == 0U ||
+        !input.read(
+            reinterpret_cast<char*>(loaded.dex_by_internal.data()),
+            static_cast<std::streamsize>(loaded.dex_by_internal.size())) ||
+        !read_u8(input, class_count) || class_count == 0U ||
+        class_count >
+            static_cast<std::uint8_t>(
+                0xFFU - loaded.actor_trainer_offset)) {
+        error = "trainer cache has an invalid actor-opponent policy";
+        return false;
+    }
+    const auto species_count = std::ranges::count_if(
+        loaded.dex_by_internal,
+        [](std::uint8_t dex) { return dex != 0U && dex <= 151U; });
+    const bool invalid_species = std::ranges::any_of(
+        loaded.dex_by_internal,
+        [](std::uint8_t dex) { return dex > 151U; });
+    if (species_count != 151U || invalid_species) {
+        error =
+            "trainer cache has an invalid internal-species mapping";
+        return false;
+    }
     loaded.classes.reserve(class_count);
     for (std::uint8_t index = 0U; index < class_count; ++index) {
         TrainerClassRule trainer;
@@ -134,6 +157,59 @@ const TrainerPartyRule* find_trainer_party(
     return trainer != nullptr && party_index < trainer->parties.size()
                ? &trainer->parties[party_index]
                : nullptr;
+}
+
+bool resolve_actor_opponent(const TrainerCatalog& trainers,
+                            std::uint8_t parameter_a,
+                            std::uint8_t parameter_b,
+                            ActorOpponentBinding& result,
+                            std::string& error) {
+    if (!trainers.loaded) {
+        error = "actor opponent requires a loaded trainer catalog";
+        return false;
+    }
+
+    // The imported policy separates trainer-class IDs from internal species
+    // slots. Both compact cartridge encodings become semantic runtime IDs here.
+    if (parameter_a > trainers.actor_trainer_offset) {
+        const std::uint8_t class_id = static_cast<std::uint8_t>(
+            parameter_a - trainers.actor_trainer_offset);
+        if (parameter_b == 0U ||
+            find_trainer_party(trainers, class_id,
+                               static_cast<std::uint16_t>(
+                                   parameter_b - 1U)) == nullptr) {
+            error = "actor references an unavailable trainer party";
+            return false;
+        }
+        result = {
+            .kind = ActorOpponentKind::trainer,
+            .trainer_class_id = class_id,
+            .trainer_party_index =
+                static_cast<std::uint16_t>(parameter_b - 1U),
+        };
+        error.clear();
+        return true;
+    }
+
+    if (parameter_a == 0U ||
+        parameter_a > trainers.dex_by_internal.size() ||
+        parameter_b == 0U || parameter_b > 100U) {
+        error = "actor has an invalid static-Pokemon encoding";
+        return false;
+    }
+    const std::uint8_t species_dex =
+        trainers.dex_by_internal[parameter_a - 1U];
+    if (species_dex == 0U) {
+        error = "actor references an unused internal species slot";
+        return false;
+    }
+    result = {
+        .kind = ActorOpponentKind::static_pokemon,
+        .species_dex = species_dex,
+        .level = parameter_b,
+    };
+    error.clear();
+    return true;
 }
 
 } // namespace pokered

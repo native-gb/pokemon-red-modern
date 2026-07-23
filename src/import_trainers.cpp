@@ -19,6 +19,7 @@ constexpr std::size_t party_data_offset = 0x39D99U;
 constexpr std::size_t party_data_end = 0x3A52EU;
 constexpr std::size_t ai_offset = 0x3A55CU;
 constexpr std::size_t pokedex_order_offset = 0x41024U;
+constexpr std::size_t trainer_actor_decode_offset = 0x39C62U;
 
 struct Member {
     std::uint8_t level{};
@@ -233,6 +234,16 @@ bool decode_trainer_import(std::span<const std::uint8_t> rom,
     std::array<std::uint8_t, 190> dex_by_internal{};
     for (std::size_t index = 0U; index < dex_by_internal.size(); ++index)
         dex_by_internal[index] = rom[pokedex_order_offset + index];
+    if (trainer_actor_decode_offset + 2U > rom.size() ||
+        rom[trainer_actor_decode_offset] != 0xD6U ||
+        rom[trainer_actor_decode_offset + 1U] == 0U) {
+        error =
+            "trainer actor decoder does not contain its expected subtract";
+        return false;
+    }
+    const std::uint8_t actor_trainer_offset =
+        static_cast<std::uint8_t>(
+            rom[trainer_actor_decode_offset + 1U] - 1U);
 
     std::vector<Trainer> trainers;
     trainers.reserve(trainer_count);
@@ -284,7 +295,19 @@ bool decode_trainer_import(std::span<const std::uint8_t> rom,
     }
 
     std::ostringstream source;
-    source << "; Cartridge-derived trainer classes and indexed parties.\n\n";
+    source << "; Cartridge-derived actor encoding, trainer classes, and indexed parties.\n\n"
+           << "actor_opponent_policy\n"
+           << "    trainer_class_offset "
+           << static_cast<unsigned>(actor_trainer_offset) << '\n'
+           << "    trainer_party_index one_based\n"
+           << "    static_species_index internal_species\n"
+           << "    static_level parameter_b\n\n"
+           << "internal_species_to_dex\n";
+    for (std::size_t index = 0U; index < dex_by_internal.size();
+         ++index)
+        source << "    slot " << index + 1U << " dex "
+               << static_cast<unsigned>(dex_by_internal[index]) << '\n';
+    source << '\n';
     for (const Trainer& trainer : trainers) {
         source << "trainer_class "
                << static_cast<unsigned>(trainer.id) << '\n'
@@ -307,7 +330,10 @@ bool decode_trainer_import(std::span<const std::uint8_t> rom,
     add_text(result, "source/trainers/classes_and_parties.sexpr",
              source.str());
 
-    std::vector<std::uint8_t> cache{'P', 'T', 'C', '1'};
+    std::vector<std::uint8_t> cache{'P', 'T', 'C', '2'};
+    cache.push_back(actor_trainer_offset);
+    cache.insert(cache.end(), dex_by_internal.begin(),
+                 dex_by_internal.end());
     cache.push_back(static_cast<std::uint8_t>(trainers.size()));
     for (const Trainer& trainer : trainers) {
         cache.push_back(trainer.id);
@@ -330,6 +356,9 @@ bool decode_trainer_import(std::span<const std::uint8_t> rom,
 
     std::ostringstream report;
     report << "Pokemon Red trainer import\n"
+           << "actor_trainer_offset "
+           << static_cast<unsigned>(actor_trainer_offset) << '\n'
+           << "internal_species_slots " << dex_by_internal.size() << '\n'
            << "trainer_classes " << trainers.size() << '\n'
            << "trainer_parties " << result.parties << '\n'
            << "party_members " << result.members << '\n';
