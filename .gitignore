@@ -1,0 +1,9 @@
+/build-*/
+/data/runtime/*
+!/data/runtime/.gitkeep
+/roms/*.gb
+/roms/*.gbc
+/roms/*.zip
+compile_commands.json
+.cache/
+imgui.ini

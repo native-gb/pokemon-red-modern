@@ -1,0 +1,37 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "POKERED_MODERN_STRICT": true,
+        "POKERED_MODERN_WARN_AS_ERROR": true
+      }
+    },
+    {
+      "name": "release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "POKERED_MODERN_STRICT": true,
+        "POKERED_MODERN_WARN_AS_ERROR": true
+      }
+    },
+    {
+      "name": "asan",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": { "POKERED_MODERN_SANITIZERS": true }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev", "jobs": 0 },
+    { "name": "release", "configurePreset": "release", "jobs": 0 },
+    { "name": "asan", "configurePreset": "asan", "jobs": 0 }
+  ]
+}
