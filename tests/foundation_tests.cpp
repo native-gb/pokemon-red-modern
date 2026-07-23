@@ -208,6 +208,7 @@ void test_animations(TestState& state) {
     constexpr std::string_view source =
         "animation original_title\n"
         "    set_offset logo 0 -36 native_canvas\n"
+        "    set_palette logo darkened\n"
         "    show logo\n"
         "    parallel\n"
         "        tween_offset logo 0 0 4 ease_out native_canvas\n"
@@ -248,6 +249,9 @@ void test_animations(TestState& state) {
     check(state, target != nullptr && target->visible, "title logo becomes visible");
     check(state, target != nullptr && target->y == 16.0F && target->offset_y == -36.0F,
           "title logo starts above its renderer-owned anchor");
+    check(state, target != nullptr &&
+                     target->palette == pokered::content::AnimationPalette::darkened,
+          "animation palette applies to a persistent target");
     pokered::step_animation(animation);
     pokered::step_animation(animation);
     check(state,

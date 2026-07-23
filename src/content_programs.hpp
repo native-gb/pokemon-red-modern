@@ -111,6 +111,15 @@ enum class AnimationEase : std::uint8_t {
     ease_in_out,
 };
 
+enum class AnimationPalette : std::uint8_t {
+    normal,
+    light,
+    dark,
+    darkened,
+    inverted,
+    white,
+};
+
 enum class AnimationOp : std::uint8_t {
     spawn,
     destroy,
@@ -120,6 +129,7 @@ enum class AnimationOp : std::uint8_t {
     tween_position,
     set_offset,
     tween_offset,
+    set_palette,
     play_sound,
     signal,
 };
@@ -134,6 +144,7 @@ struct AnimationEvent {
     std::int32_t y{};
     CoordinateSpace space{CoordinateSpace::native_canvas};
     AnimationEase ease{AnimationEase::linear};
+    AnimationPalette palette{AnimationPalette::normal};
     SoundId sound;
     SourceSpan source;
 };

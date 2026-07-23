@@ -75,6 +75,16 @@ std::optional<content::AnimationEase> easing(const Symbol& symbol) {
     return std::nullopt;
 }
 
+std::optional<content::AnimationPalette> palette(const Symbol& symbol) {
+    if (symbol.text == "normal") return content::AnimationPalette::normal;
+    if (symbol.text == "light") return content::AnimationPalette::light;
+    if (symbol.text == "dark") return content::AnimationPalette::dark;
+    if (symbol.text == "darkened") return content::AnimationPalette::darkened;
+    if (symbol.text == "inverted") return content::AnimationPalette::inverted;
+    if (symbol.text == "white") return content::AnimationPalette::white;
+    return std::nullopt;
+}
+
 bool integer_fits_i32(std::int64_t value) {
     return value >= std::numeric_limits<std::int32_t>::min() &&
            value <= std::numeric_limits<std::int32_t>::max();
@@ -276,6 +286,28 @@ std::uint32_t compile_statement(const sexpr::Form& form, std::uint32_t at_tick,
     if (operation == "set_offset") return compile_set_position(form, at_tick, compiler, true);
     if (operation == "tween_offset")
         return compile_tween_position(form, at_tick, compiler, true);
+    if (operation == "set_palette") {
+        if (!exact_arguments(form, 2, compiler.diagnostics)) return 0;
+        const Symbol* node = symbol_argument(form, 0, compiler.diagnostics);
+        const Symbol* palette_name = symbol_argument(form, 1, compiler.diagnostics);
+        if (node == nullptr || palette_name == nullptr) return 0;
+        const auto subject = intern_symbol(*node, compiler);
+        const auto selected_palette = palette(*palette_name);
+        if (!subject || !selected_palette) {
+            add_error(compiler.diagnostics, form.source, "invalid_animation_palette",
+                      "set_palette uses an unknown palette");
+            return 0;
+        }
+        compiler.program.events.push_back({
+            .operation = content::AnimationOp::set_palette,
+            .at_tick = at_tick,
+            .subject = *subject,
+            .palette = *selected_palette,
+            .sound = {},
+            .source = form.source,
+        });
+        return 0;
+    }
     if (operation == "play_sound") {
         if (!exact_arguments(form, 1, compiler.diagnostics)) return 0;
         const Symbol* sound_name = symbol_argument(form, 0, compiler.diagnostics);
@@ -382,6 +414,10 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
     const auto target_index = runtime_target_index(state, subject);
     const auto effect_index = runtime_effect_index(state, subject);
     if (!target_index && !effect_index) return;
+    if (event.operation == content::AnimationOp::set_palette) {
+        if (target_index) state.targets[*target_index].palette = event.palette;
+        return;
+    }
 
     // Persistent target offsets remain separate from renderer-owned base positions.
     const bool offset_operation = event.operation == content::AnimationOp::set_offset ||

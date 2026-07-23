@@ -25,17 +25,52 @@ void fill_native_rect(SDL_Renderer* renderer, const ViewLayout& view, float x, f
     (void)SDL_RenderFillRect(renderer, &rectangle);
 }
 
+std::array<std::uint8_t, 3> palette_color(content::AnimationPalette palette, std::uint8_t red,
+                                          std::uint8_t green, std::uint8_t blue) {
+    if (palette == content::AnimationPalette::white) return {255, 255, 255};
+    if (palette == content::AnimationPalette::inverted)
+        return {static_cast<std::uint8_t>(255U - red), static_cast<std::uint8_t>(255U - green),
+                static_cast<std::uint8_t>(255U - blue)};
+    const float amount = palette == content::AnimationPalette::light      ? 0.55F
+                         : palette == content::AnimationPalette::dark     ? 0.35F
+                         : palette == content::AnimationPalette::darkened ? 0.55F
+                                                                          : 1.0F;
+    if (palette == content::AnimationPalette::light) {
+        return {
+            static_cast<std::uint8_t>(static_cast<float>(red) +
+                                      (255.0F - static_cast<float>(red)) * amount),
+            static_cast<std::uint8_t>(static_cast<float>(green) +
+                                      (255.0F - static_cast<float>(green)) * amount),
+            static_cast<std::uint8_t>(static_cast<float>(blue) +
+                                      (255.0F - static_cast<float>(blue)) * amount),
+        };
+    }
+    return {
+        static_cast<std::uint8_t>(static_cast<float>(red) * amount),
+        static_cast<std::uint8_t>(static_cast<float>(green) * amount),
+        static_cast<std::uint8_t>(static_cast<float>(blue) * amount),
+    };
+}
+
+void set_draw_color(SDL_Renderer* renderer, content::AnimationPalette palette, std::uint8_t red,
+                    std::uint8_t green, std::uint8_t blue) {
+    const auto color = palette_color(palette, red, green, blue);
+    (void)SDL_SetRenderDrawColor(renderer, color[0], color[1], color[2], 255);
+}
+
 void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const AnimationTarget& target,
-                  bool player) {
+                  bool player, content::AnimationPalette screen_palette) {
     if (!target.visible) return;
     const float x = target.x + target.offset_x;
     const float y = target.y + target.offset_y;
 
     // Use deliberately original block creatures while the ROM asset importer is absent.
+    const content::AnimationPalette palette =
+        target.palette == content::AnimationPalette::normal ? screen_palette : target.palette;
     if (player)
-        (void)SDL_SetRenderDrawColor(renderer, 68, 104, 156, 255);
+        set_draw_color(renderer, palette, 68, 104, 156);
     else
-        (void)SDL_SetRenderDrawColor(renderer, 176, 104, 72, 255);
+        set_draw_color(renderer, palette, 176, 104, 72);
     fill_native_rect(renderer, view, x - 18.0F, y - 16.0F, 34.0F, 28.0F);
     fill_native_rect(renderer, view, x - 11.0F, y - 28.0F, 22.0F, 15.0F);
     fill_native_rect(renderer, view, player ? x - 25.0F : x + 14.0F, y - 10.0F, 12.0F,
@@ -43,12 +78,13 @@ void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const Animatio
     fill_native_rect(renderer, view, x - 14.0F, y + 9.0F, 9.0F, 11.0F);
     fill_native_rect(renderer, view, x + 5.0F, y + 9.0F, 9.0F, 11.0F);
 
-    (void)SDL_SetRenderDrawColor(renderer, 246, 242, 224, 255);
+    set_draw_color(renderer, palette, 246, 242, 224);
     fill_native_rect(renderer, view, x + 2.0F, y - 24.0F, 4.0F, 4.0F);
 }
 
 void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel,
-                              std::uint8_t attributes) {
+                              std::uint8_t attributes,
+                              content::AnimationPalette screen_palette) {
     const std::uint8_t palette = (attributes & 0x10U) == 0 ? 0xE4U : 0x6CU;
     const std::uint8_t shade = static_cast<std::uint8_t>((palette >> (pixel * 2U)) & 0x03U);
     constexpr std::array<std::array<std::uint8_t, 3>, 4> colors{{
@@ -58,12 +94,13 @@ void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel,
         {54, 47, 58},
     }};
     const auto& color = colors[shade];
-    (void)SDL_SetRenderDrawColor(renderer, color[0], color[1], color[2], 255);
+    set_draw_color(renderer, screen_palette, color[0], color[1], color[2]);
 }
 
 bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
                           const AnimationEffect& effect,
-                          const ImportedAnimationAssets& assets) {
+                          const ImportedAnimationAssets& assets,
+                          content::AnimationPalette screen_palette) {
     const ImportedAnimationVisual* visual =
         find_imported_animation_visual(assets, effect.visual);
     if (visual == nullptr) return false;
@@ -89,7 +126,7 @@ bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
                 const std::uint8_t pixel = static_cast<std::uint8_t>(
                     ((high >> bit) & 1U) << 1U | ((low >> bit) & 1U));
                 if (pixel == 0) continue;
-                set_imported_pixel_color(renderer, pixel, piece.attributes);
+                set_imported_pixel_color(renderer, pixel, piece.attributes, screen_palette);
                 fill_native_rect(renderer, view,
                                  effect.x + static_cast<float>(piece.x) +
                                      static_cast<float>(output_x),
@@ -103,9 +140,10 @@ bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
 }
 
 void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const AnimationEffect& effect,
-                 const ImportedAnimationAssets& imported_assets) {
+                 const ImportedAnimationAssets& imported_assets,
+                 content::AnimationPalette screen_palette) {
     if (!effect.visible) return;
-    if (draw_imported_effect(renderer, view, effect, imported_assets)) return;
+    if (draw_imported_effect(renderer, view, effect, imported_assets, screen_palette)) return;
     const float x = view.x + effect.x * view.scale;
     const float y = view.y + effect.y * view.scale;
     const float unit = view.scale;
@@ -146,25 +184,29 @@ void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const Animation
 
 void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
                      const BattleAnimationLab& lab) {
+    const AnimationTarget* battle_screen =
+        find_animation_target(lab.animation, Symbol{"battle_screen"});
+    const content::AnimationPalette screen_palette =
+        battle_screen == nullptr ? content::AnimationPalette::normal : battle_screen->palette;
     const SDL_FRect viewport{view.x, view.y, view.width, view.height};
-    (void)SDL_SetRenderDrawColor(renderer, 246, 238, 230, 255);
+    set_draw_color(renderer, screen_palette, 246, 238, 230);
     (void)SDL_RenderFillRect(renderer, &viewport);
 
     // Draw a fixed Pokémon battle composition; animation state supplies only overrides.
-    (void)SDL_SetRenderDrawColor(renderer, 190, 181, 167, 255);
+    set_draw_color(renderer, screen_palette, 190, 181, 167);
     fill_native_rect(renderer, view, 8.0F, 94.0F, 56.0F, 2.0F);
     fill_native_rect(renderer, view, 96.0F, 54.0F, 56.0F, 2.0F);
     const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
     const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
-    if (attacker != nullptr) draw_battler(renderer, view, *attacker, true);
-    if (defender != nullptr) draw_battler(renderer, view, *defender, false);
+    if (attacker != nullptr) draw_battler(renderer, view, *attacker, true, screen_palette);
+    if (defender != nullptr) draw_battler(renderer, view, *defender, false, screen_palette);
     for (const AnimationEffect& effect : lab.animation.effects)
-        draw_effect(renderer, view, effect, lab.imported_assets);
+        draw_effect(renderer, view, effect, lab.imported_assets, screen_palette);
 
     // Gen 1 reserves the lower six tile rows for battle text and action menus.
-    (void)SDL_SetRenderDrawColor(renderer, 54, 47, 58, 255);
+    set_draw_color(renderer, screen_palette, 54, 47, 58);
     fill_native_rect(renderer, view, 0.0F, 96.0F, 160.0F, 48.0F);
-    (void)SDL_SetRenderDrawColor(renderer, 250, 247, 238, 255);
+    set_draw_color(renderer, screen_palette, 250, 247, 238);
     fill_native_rect(renderer, view, 2.0F, 98.0F, 156.0F, 44.0F);
 }
 

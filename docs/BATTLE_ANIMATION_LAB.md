@@ -78,6 +78,24 @@ retained by name in generated source. Common battler movement, visibility, and
 delay effects are normalized now; the other named signals remain explicit
 implementation work rather than silently disappearing.
 
+The generated report `reports/battle_animation_summary.txt` lists every
+procedural effect type which still lowers to a visible named signal. Palette
+changes, short and long flashes, and the X-stat spiral-ball sequence are
+compiled into normal animation operations and imported frame visuals.
+
+The remaining first-pass signals are grouped work rather than unknown data:
+
+- particles: water droplets, falling leaves/petals, and upward balls;
+- screen transforms: whole-screen shake and scanline waves;
+- picture transforms: minimize, substitute, transform, squish, and rapid
+  back-and-forth movement;
+- UI presentation: enemy HUD shake.
+
+The two internal animations named `enemy_flash` and `player_flash` are
+misleading in isolation. Their ROM routines restore or reload an existing
+Pokemon picture; they are not standalone flashing effects and can legitimately
+produce no visible change when the picture is already present.
+
 The verification view uses Red's fixed battle picture boxes: the enemy 7 by 7
 tile picture begins at `(96, 0)`, the player picture begins at `(8, 40)`, and
 the six-row message region begins at `y = 96`.

@@ -18,6 +18,7 @@ struct AnimationTarget {
     float offset_y{};
     bool visible{};
     content::CoordinateSpace space{content::CoordinateSpace::native_canvas};
+    content::AnimationPalette palette{content::AnimationPalette::normal};
 };
 
 struct AnimationTween {

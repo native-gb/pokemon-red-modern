@@ -327,8 +327,14 @@ def resolved_transform(subanimation_type: int, enemy_turn: bool) -> int:
 
 
 def append_special_effect(
-    lines: list[str], effect: int, sound: int, enemy_turn: bool
-) -> None:
+    lines: list[str],
+    effect: int,
+    sound: int,
+    enemy_turn: bool,
+    screen_palette: str,
+    intern_visual,
+    unresolved_effects: set[str],
+) -> str:
     name = SPECIAL_EFFECT_NAMES[effect - FIRST_SPECIAL_EFFECT]
     actor = "defender" if enemy_turn else "attacker"
     toward_opponent = -24 if enemy_turn else 24
@@ -336,6 +342,82 @@ def append_special_effect(
     lines.append(f"    ; special_effect {name} id {effect:#04x} sound {sound}")
     if sound:
         lines.append(f"    signal imported_sound_{sound:03d}")
+    if name == "light_screen_palette":
+        lines.append("    set_palette battle_screen light")
+        return "light"
+    if name == "dark_screen_palette":
+        lines.append("    set_palette battle_screen dark")
+        return "dark"
+    if name == "darken_mon_palette":
+        lines.append(f"    set_palette {actor} darkened")
+        return screen_palette
+    if name == "reset_screen_palette":
+        lines.extend(
+            (
+                "    set_palette battle_screen normal",
+                f"    set_palette {actor} normal",
+            )
+        )
+        return "normal"
+    if name == "dark_screen_flash":
+        lines.extend(
+            (
+                "    set_palette battle_screen inverted",
+                "    wait 2",
+                "    set_palette battle_screen white",
+                "    wait 2",
+                f"    set_palette battle_screen {screen_palette}",
+            )
+        )
+        return screen_palette
+    if name == "flash_screen_long":
+        for delay in (2, 1, 1):
+            lines.extend(
+                (
+                    "    set_palette battle_screen dark",
+                    f"    wait {delay * 4}",
+                    "    set_palette battle_screen white",
+                    f"    wait {delay * 4}",
+                    f"    set_palette battle_screen {screen_palette}",
+                    f"    wait {delay * 4}",
+                )
+            )
+        return screen_palette
+    if name == "spiral_balls_inward":
+        coordinates = (
+            (0x38, 0x28), (0x40, 0x18), (0x50, 0x10), (0x60, 0x18),
+            (0x68, 0x28), (0x60, 0x38), (0x50, 0x40), (0x40, 0x38),
+            (0x40, 0x28), (0x46, 0x1E), (0x50, 0x18), (0x5B, 0x1E),
+            (0x60, 0x28), (0x5B, 0x32), (0x50, 0x38), (0x46, 0x32),
+            (0x48, 0x28), (0x50, 0x20), (0x58, 0x28), (0x50, 0x30),
+            (0x50, 0x28),
+        )
+        base_y = -40 if enemy_turn else 0
+        base_x = 80 if enemy_turn else 0
+        for frame in range(len(coordinates) - 2):
+            pieces = [
+                (x + base_x - 8, y + base_y - 16, 0, 73, 0)
+                for y, x in coordinates[frame : frame + 3]
+            ]
+            visual = intern_visual(pieces)
+            lines.extend(
+                (
+                    f"    spawn procedural_frame {visual}",
+                    "    set_position procedural_frame 0 0 native_canvas",
+                    "    wait 5",
+                    "    destroy procedural_frame",
+                )
+            )
+        lines.extend(
+            (
+                "    set_palette battle_screen inverted",
+                "    wait 2",
+                "    set_palette battle_screen white",
+                "    wait 2",
+                f"    set_palette battle_screen {screen_palette}",
+            )
+        )
+        return screen_palette
     if name == "delay_animation_10":
         lines.append("    wait 10")
     elif name == "reset_mon_position":
@@ -347,30 +429,17 @@ def append_special_effect(
                 f"    tween_offset {actor} 0 0 6 ease_out native_canvas",
             )
         )
-    elif name in ("blink_mon", "flash_mon_pic"):
-        lines.extend(
-            (
-                f"    hide {actor}",
-                "    wait 2",
-                f"    show {actor}",
-                "    wait 2",
-                f"    hide {actor}",
-                "    wait 2",
-                f"    show {actor}",
-            )
-        )
-    elif name in ("blink_enemy_mon", "flash_enemy_mon_pic"):
-        lines.extend(
-            (
-                "    hide defender",
-                "    wait 2",
-                "    show defender",
-                "    wait 2",
-                "    hide defender",
-                "    wait 2",
-                "    show defender",
-            )
-        )
+    elif name == "blink_mon":
+        for _ in range(6):
+            lines.extend((f"    hide {actor}", "    wait 5", f"    show {actor}", "    wait 5"))
+    elif name == "blink_enemy_mon":
+        for _ in range(6):
+            lines.extend(("    hide defender", "    wait 5", "    show defender", "    wait 5"))
+    elif name == "flash_mon_pic":
+        # Despite its disassembly label, this reloads the same species picture.
+        lines.append(f"    show {actor}")
+    elif name == "flash_enemy_mon_pic":
+        lines.append("    show defender")
     elif name == "bounce_up_and_down":
         lines.extend(
             (
@@ -405,7 +474,9 @@ def append_special_effect(
     elif name == "slide_mon_up":
         lines.append(f"    tween_offset {actor} 0 -16 8 linear native_canvas")
     else:
+        unresolved_effects.add(name)
         lines.extend((f"    signal special_{name}", "    wait 1"))
+    return screen_palette
 
 
 def emit_programs(
@@ -414,9 +485,10 @@ def emit_programs(
     subanimations: list[dict],
     frame_blocks: list[list[tuple[int, int, int, int]]],
     base_coordinates: list[tuple[int, int]],
-) -> list[tuple[str, list[tuple[int, int, int, int, int]]]]:
+) -> tuple[list[tuple[str, list[tuple[int, int, int, int, int]]]], set[str]]:
     visuals: list[tuple[str, list[tuple[int, int, int, int, int]]]] = []
     visual_ids: dict[tuple[tuple[int, int, int, int, int], ...], str] = {}
+    unresolved_effects: set[str] = set()
 
     def intern_visual(pieces: list[tuple[int, int, int, int, int]]) -> str:
         key = tuple(pieces)
@@ -440,13 +512,20 @@ def emit_programs(
         ]
         oam: list[tuple[int, int, int, int, int] | None] = [None] * 40
         active_visual = False
+        screen_palette = "normal"
         for command_index, command in enumerate(program["commands"]):
             if command["kind"] == "special":
                 if active_visual:
                     lines.append("    destroy imported_frame")
                     active_visual = False
-                append_special_effect(
-                    lines, command["effect"], command["sound"], enemy_turn
+                screen_palette = append_special_effect(
+                    lines,
+                    command["effect"],
+                    command["sound"],
+                    enemy_turn,
+                    screen_palette,
+                    intern_visual,
+                    unresolved_effects,
                 )
                 continue
 
@@ -502,7 +581,7 @@ def emit_programs(
         lines.append("    signal animation_finished")
         path = source_root / f"{program['id']:03d}_{program['name']}.sexpr"
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return visuals
+    return visuals, unresolved_effects
 
 
 def write_assets(
@@ -565,7 +644,7 @@ def main() -> int:
         source_root.mkdir(parents=True)
         compiled_root.mkdir(parents=True)
         reports_root.mkdir(parents=True)
-        visuals = emit_programs(
+        visuals, unresolved_effects = emit_programs(
             source_root, programs, subanimations, frame_blocks, base_coordinates
         )
         write_assets(compiled_root / "battle_animation_frames.bin", rom, visuals)
@@ -591,6 +670,8 @@ def main() -> int:
                 f"frame blocks: {len(frame_blocks)}\n"
                 f"base coordinates: {len(base_coordinates)}\n"
                 f"deduplicated visual frames: {len(visuals)}\n"
+                f"unresolved procedural effect types: {len(unresolved_effects)}\n"
+                + "".join(f"  {name}\n" for name in sorted(unresolved_effects))
             ),
             encoding="utf-8",
         )
