@@ -61,6 +61,23 @@ bool valid_instruction(const DamageFormulaInstruction& instruction) {
     return false;
 }
 
+bool valid_instruction(const CriticalHitInstruction& instruction) {
+    const auto& value = instruction.operands;
+    switch (instruction.opcode) {
+    case CriticalHitOpcode::base_speed_fraction:
+        return value[0] != 0U && value[1] != 0U;
+    case CriticalHitOpcode::focus_energy_ratio:
+    case CriticalHitOpcode::move_ratio:
+        return value[0] != 0U && value[1] != 0U && value[2] != 0U &&
+               value[3] != 0U;
+    case CriticalHitOpcode::rotate_random_left:
+        return value[0] < 8U;
+    case CriticalHitOpcode::compare_less:
+        return true;
+    }
+    return false;
+}
+
 std::uint16_t interaction_multiplier(const RuleCatalog& rules,
                                      std::uint8_t attacking,
                                      std::uint8_t defending) {
@@ -87,7 +104,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '1'}) {
+        magic != std::array{'P', 'B', 'R', '2'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -137,6 +154,68 @@ bool load_battle_rules(const std::filesystem::path& path,
         }
         loaded.damage_formulas.push_back(std::move(program));
     }
+
+    std::uint16_t critical_count = 0;
+    if (!read_u16(input, critical_count) || critical_count == 0U ||
+        critical_count > 64U ||
+        !read_u16(input, loaded.original_critical_hit_program) ||
+        loaded.original_critical_hit_program >= critical_count) {
+        error = "battle rule cache has an invalid critical-hit program index";
+        return false;
+    }
+    loaded.critical_hit_programs.reserve(critical_count);
+    keys.clear();
+    for (std::uint16_t index = 0; index < critical_count; ++index) {
+        CriticalHitProgram program;
+        std::uint16_t move_count = 0;
+        std::uint16_t instruction_count = 0;
+        if (!read_string(input, program.key) || !keys.insert(program.key).second ||
+            !read_u16(input, move_count) || move_count > 165U) {
+            error = "battle rule cache has an invalid critical-hit program";
+            return false;
+        }
+        std::set<std::uint8_t> moves;
+        program.high_critical_moves.reserve(move_count);
+        for (std::uint16_t move_index = 0; move_index < move_count;
+             ++move_index) {
+            std::uint8_t move = 0;
+            if (!read_u8(input, move) || move == 0U || move > 165U ||
+                !moves.insert(move).second) {
+                error = "battle rule cache has invalid high-critical moves";
+                return false;
+            }
+            program.high_critical_moves.push_back(move);
+        }
+        if (!read_u16(input, instruction_count) || instruction_count == 0U ||
+            instruction_count > 64U) {
+            error = "battle rule cache has invalid critical-hit instructions";
+            return false;
+        }
+        program.instructions.reserve(instruction_count);
+        for (std::uint16_t instruction_index = 0;
+             instruction_index < instruction_count; ++instruction_index) {
+            CriticalHitInstruction instruction;
+            std::uint8_t opcode = 0;
+            if (!read_u8(input, opcode) ||
+                opcode > static_cast<std::uint8_t>(
+                             CriticalHitOpcode::compare_less)) {
+                error = "battle rule cache has an unknown critical-hit opcode";
+                return false;
+            }
+            instruction.opcode = static_cast<CriticalHitOpcode>(opcode);
+            for (std::uint16_t& operand : instruction.operands)
+                if (!read_u16(input, operand)) {
+                    error = "battle rule cache has truncated critical-hit operands";
+                    return false;
+                }
+            if (!valid_instruction(instruction)) {
+                error = "battle rule cache has invalid critical-hit operands";
+                return false;
+            }
+            program.instructions.push_back(instruction);
+        }
+        loaded.critical_hit_programs.push_back(std::move(program));
+    }
     if (input.peek() != std::char_traits<char>::eof()) {
         error = "battle rule cache contains trailing data";
         return false;
@@ -151,6 +230,13 @@ const DamageFormulaProgram* find_damage_formula(
     const BattleRuleCatalog& rules, std::uint16_t id) {
     return id < rules.damage_formulas.size() ? &rules.damage_formulas[id]
                                              : nullptr;
+}
+
+const CriticalHitProgram* find_critical_hit_program(
+    const BattleRuleCatalog& rules, std::uint16_t id) {
+    return id < rules.critical_hit_programs.size()
+               ? &rules.critical_hit_programs[id]
+               : nullptr;
 }
 
 bool execute_damage_formula(const RuleCatalog& pokemon_rules,
@@ -248,6 +334,75 @@ bool execute_damage_formula(const RuleCatalog& pokemon_rules,
         }
     }
     result.damage = static_cast<std::uint16_t>(damage);
+    error.clear();
+    return true;
+}
+
+bool execute_critical_hit_program(const CriticalHitProgram& program,
+                                  const CriticalHitInput& input,
+                                  std::span<const std::uint8_t> random_bytes,
+                                  CriticalHitResult& result,
+                                  std::string& error) {
+    result = {};
+    if (program.instructions.empty() || input.move_id == 0U ||
+        input.base_speed == 0U) {
+        error = "critical-hit program received invalid inputs";
+        return false;
+    }
+    if (input.move_power == 0U) {
+        error.clear();
+        return true;
+    }
+
+    std::uint64_t threshold = input.base_speed;
+    std::uint8_t random = 0U;
+    bool random_loaded = false;
+    const bool high_critical =
+        std::find(program.high_critical_moves.begin(),
+                  program.high_critical_moves.end(),
+                  input.move_id) != program.high_critical_moves.end();
+    for (const CriticalHitInstruction& instruction : program.instructions) {
+        const auto& value = instruction.operands;
+        switch (instruction.opcode) {
+        case CriticalHitOpcode::base_speed_fraction:
+            threshold = threshold * value[0] / value[1];
+            break;
+        case CriticalHitOpcode::focus_energy_ratio:
+            threshold =
+                input.focused
+                    ? threshold * value[2] / value[3]
+                    : threshold * value[0] / value[1];
+            threshold = std::min<std::uint64_t>(threshold, 255U);
+            break;
+        case CriticalHitOpcode::move_ratio:
+            threshold =
+                high_critical
+                    ? threshold * value[2] / value[3]
+                    : threshold * value[0] / value[1];
+            threshold = std::min<std::uint64_t>(threshold, 255U);
+            break;
+        case CriticalHitOpcode::rotate_random_left:
+            if (result.random_bytes_consumed >= random_bytes.size()) {
+                error =
+                    "critical-hit program exhausted its deterministic random stream";
+                return false;
+            }
+            random = random_bytes[result.random_bytes_consumed++];
+            for (std::uint16_t rotation = 0; rotation < value[0]; ++rotation)
+                random = static_cast<std::uint8_t>((random << 1U) |
+                                                   (random >> 7U));
+            random_loaded = true;
+            break;
+        case CriticalHitOpcode::compare_less:
+            if (!random_loaded) {
+                error = "critical-hit program compared before loading random";
+                return false;
+            }
+            result.critical = random < threshold;
+            break;
+        }
+    }
+    result.threshold = static_cast<std::uint16_t>(threshold);
     error.clear();
     return true;
 }

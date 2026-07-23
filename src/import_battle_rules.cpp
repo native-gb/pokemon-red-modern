@@ -37,6 +37,12 @@ DamageFormulaInstruction instruction(
     return {.opcode = opcode, .operands = {a, b, c, d}};
 }
 
+CriticalHitInstruction critical_instruction(
+    CriticalHitOpcode opcode, std::uint16_t a = 0U, std::uint16_t b = 0U,
+    std::uint16_t c = 0U, std::uint16_t d = 0U) {
+    return {.opcode = opcode, .operands = {a, b, c, d}};
+}
+
 DamageFormulaProgram lift_original_damage_formula() {
     DamageFormulaProgram program;
     program.key = "gen_1_original_damage";
@@ -53,6 +59,31 @@ DamageFormulaProgram lift_original_damage_formula() {
         instruction(DamageFormulaOpcode::random_factor, 217U, 255U, 255U, 1U),
     };
     return program;
+}
+
+bool lift_original_critical_hit_program(
+    std::span<const std::uint8_t> rom, CriticalHitProgram& program,
+    std::string& error) {
+    constexpr std::size_t table_offset = 0x03E08EU;
+    constexpr std::size_t move_count = 4U;
+    if (table_offset + move_count >= rom.size() ||
+        rom[table_offset + move_count] != 0xFFU) {
+        error = "high-critical move table is outside its verified source range";
+        return false;
+    }
+    program.key = "gen_1_original_critical_hits";
+    program.high_critical_moves.assign(
+        rom.begin() + static_cast<std::ptrdiff_t>(table_offset),
+        rom.begin() + static_cast<std::ptrdiff_t>(table_offset + move_count));
+    program.instructions = {
+        critical_instruction(CriticalHitOpcode::base_speed_fraction, 1U, 2U),
+        critical_instruction(CriticalHitOpcode::focus_energy_ratio, 2U, 1U,
+                             1U, 2U),
+        critical_instruction(CriticalHitOpcode::move_ratio, 1U, 2U, 4U, 1U),
+        critical_instruction(CriticalHitOpcode::rotate_random_left, 3U),
+        critical_instruction(CriticalHitOpcode::compare_less),
+    };
+    return true;
 }
 
 void emit_instruction(std::ostringstream& source,
@@ -105,6 +136,7 @@ void emit_instruction(std::ostringstream& source,
 }
 
 void emit_source(const DamageFormulaProgram& program,
+                 const CriticalHitProgram& critical,
                  BattleRuleImport& result) {
     std::ostringstream source;
     source << "; Semantic lift from the verified cartridge's damage routines.\n"
@@ -116,13 +148,34 @@ void emit_source(const DamageFormulaProgram& program,
     add_text_file(result, "source/battle_effects/damage.sexpr",
                   source.str());
 
+    std::ostringstream critical_source;
+    critical_source
+        << "; Semantic lift from 0x03e023..0x03e093, including the\n"
+        << "; cartridge's Focus Energy ratio and high-critical move table.\n\n"
+        << "critical_hit_program " << critical.key << '\n'
+        << "    high_critical_moves";
+    for (const std::uint8_t move : critical.high_critical_moves)
+        critical_source << ' ' << static_cast<unsigned>(move);
+    critical_source
+        << "\n    base_speed_fraction 1 2\n"
+        << "    focus_energy_ratio\n"
+        << "        ordinary 2 1\n"
+        << "        focused 1 2\n"
+        << "    move_ratio\n"
+        << "        ordinary 1 2\n"
+        << "        high_critical 4 1\n"
+        << "    rotate_random_left 3\n"
+        << "    compare_less\n";
+    add_text_file(result, "source/battle_effects/critical_hits.sexpr",
+                  critical_source.str());
+
     std::ostringstream report;
     report << "Pokemon Red semantic battle-rule import\n"
            << "damage_formula_programs 1\n"
            << "damage_formula_instructions " << program.instructions.size()
            << '\n'
            << "capture_formula_programs 0\n"
-           << "critical_hit_programs 0\n"
+           << "critical_hit_programs 1\n"
            << "move_effect_programs 0\n"
            << "status_programs 0\n"
            << "coverage_note ordinary damage is executable; remaining battle "
@@ -132,14 +185,30 @@ void emit_source(const DamageFormulaProgram& program,
 }
 
 void emit_cache(const DamageFormulaProgram& program,
+                const CriticalHitProgram& critical,
                 BattleRuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '1'};
+    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '2'};
     write_u16(bytes, 1U);
     write_u16(bytes, 0U);
     write_string(bytes, program.key);
     write_u16(bytes,
               static_cast<std::uint16_t>(program.instructions.size()));
     for (const DamageFormulaInstruction& value : program.instructions) {
+        bytes.push_back(static_cast<std::uint8_t>(value.opcode));
+        for (const std::uint16_t operand : value.operands)
+            write_u16(bytes, operand);
+    }
+
+    write_u16(bytes, 1U);
+    write_u16(bytes, 0U);
+    write_string(bytes, critical.key);
+    write_u16(bytes,
+              static_cast<std::uint16_t>(critical.high_critical_moves.size()));
+    bytes.insert(bytes.end(), critical.high_critical_moves.begin(),
+                 critical.high_critical_moves.end());
+    write_u16(bytes,
+              static_cast<std::uint16_t>(critical.instructions.size()));
+    for (const CriticalHitInstruction& value : critical.instructions) {
         bytes.push_back(static_cast<std::uint8_t>(value.opcode));
         for (const std::uint16_t operand : value.operands)
             write_u16(bytes, operand);
@@ -162,9 +231,12 @@ bool decode_battle_rule_import(std::span<const std::uint8_t> rom,
     }
 
     const DamageFormulaProgram program = lift_original_damage_formula();
-    emit_source(program, result);
-    emit_cache(program, result);
+    CriticalHitProgram critical;
+    if (!lift_original_critical_hit_program(rom, critical, error)) return false;
+    emit_source(program, critical, result);
+    emit_cache(program, critical, result);
     result.damage_formulas = 1U;
+    result.critical_hit_programs = 1U;
     error.clear();
     return true;
 }

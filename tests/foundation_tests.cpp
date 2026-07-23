@@ -584,6 +584,67 @@ void test_local_rule_cache(TestState& state) {
               "imported ordinary damage program executes STAB, types, and "
               "rejection-sampled variance");
     }
+
+    const pokered::CriticalHitProgram* critical =
+        pokered::find_critical_hit_program(
+            battle_rules, battle_rules.original_critical_hit_program);
+    check(state,
+          critical != nullptr &&
+              critical->key == "gen_1_original_critical_hits" &&
+              critical->high_critical_moves ==
+                  std::vector<std::uint8_t>{2U, 75U, 152U, 163U} &&
+              critical->instructions.size() == 5U,
+          "original critical-hit program and move table resolve by imported "
+          "ruleset binding");
+    if (critical != nullptr) {
+        constexpr std::array<std::uint8_t, 1> low_roll{0x00U};
+        pokered::CriticalHitResult ordinary;
+        check(state,
+              pokered::execute_critical_hit_program(
+                  *critical,
+                  {
+                      .base_speed = 100U,
+                      .move_id = 33U,
+                      .move_power = 35U,
+                      .focused = false,
+                  },
+                  low_roll, ordinary, error) &&
+                  ordinary.threshold == 50U &&
+                  ordinary.random_bytes_consumed == 1U &&
+                  ordinary.critical,
+              "imported critical-hit program executes the ordinary rate");
+
+        pokered::CriticalHitResult focused;
+        check(state,
+              pokered::execute_critical_hit_program(
+                  *critical,
+                  {
+                      .base_speed = 100U,
+                      .move_id = 33U,
+                      .move_power = 35U,
+                      .focused = true,
+                  },
+                  low_roll, focused, error) &&
+                  focused.threshold == 12U && focused.critical,
+              "original compatibility profile preserves the Focus Energy "
+              "critical-rate defect");
+
+        constexpr std::array<std::uint8_t, 1> high_roll{0xFFU};
+        pokered::CriticalHitResult high_rate;
+        check(state,
+              pokered::execute_critical_hit_program(
+                  *critical,
+                  {
+                      .base_speed = 100U,
+                      .move_id = 2U,
+                      .move_power = 50U,
+                      .focused = false,
+                  },
+                  high_roll, high_rate, error) &&
+                  high_rate.threshold == 255U && !high_rate.critical,
+              "high-critical move rate saturates at the cartridge threshold "
+              "and keeps strict comparison");
+    }
 }
 
 void test_local_boot_cache(TestState& state) {

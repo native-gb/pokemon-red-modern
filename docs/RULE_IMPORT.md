@@ -71,8 +71,22 @@ source/battle_effects/damage.sexpr
 ```
 
 The executor is generic: operation ordering and constants come from
-`battle_rules.bin`, while type pairs come from `pokemon_rules.bin`. The import
-report separately holds capture, critical-hit, status, and move-effect program
+`battle_rules.bin`, while type pairs come from `pokemon_rules.bin`.
+
+The original critical-hit path is executable as a second imported semantic
+program. Its readable source is:
+
+```text
+source/battle_effects/critical_hits.sexpr
+```
+
+The importer reads the cartridge's complete high-critical move table and
+lowers the base-Speed ratio, Focus Energy branches, ordinary/high-critical
+move ratios, random-byte rotation, and strict threshold comparison. This
+preserves the original Focus Energy defect through imported program data
+without a Red move-ID switch or formula constants in the engine.
+
+The import report separately keeps capture, status, and move-effect program
 counts at zero until those domains are genuinely executable.
 
 ## Engine boundary
