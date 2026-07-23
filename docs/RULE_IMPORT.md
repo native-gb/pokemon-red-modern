@@ -21,6 +21,7 @@ The corresponding runtime cache is:
 
 ```text
 data/runtime/imports/pokemon_red_us_rev_0/compiled/pokemon_rules.bin
+data/runtime/imports/pokemon_red_us_rev_0/compiled/battle_rules.bin
 ```
 
 Normal gameplay loads that cache and never reads the ROM or reparses the
@@ -58,6 +59,21 @@ Generic runtime queries now execute directly against the validated cache:
 These functions contain no species, move, type, machine, or evolution names.
 They are the table-backed progression layer beneath future party, battle, and
 menu owners. They do not make the formula/effect domains below complete.
+
+The first semantic formula program is also executable. The importer lifts the
+ordinary damage path into eight typed instructions covering Explosion defense,
+wide-stat scaling, critical level scaling, base damage, caps, STAB, sequential
+dual-type effectiveness, and the cartridge's rejection-sampled 217–255 damage
+variance. Its readable source is:
+
+```text
+source/battle_effects/damage.sexpr
+```
+
+The executor is generic: operation ordering and constants come from
+`battle_rules.bin`, while type pairs come from `pokemon_rules.bin`. The import
+report separately holds capture, critical-hit, status, and move-effect program
+counts at zero until those domains are genuinely executable.
 
 ## Engine boundary
 

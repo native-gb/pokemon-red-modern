@@ -1,0 +1,255 @@
+#include "battle_rules.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <fstream>
+#include <limits>
+#include <set>
+#include <string>
+#include <utility>
+
+namespace pokered {
+namespace {
+
+bool read_u8(std::istream& input, std::uint8_t& result) {
+    char value = 0;
+    if (!input.get(value)) return false;
+    result = static_cast<std::uint8_t>(static_cast<unsigned char>(value));
+    return true;
+}
+
+bool read_u16(std::istream& input, std::uint16_t& result) {
+    std::uint8_t low = 0;
+    std::uint8_t high = 0;
+    if (!read_u8(input, low) || !read_u8(input, high)) return false;
+    result = static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(low) |
+        static_cast<std::uint16_t>(static_cast<std::uint16_t>(high) << 8U));
+    return true;
+}
+
+bool read_string(std::istream& input, std::string& result) {
+    std::uint16_t size = 0;
+    if (!read_u16(input, size) || size == 0U || size > 256U) return false;
+    result.resize(size);
+    return static_cast<bool>(
+        input.read(result.data(), static_cast<std::streamsize>(result.size())));
+}
+
+bool valid_instruction(const DamageFormulaInstruction& instruction) {
+    const auto& value = instruction.operands;
+    switch (instruction.opcode) {
+    case DamageFormulaOpcode::halve_defense_for_effect:
+        return value[0] <= 0xFFU && value[1] != 0U && value[2] != 0U;
+    case DamageFormulaOpcode::scale_wide_stats:
+        return value[0] != 0U && value[1] != 0U && value[2] != 0U;
+    case DamageFormulaOpcode::multiply_level_if_critical:
+        return value[0] != 0U;
+    case DamageFormulaOpcode::calculate_base_damage:
+        return value[0] != 0U && value[1] != 0U && value[3] != 0U;
+    case DamageFormulaOpcode::cap_and_add:
+        return value[2] != 0U && value[0] <= value[2] && value[1] <= value[2];
+    case DamageFormulaOpcode::same_type_bonus:
+        return value[0] != 0U && value[1] != 0U;
+    case DamageFormulaOpcode::type_effectiveness:
+        return true;
+    case DamageFormulaOpcode::random_factor:
+        return value[0] <= value[1] && value[1] <= 0xFFU &&
+               value[2] != 0U && value[3] < 8U;
+    }
+    return false;
+}
+
+std::uint16_t interaction_multiplier(const RuleCatalog& rules,
+                                     std::uint8_t attacking,
+                                     std::uint8_t defending) {
+    const auto found = std::find_if(
+        rules.type_interactions.begin(), rules.type_interactions.end(),
+        [&](const TypeInteractionRule& interaction) {
+            return interaction.attacking_type == attacking &&
+                   interaction.defending_type == defending;
+        });
+    return found == rules.type_interactions.end() ? 10U
+                                                  : found->multiplier_tenths;
+}
+
+std::uint8_t rotate_right(std::uint8_t value, std::uint16_t count) {
+    for (std::uint16_t index = 0; index < count; ++index)
+        value = static_cast<std::uint8_t>((value >> 1U) | (value << 7U));
+    return value;
+}
+
+} // namespace
+
+bool load_battle_rules(const std::filesystem::path& path,
+                       BattleRuleCatalog& result, std::string& error) {
+    std::ifstream input(path, std::ios::binary);
+    std::array<char, 4> magic{};
+    if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
+        magic != std::array{'P', 'B', 'R', '1'}) {
+        error = "battle rule cache is missing or has an invalid header";
+        return false;
+    }
+
+    BattleRuleCatalog loaded;
+    loaded.source = path;
+    std::uint16_t count = 0;
+    if (!read_u16(input, count) || count == 0U || count > 64U ||
+        !read_u16(input, loaded.original_damage_formula) ||
+        loaded.original_damage_formula >= count) {
+        error = "battle rule cache has an invalid formula index";
+        return false;
+    }
+    loaded.damage_formulas.reserve(count);
+    std::set<std::string> keys;
+    for (std::uint16_t index = 0; index < count; ++index) {
+        DamageFormulaProgram program;
+        std::uint16_t instruction_count = 0;
+        if (!read_string(input, program.key) || !keys.insert(program.key).second ||
+            !read_u16(input, instruction_count) || instruction_count == 0U ||
+            instruction_count > 128U) {
+            error = "battle rule cache has an invalid damage formula";
+            return false;
+        }
+        program.instructions.reserve(instruction_count);
+        for (std::uint16_t instruction_index = 0;
+             instruction_index < instruction_count; ++instruction_index) {
+            DamageFormulaInstruction instruction;
+            std::uint8_t opcode = 0;
+            if (!read_u8(input, opcode) ||
+                opcode > static_cast<std::uint8_t>(
+                             DamageFormulaOpcode::random_factor)) {
+                error = "battle rule cache has an unknown formula opcode";
+                return false;
+            }
+            instruction.opcode = static_cast<DamageFormulaOpcode>(opcode);
+            for (std::uint16_t& operand : instruction.operands)
+                if (!read_u16(input, operand)) {
+                    error = "battle rule cache has truncated formula operands";
+                    return false;
+                }
+            if (!valid_instruction(instruction)) {
+                error = "battle rule cache has invalid formula operands";
+                return false;
+            }
+            program.instructions.push_back(instruction);
+        }
+        loaded.damage_formulas.push_back(std::move(program));
+    }
+    if (input.peek() != std::char_traits<char>::eof()) {
+        error = "battle rule cache contains trailing data";
+        return false;
+    }
+    loaded.loaded = true;
+    result = std::move(loaded);
+    error.clear();
+    return true;
+}
+
+const DamageFormulaProgram* find_damage_formula(
+    const BattleRuleCatalog& rules, std::uint16_t id) {
+    return id < rules.damage_formulas.size() ? &rules.damage_formulas[id]
+                                             : nullptr;
+}
+
+bool execute_damage_formula(const RuleCatalog& pokemon_rules,
+                            const DamageFormulaProgram& program,
+                            const DamageFormulaInput& input,
+                            std::span<const std::uint8_t> random_bytes,
+                            DamageFormulaResult& result, std::string& error) {
+    result = {};
+    if (!pokemon_rules.loaded || program.instructions.empty() ||
+        input.level == 0U || find_type(pokemon_rules, input.move_type) == nullptr ||
+        find_type(pokemon_rules, input.attacker_types[0]) == nullptr ||
+        find_type(pokemon_rules, input.attacker_types[1]) == nullptr ||
+        find_type(pokemon_rules, input.defender_types[0]) == nullptr ||
+        find_type(pokemon_rules, input.defender_types[1]) == nullptr) {
+        error = "damage formula received invalid catalog or battler inputs";
+        return false;
+    }
+    if (input.power == 0U) {
+        error.clear();
+        return true;
+    }
+
+    std::uint64_t level = input.level;
+    std::uint64_t attack = input.attack;
+    std::uint64_t defense = input.defense;
+    std::uint64_t damage = 0U;
+    for (const DamageFormulaInstruction& instruction : program.instructions) {
+        const auto& value = instruction.operands;
+        switch (instruction.opcode) {
+        case DamageFormulaOpcode::halve_defense_for_effect:
+            if (input.move_effect == value[0])
+                defense = std::max<std::uint64_t>(
+                    defense / value[1], value[2]);
+            break;
+        case DamageFormulaOpcode::scale_wide_stats:
+            if (attack >= value[0] || defense >= value[0]) {
+                attack /= value[1];
+                defense /= value[1];
+                attack = std::max<std::uint64_t>(attack, value[2]);
+            }
+            break;
+        case DamageFormulaOpcode::multiply_level_if_critical:
+            if (input.critical) level *= value[0];
+            break;
+        case DamageFormulaOpcode::calculate_base_damage:
+            if (defense == 0U) {
+                error = "damage formula reached a zero defense divisor";
+                return false;
+            }
+            damage = (level * value[0] / value[1]) + value[2];
+            damage = damage * input.power * attack / defense;
+            damage /= value[3];
+            break;
+        case DamageFormulaOpcode::cap_and_add:
+            damage = std::min<std::uint64_t>(damage, value[0]);
+            damage = std::min<std::uint64_t>(damage + value[1], value[2]);
+            break;
+        case DamageFormulaOpcode::same_type_bonus:
+            if (input.move_type == input.attacker_types[0] ||
+                input.move_type == input.attacker_types[1])
+                damage = damage * value[0] / value[1];
+            break;
+        case DamageFormulaOpcode::type_effectiveness:
+            for (std::size_t slot = 0; slot < input.defender_types.size();
+                 ++slot) {
+                if (slot != 0U &&
+                    input.defender_types[slot] == input.defender_types[0])
+                    continue;
+                damage =
+                    damage * interaction_multiplier(
+                                 pokemon_rules, input.move_type,
+                                 input.defender_types[slot]) /
+                    10U;
+            }
+            if (damage == 0U) result.immune = true;
+            break;
+        case DamageFormulaOpcode::random_factor:
+            if (damage < 2U) break;
+            while (true) {
+                if (result.random_bytes_consumed >= random_bytes.size()) {
+                    error = "damage formula exhausted its deterministic random stream";
+                    return false;
+                }
+                const std::uint8_t random = rotate_right(
+                    random_bytes[result.random_bytes_consumed++], value[3]);
+                if (random < value[0] || random > value[1]) continue;
+                damage = damage * random / value[2];
+                break;
+            }
+            break;
+        }
+        if (damage > std::numeric_limits<std::uint16_t>::max()) {
+            error = "damage formula exceeded its 16-bit result domain";
+            return false;
+        }
+    }
+    result.damage = static_cast<std::uint16_t>(damage);
+    error.clear();
+    return true;
+}
+
+} // namespace pokered

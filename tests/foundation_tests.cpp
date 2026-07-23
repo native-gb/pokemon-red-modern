@@ -1,5 +1,6 @@
 #include "animations.hpp"
 #include "battle_animation_lab.hpp"
+#include "battle_rules.hpp"
 #include "boot.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
@@ -545,6 +546,44 @@ void test_local_rule_cache(TestState& state) {
               trade_evolution != nullptr &&
               trade_evolution->target_species_dex == 65U,
           "evolution executor resolves level, item, and trade methods");
+
+    const std::filesystem::path battle_path =
+        path.parent_path() / "battle_rules.bin";
+    pokered::BattleRuleCatalog battle_rules;
+    check(state,
+          pokered::load_battle_rules(battle_path, battle_rules, error),
+          "semantic battle rule cache loads");
+    const pokered::DamageFormulaProgram* damage =
+        pokered::find_damage_formula(
+            battle_rules, battle_rules.original_damage_formula);
+    check(state,
+          damage != nullptr && damage->key == "gen_1_original_damage" &&
+              damage->instructions.size() == 8U,
+          "original damage formula resolves by imported ruleset binding");
+    if (damage != nullptr) {
+        constexpr std::array<std::uint8_t, 2> random{0x00U, 0xFFU};
+        pokered::DamageFormulaResult damage_result;
+        check(state,
+              pokered::execute_damage_formula(
+                  rules, *damage,
+                  {
+                      .level = 5U,
+                      .power = 40U,
+                      .move_type = 20U,
+                      .move_effect = 0U,
+                      .attack = 50U,
+                      .defense = 50U,
+                      .attacker_types = {20U, 20U},
+                      .defender_types = {22U, 3U},
+                      .critical = false,
+                  },
+                  random, damage_result, error) &&
+                  damage_result.damage == 14U &&
+                  damage_result.random_bytes_consumed == 2U &&
+                  !damage_result.immune,
+              "imported ordinary damage program executes STAB, types, and "
+              "rejection-sampled variance");
+    }
 }
 
 void test_local_boot_cache(TestState& state) {

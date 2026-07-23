@@ -87,12 +87,14 @@ data/runtime/imports/pokemon_red_us_rev_0/
         ui.sexpr
         credits.sexpr
     reports/
+        battle_rule_import_summary.txt
         boot_import_summary.txt
         completeness.txt
         unresolved.txt
         source_ranges.txt
         index_summary.txt
     compiled/
+        battle_rules.bin
         boot_content.bin
         world_maps.bin
         world_interactions.bin
@@ -111,11 +113,13 @@ data/runtime/imports/pokemon_red_us_rev_0/
 ```
 
 The exact chunk format can change without changing the readable source syntax.
-The current vertical slice loads `boot_content.bin`, `world_maps.bin`, and
-`world_interactions.bin` directly. `boot_content.bin` contains normalized boot
-graphics, layouts, text programs, title timing tables, and initial-placement
-content. `world_interactions.bin` contains typed map-local interaction programs
-and owner bindings. Normal startup does not parse the readable `.sexpr` files.
+The current vertical slice loads `battle_rules.bin`, `boot_content.bin`,
+`world_maps.bin`, and `world_interactions.bin` directly. `battle_rules.bin`
+contains validated semantic formula programs, initially the ordinary damage
+program. `boot_content.bin` contains normalized boot graphics, layouts, text
+programs, title timing tables, and initial-placement content.
+`world_interactions.bin` contains typed map-local interaction programs and
+owner bindings. Normal startup does not parse the readable `.sexpr` files.
 
 ## Readable generated source
 

@@ -1,5 +1,6 @@
 #include "import_battle_animations.hpp"
 #include "import_battle_animations_io.hpp"
+#include "import_battle_rules.hpp"
 #include "import_boot.hpp"
 #include "import_maps.hpp"
 #include "import_pictures.hpp"
@@ -44,6 +45,7 @@ int main(int argc, char** argv) {
     }
 
     pokered::import::BattleAnimationImport imported;
+    pokered::import::BattleRuleImport battle_rules;
     pokered::import::BootImport boot;
     pokered::import::MapImport maps;
     pokered::import::PictureImport pictures;
@@ -51,6 +53,7 @@ int main(int argc, char** argv) {
     pokered::import::ScriptImport scripts;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
+        !pokered::import::decode_battle_rule_import(rom, battle_rules, error) ||
         !pokered::import::decode_boot_import(rom, boot, error) ||
         !pokered::import::decode_picture_import(rom, pictures, error) ||
         !pokered::import::decode_map_import(rom, maps, error) ||
@@ -61,6 +64,10 @@ int main(int argc, char** argv) {
     }
     imported.files.insert(imported.files.end(), std::make_move_iterator(boot.files.begin()),
                           std::make_move_iterator(boot.files.end()));
+    imported.files.insert(
+        imported.files.end(),
+        std::make_move_iterator(battle_rules.files.begin()),
+        std::make_move_iterator(battle_rules.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(pictures.files.begin()),
                           std::make_move_iterator(pictures.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(maps.files.begin()),
@@ -78,6 +85,9 @@ int main(int argc, char** argv) {
     }
     std::ostringstream domain_manifest;
     domain_manifest << "picture_importer_version 1\n"
+                    << "battle_rule_importer_version 1\n"
+                    << "damage_formula_programs "
+                    << battle_rules.damage_formulas << '\n'
                     << "boot_importer_version 1\n"
                     << "boot_images " << boot.images << '\n'
                     << "boot_title_species " << boot.title_species << '\n'
@@ -124,6 +134,10 @@ int main(int argc, char** argv) {
               << boot.title_species << " title species, and " << boot.text_programs
               << " Oak text programs\n";
     std::cout << "Boot cache: " << output_root / "compiled" / "boot_content.bin" << '\n';
+    std::cout << "Imported " << battle_rules.damage_formulas
+              << " semantic damage formula\n";
+    std::cout << "Battle rule cache: "
+              << output_root / "compiled" / "battle_rules.bin" << '\n';
     std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"
               << '\n';
     std::cout << "Frame assets: " << output_root / "compiled" / "battle_animation_frames.bin"

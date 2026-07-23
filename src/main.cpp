@@ -1,4 +1,5 @@
 #include "battle_animation_lab.hpp"
+#include "battle_rules.hpp"
 #include "boot.hpp"
 #include "catalog.hpp"
 #include "clocks.hpp"
@@ -112,6 +113,7 @@ int main(int argc, char** argv) {
 
     pokered::WorldState world;
     pokered::RuleCatalog rules;
+    pokered::BattleRuleCatalog battle_rules;
     pokered::InteractionCatalog interactions;
     std::string map_error;
     const std::filesystem::path map_cache =
@@ -128,10 +130,18 @@ int main(int argc, char** argv) {
     std::string rule_error;
     if (!pokered::load_rules(rule_cache, rules, rule_error))
         std::fprintf(stderr, "%s\n", rule_error.c_str());
+    const std::filesystem::path battle_rule_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" /
+        "battle_rules.bin";
+    std::string battle_rule_error;
+    if (!pokered::load_battle_rules(battle_rule_cache, battle_rules,
+                                    battle_rule_error))
+        std::fprintf(stderr, "%s\n", battle_rule_error.c_str());
     if (world.loaded && interactions.loaded &&
         !pokered::initialize_world_runtime(world, interactions, interaction_error))
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
-    if (world.loaded && interactions.loaded && rules.loaded && boot_content.loaded) {
+    if (world.loaded && interactions.loaded && rules.loaded &&
+        battle_rules.loaded && boot_content.loaded) {
         catalog.state = pokered::content::PackState::partial;
         catalog.campaign = "Pokemon Red";
         catalog.source = "Compiled local campaign pack";

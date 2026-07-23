@@ -67,6 +67,7 @@ if(POKERED_MODERN_BUILD_IMPORTER)
         src/import_battle_animations.cpp
         src/import_battle_animations_io.cpp
         src/import_battle_animations_main.cpp
+        src/import_battle_rules.cpp
         src/import_boot.cpp
         src/import_maps.cpp
         src/import_pictures.cpp
@@ -83,6 +84,7 @@ endif()
 add_executable(native-gb-pokemon-red-modern
     src/animations.cpp
     src/battle_animation_lab.cpp
+    src/battle_rules.cpp
     src/battle_ui.cpp
     src/boot.cpp
     src/catalog.cpp
@@ -126,6 +128,7 @@ if(BUILD_TESTING)
         tests/foundation_tests.cpp
         src/animations.cpp
         src/battle_animation_lab.cpp
+        src/battle_rules.cpp
         src/battle_ui.cpp
         src/boot.cpp
         src/catalog.cpp
