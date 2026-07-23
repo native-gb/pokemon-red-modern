@@ -13,6 +13,8 @@ namespace pokered::import {
 struct MapImport {
     std::vector<GeneratedFile> files;
     std::size_t maps{};
+    std::size_t world_spaces{};
+    std::size_t unused_map_slots{};
     std::size_t tilesets{};
     std::size_t sprites{};
     std::size_t warps{};

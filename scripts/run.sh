@@ -20,7 +20,7 @@ world_cache="$import_root/compiled/world_maps.bin"
 interaction_cache="$import_root/compiled/world_interactions.bin"
 world_magic="$(head -c 4 "$world_cache" 2>/dev/null || true)"
 interaction_magic="$(head -c 4 "$interaction_cache" 2>/dev/null || true)"
-if [[ "$world_magic" != "PMV8" || "$interaction_magic" != "PWI1" ]]; then
+if [[ "$world_magic" != "PMV9" || "$interaction_magic" != "PWI1" ]]; then
     rom="$repo_root/../native-gb-pokemon-red/roms/pokemon_red.gb"
     if [[ ! -f "$rom" ]]; then
         echo "Imported runtime data is stale and the canonical ROM is missing: $rom" >&2

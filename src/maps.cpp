@@ -143,6 +143,41 @@ bool read_sprites(std::istream& input, WorldState& world, std::string& error) {
     return true;
 }
 
+bool read_world_spaces(std::istream& input, WorldState& world, std::string& error) {
+    std::uint16_t count = 0;
+    if (!read_u16(input, count) || count == 0 || count > 226) {
+        error = "world map cache has an invalid world-space count";
+        return false;
+    }
+    world.spaces.reserve(count);
+    for (std::uint16_t index = 0; index < count; ++index) {
+        WorldSpace space;
+        std::uint8_t key_size = 0;
+        std::uint8_t outdoor = 0;
+        if (!read_u16(input, space.id) || space.id != index || !read_u8(input, key_size) ||
+            key_size == 0 || key_size > 63) {
+            error = "world map cache has an invalid world-space record";
+            return false;
+        }
+        space.key.resize(key_size);
+        if (!input.read(space.key.data(), static_cast<std::streamsize>(space.key.size())) ||
+            !read_u8(input, outdoor) || outdoor > 1) {
+            error = "world map cache has a truncated world-space record";
+            return false;
+        }
+        space.outdoor = outdoor != 0;
+        const auto duplicate =
+            std::find_if(world.spaces.begin(), world.spaces.end(),
+                         [&](const WorldSpace& value) { return value.key == space.key; });
+        if (duplicate != world.spaces.end()) {
+            error = "world map cache repeats a world-space key";
+            return false;
+        }
+        world.spaces.push_back(std::move(space));
+    }
+    return true;
+}
+
 bool read_map(std::istream& input, const WorldState& world, WorldMap& map, std::string& error) {
     std::uint8_t key_size = 0;
     std::uint8_t name_size = 0;
@@ -164,7 +199,8 @@ bool read_map(std::istream& input, const WorldState& world, WorldMap& map, std::
     if (!input.read(map.display_name.data(),
                     static_cast<std::streamsize>(map.display_name.size())) ||
         !read_i32(input, map.global_x_tiles) || !read_i32(input, map.global_y_tiles) ||
-        !read_u16(input, map.world_component) || !read_u32(input, tile_count)) {
+        !read_u16(input, map.world_space) || map.world_space >= world.spaces.size() ||
+        !read_u32(input, tile_count)) {
         error = "world map cache has truncated map placement or tile data";
         return false;
     }
@@ -272,9 +308,20 @@ void selected_view_bounds(const WorldState& world, float& left, float& top, floa
 
 void world_view_bounds(const WorldState& world, float& left, float& top, float& right,
                        float& bottom) {
-    selected_view_bounds(world, left, top, right, bottom);
-    if (world.maps.empty()) return;
+    const auto first =
+        std::find_if(world.maps.begin(), world.maps.end(), [&](const WorldMap& map) {
+            return map.world_space == world.current_space;
+        });
+    if (first == world.maps.end()) {
+        left = top = right = bottom = 0.0F;
+        return;
+    }
+    left = static_cast<float>(first->global_x_tiles) * 8.0F;
+    top = static_cast<float>(first->global_y_tiles) * 8.0F;
+    right = left + static_cast<float>(first->width_tiles) * 8.0F;
+    bottom = top + static_cast<float>(first->height_tiles) * 8.0F;
     for (const WorldMap& map : world.maps) {
+        if (map.world_space != world.current_space) continue;
         const float map_left = static_cast<float>(map.global_x_tiles) * 8.0F;
         const float map_top = static_cast<float>(map.global_y_tiles) * 8.0F;
         left = std::min(left, map_left);
@@ -320,12 +367,76 @@ bool map_contains_global_cell(const WorldMap& map, std::int32_t x, std::int32_t 
 
 std::size_t find_map_for_global_cell(const WorldState& world, std::size_t preferred,
                                      std::int32_t x, std::int32_t y) {
-    if (preferred < world.maps.size() && map_contains_global_cell(world.maps[preferred], x, y))
+    if (preferred < world.maps.size() &&
+        world.maps[preferred].world_space == world.current_space &&
+        map_contains_global_cell(world.maps[preferred], x, y))
         return preferred;
     for (std::size_t index = 0; index < world.maps.size(); ++index) {
-        if (map_contains_global_cell(world.maps[index], x, y)) return index;
+        if (world.maps[index].world_space == world.current_space &&
+            map_contains_global_cell(world.maps[index], x, y))
+            return index;
     }
     return world.maps.size();
+}
+
+std::size_t find_map_by_id(const WorldState& world, std::uint8_t id) {
+    const auto found = std::find_if(world.maps.begin(), world.maps.end(),
+                                    [id](const WorldMap& map) { return map.id == id; });
+    return found == world.maps.end()
+               ? world.maps.size()
+               : static_cast<std::size_t>(found - world.maps.begin());
+}
+
+const WorldWarp* warp_at(const WorldMap& map, std::int32_t x, std::int32_t y) {
+    const auto found = std::find_if(map.warps.begin(), map.warps.end(),
+                                    [x, y](const WorldWarp& warp) {
+                                        return warp.x == x && warp.y == y;
+                                    });
+    return found == map.warps.end() ? nullptr : &*found;
+}
+
+bool activate_world_warp(WorldState& world) {
+    if (world.player.map_index >= world.maps.size()) return false;
+    const std::size_t source_index = world.player.map_index;
+    const WorldMap& source = world.maps[source_index];
+    const WorldWarp* source_warp = warp_at(source, world.player.x, world.player.y);
+    if (source_warp == nullptr) return false;
+
+    if (source.world_space < world.spaces.size() && world.spaces[source.world_space].outdoor)
+        world.player.last_outdoor_map_index = source_index;
+    const std::size_t destination_index =
+        source_warp->destination_map_id == 0xFFU
+            ? world.player.last_outdoor_map_index
+            : find_map_by_id(world, source_warp->destination_map_id);
+    if (destination_index >= world.maps.size()) return false;
+    const WorldMap& destination = world.maps[destination_index];
+    if (source_warp->destination_warp_index >= destination.warps.size()) return false;
+    const WorldWarp& destination_warp =
+        destination.warps[source_warp->destination_warp_index];
+
+    world.player.map_index = destination_index;
+    world.player.x = destination_warp.x;
+    world.player.y = destination_warp.y;
+    world.player.move_cooldown = 7U;
+    world.current = destination_index;
+    world.current_space = destination.world_space;
+    world.follow_player = true;
+    world.dialogue = {};
+    world.player.visual_global_x =
+        static_cast<float>(destination.global_x_tiles / 2 + world.player.x);
+    world.player.visual_global_y =
+        static_cast<float>(destination.global_y_tiles / 2 + world.player.y);
+    world.camera_x = world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
+    world.camera_y = world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
+    world.last_warp = {
+        .source_map_id = source.id,
+        .source_warp_index = source_warp->index,
+        .destination_map_id = destination.id,
+        .destination_warp_index = source_warp->destination_warp_index,
+        .simulation_tick = world.simulation_tick,
+        .occurred = true,
+    };
+    return true;
 }
 
 bool is_passable(const WorldState& world, std::size_t map_index, std::int32_t global_x,
@@ -386,16 +497,18 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', '8'}) {
+        magic != std::array{'P', 'M', 'V', '9'}) {
         error = "world map cache is missing or has an invalid header";
         return false;
     }
 
     WorldState loaded;
     loaded.source = path;
-    if (!read_tilesets(input, loaded, error) || !read_sprites(input, loaded, error)) return false;
+    if (!read_tilesets(input, loaded, error) || !read_sprites(input, loaded, error) ||
+        !read_world_spaces(input, loaded, error))
+        return false;
     std::uint16_t map_count = 0;
-    if (!read_u16(input, map_count) || map_count == 0 || map_count > 248) {
+    if (!read_u16(input, map_count) || map_count != 226) {
         error = "world map cache has an invalid map count";
         return false;
     }
@@ -483,6 +596,7 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
 
     world.player = {};
     world.player.map_index = 0;
+    world.player.last_outdoor_map_index = 0;
     world.player.x = 5;
     world.player.y = 6;
     const WorldMap& start = world.maps.front();
@@ -513,6 +627,7 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
         static_cast<float>(start.global_y_tiles / 2 + world.player.y);
     world.player.initialized = true;
     world.current = 0;
+    world.current_space = start.world_space;
     world.view = WorldView::world;
     world.follow_player = true;
     world.target_zoom = 2.0F;
@@ -605,6 +720,7 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                     world.current = target_map;
                     world.follow_player = true;
                     world.player.move_cooldown = 7U;
+                    (void)activate_world_warp(world);
                 }
             }
         }
@@ -618,6 +734,11 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         if (actor_index >= world.actors.size()) continue;
         WorldActorState& actor = world.actors[actor_index];
         const WorldMap& map = world.maps[actor.map_index];
+        if (map.world_space != world.current_space) {
+            world.roam_schedule[(schedule_slot + 60U) % world.roam_schedule.size()].push_back(
+                actor_index);
+            continue;
+        }
         const WorldActorSpawn& spawn = map.actors[actor.spawn_index];
         const std::uint32_t random = next_random(world);
         std::uint32_t choice = random % 4U;
@@ -654,15 +775,17 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
 
 void select_next_map(WorldState& world) {
     if (!world.maps.empty()) world.current = (world.current + 1U) % world.maps.size();
+    if (world.current < world.maps.size()) world.current_space = world.maps[world.current].world_space;
     world.follow_player = false;
-    if (world.view == WorldView::selected) reset_world_view(world);
+    reset_world_view(world);
 }
 
 void select_previous_map(WorldState& world) {
     if (world.maps.empty()) return;
     world.current = world.current == 0 ? world.maps.size() - 1U : world.current - 1U;
+    world.current_space = world.maps[world.current].world_space;
     world.follow_player = false;
-    if (world.view == WorldView::selected) reset_world_view(world);
+    reset_world_view(world);
 }
 
 void toggle_world_view(WorldState& world) {
@@ -691,7 +814,12 @@ void reset_world_view(WorldState& world) {
         world_view_bounds(world, left, top, right, bottom);
     else
         selected_view_bounds(world, left, top, right, bottom);
-    world.follow_player = world.player.initialized;
+    const bool player_in_view =
+        world.player.initialized && world.player.map_index < world.maps.size() &&
+        ((world.view == WorldView::world &&
+          world.maps[world.player.map_index].world_space == world.current_space) ||
+         (world.view == WorldView::selected && world.player.map_index == world.current));
+    world.follow_player = player_in_view;
     if (world.follow_player) {
         world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
         world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
@@ -750,6 +878,11 @@ void step_world_animation(WorldState& world) {
 const WorldMap* selected_map(const WorldState& world) {
     if (world.maps.empty() || world.current >= world.maps.size()) return nullptr;
     return &world.maps[world.current];
+}
+
+const WorldSpace* current_world_space(const WorldState& world) {
+    if (world.current_space >= world.spaces.size()) return nullptr;
+    return &world.spaces[world.current_space];
 }
 
 const MapTileset* find_tileset(const WorldState& world, std::uint8_t id) {

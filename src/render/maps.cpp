@@ -149,13 +149,19 @@ SDL_Texture* upload_actor_atlas(SDL_Renderer* renderer, const WorldState& world,
     return texture;
 }
 
-bool find_world_bounds(const WorldState& world, WorldRenderResources& resources) {
-    if (world.maps.empty()) return false;
-    std::int32_t min_x = world.maps.front().global_x_tiles;
-    std::int32_t min_y = world.maps.front().global_y_tiles;
-    std::int32_t max_x = min_x + static_cast<std::int32_t>(world.maps.front().width_tiles);
-    std::int32_t max_y = min_y + static_cast<std::int32_t>(world.maps.front().height_tiles);
+bool world_space_size(const WorldState& world, std::uint16_t world_space, float& width,
+                      float& height) {
+    const auto first =
+        std::find_if(world.maps.begin(), world.maps.end(), [world_space](const WorldMap& map) {
+            return map.world_space == world_space;
+        });
+    if (first == world.maps.end()) return false;
+    std::int32_t min_x = first->global_x_tiles;
+    std::int32_t min_y = first->global_y_tiles;
+    std::int32_t max_x = min_x + static_cast<std::int32_t>(first->width_tiles);
+    std::int32_t max_y = min_y + static_cast<std::int32_t>(first->height_tiles);
     for (const WorldMap& map : world.maps) {
+        if (map.world_space != world_space) continue;
         min_x = std::min(min_x, map.global_x_tiles);
         min_y = std::min(min_y, map.global_y_tiles);
         max_x = std::max(max_x, map.global_x_tiles + static_cast<std::int32_t>(map.width_tiles));
@@ -163,12 +169,9 @@ bool find_world_bounds(const WorldState& world, WorldRenderResources& resources)
     }
     const std::int32_t width_tiles = max_x - min_x;
     const std::int32_t height_tiles = max_y - min_y;
-    if (width_tiles <= 0 || height_tiles <= 0 ||
-        width_tiles > std::numeric_limits<int>::max() / kTileSize ||
-        height_tiles > std::numeric_limits<int>::max() / kTileSize)
-        return false;
-    resources.world_width_pixels = static_cast<int>(width_tiles) * kTileSize;
-    resources.world_height_pixels = static_cast<int>(height_tiles) * kTileSize;
+    if (width_tiles <= 0 || height_tiles <= 0) return false;
+    width = static_cast<float>(width_tiles * kTileSize);
+    height = static_cast<float>(height_tiles * kTileSize);
     return true;
 }
 
@@ -232,7 +235,7 @@ bool upload_terrain_chunks(SDL_Renderer* renderer, const WorldState& world,
                 const std::int32_t chunk_x = floor_divide(world_x, kChunkSizeTiles);
                 const std::int32_t chunk_y = floor_divide(world_y, kChunkSizeTiles);
                 const ChunkKey key{
-                    .component = map.world_component,
+                    .component = map.world_space,
                     .x = chunk_x,
                     .y = chunk_y,
                     .tileset_index = set_index,
@@ -299,6 +302,7 @@ bool upload_terrain_chunks(SDL_Renderer* renderer, const WorldState& world,
         const int source_x = static_cast<int>(page_slot % kChunksPerPageRow) * kChunkSizePixels;
         const int source_y = static_cast<int>(page_slot / kChunksPerPageRow) * kChunkSizePixels;
         TerrainChunk uploaded{
+            .world_space = key.component,
             .texture_page = resources.terrain_pages.size(),
             .source_x = source_x,
             .source_y = source_y,
@@ -497,6 +501,7 @@ bool draw_visible_chunks(SDL_Renderer* renderer, int output_width, int output_he
                          float view_center_x, float view_center_y, float scale) {
     for (const TerrainChunk& chunk : resources.terrain_chunks) {
         if (chunk.texture_page >= resources.terrain_pages.size()) return false;
+        if (chunk.world_space != world.current_space) continue;
         const SDL_FRect source{
             .x = static_cast<float>(chunk.source_x),
             .y = static_cast<float>(chunk.source_y),
@@ -568,7 +573,9 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
 
     if (world.actors.empty()) {
         for (const WorldMap& map : world.maps) {
-            if (world.view == WorldView::selected && &map != selected) continue;
+            if ((world.view == WorldView::selected && &map != selected) ||
+                (world.view == WorldView::world && map.world_space != world.current_space))
+                continue;
             for (const WorldActorSpawn& actor : map.actors) {
                 const float global_x =
                     static_cast<float>(map.global_x_tiles / 2 + static_cast<int>(actor.x));
@@ -583,7 +590,10 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
     } else {
         for (const WorldActorState& actor : world.actors) {
             if (actor.map_index >= world.maps.size()) continue;
-            if (world.view == WorldView::selected && &world.maps[actor.map_index] != selected)
+            const WorldMap& actor_map = world.maps[actor.map_index];
+            if ((world.view == WorldView::selected && &actor_map != selected) ||
+                (world.view == WorldView::world &&
+                 actor_map.world_space != world.current_space))
                 continue;
             const WorldActorSpawn& spawn =
                 world.maps[actor.map_index].actors[actor.spawn_index];
@@ -592,8 +602,9 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
                 return false;
         }
     }
-    if (world.player.initialized &&
-        (world.view == WorldView::world ||
+    if (world.player.initialized && world.player.map_index < world.maps.size() &&
+        ((world.view == WorldView::world &&
+          world.maps[world.player.map_index].world_space == world.current_space) ||
          (world.player.map_index < world.maps.size() &&
           &world.maps[world.player.map_index] == selected)) &&
         !draw_actor(1U, world.player.facing, world.player.visual_global_x,
@@ -677,10 +688,6 @@ bool upload_world_textures(SDL_Renderer* renderer, const WorldState& world,
         destroy_world_textures(resources);
         return false;
     }
-    if (!find_world_bounds(world, resources)) {
-        destroy_world_textures(resources);
-        return false;
-    }
     return true;
 }
 
@@ -698,21 +705,17 @@ void destroy_world_textures(WorldRenderResources& resources) {
     resources.animated_tiles.clear();
     resources.animation_signature = 0;
     resources.animation_cache_valid = false;
-    resources.world_width_pixels = 0;
-    resources.world_height_pixels = 0;
 }
 
-WorldProjection world_projection(int output_width, int output_height, const WorldState& world,
-                                 const WorldRenderResources& resources) {
+WorldProjection world_projection(int output_width, int output_height, const WorldState& world) {
     const WorldMap* map = selected_map(world);
     if (map == nullptr) return {};
     const bool show_connected_world = world.view == WorldView::world;
-    const float pixel_width = show_connected_world
-                                  ? static_cast<float>(resources.world_width_pixels)
-                                  : static_cast<float>(map->width_tiles * kTileSize);
-    const float pixel_height = show_connected_world
-                                   ? static_cast<float>(resources.world_height_pixels)
-                                   : static_cast<float>(map->height_tiles * kTileSize);
+    float pixel_width = static_cast<float>(map->width_tiles * kTileSize);
+    float pixel_height = static_cast<float>(map->height_tiles * kTileSize);
+    if (show_connected_world &&
+        !world_space_size(world, world.current_space, pixel_width, pixel_height))
+        return {};
     const float available_width = std::max(static_cast<float>(output_width) - 64.0F, 1.0F);
     const float available_height = std::max(static_cast<float>(output_height) - 96.0F, 1.0F);
     float fit_scale = std::min(available_width / pixel_width, available_height / pixel_height);
@@ -732,8 +735,7 @@ bool draw_world(SDL_Renderer* renderer, int output_width, int output_height,
         return false;
 
     const bool show_connected_world = world.view == WorldView::world;
-    const WorldProjection projection =
-        world_projection(output_width, output_height, world, resources);
+    const WorldProjection projection = world_projection(output_width, output_height, world);
     if (projection.scale <= 0.0F) return false;
 
     if (show_connected_world) {

@@ -3,6 +3,8 @@
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "content_index.hpp"
+#include "interactions.hpp"
+#include "maps.hpp"
 #include "overlays.hpp"
 #include "predicates.hpp"
 #include "sexpr.hpp"
@@ -365,6 +367,92 @@ void test_host_settings_and_clocks(TestState& state) {
           "game clock advances only on deterministic steps");
 }
 
+void test_world_spaces_and_warps(TestState& state) {
+    // Two original fixture maps exercise direct entry and LAST_MAP return
+    // without depending on cartridge content.
+    pokered::WorldState world;
+    world.loaded = true;
+    world.tilesets.push_back({
+        .id = 0,
+        .tile_count = 1,
+        .animation_mode = 0,
+        .passable_tiles = {0},
+        .pixels = std::vector<std::uint8_t>(64U, 0),
+        .animation_pixels = {},
+    });
+    world.spaces = {
+        {.id = 0, .key = "surface", .outdoor = true},
+        {.id = 1, .key = "house", .outdoor = false},
+    };
+    pokered::WorldMap surface{
+        .id = 0,
+        .tileset_id = 0,
+        .width_blocks = 1,
+        .height_blocks = 1,
+        .width_tiles = 4,
+        .height_tiles = 4,
+        .key = "surface_map",
+        .display_name = "Surface",
+        .global_x_tiles = 0,
+        .global_y_tiles = 0,
+        .world_space = 0,
+        .tiles = std::vector<std::uint8_t>(16U, 0),
+        .warps = {{.index = 1,
+                   .x = 1,
+                   .y = 0,
+                   .destination_map_id = 37,
+                   .destination_warp_index = 0}},
+        .actors = {},
+    };
+    pokered::WorldMap house{
+        .id = 37,
+        .tileset_id = 0,
+        .width_blocks = 1,
+        .height_blocks = 1,
+        .width_tiles = 4,
+        .height_tiles = 4,
+        .key = "house_map",
+        .display_name = "House",
+        .global_x_tiles = 0,
+        .global_y_tiles = 0,
+        .world_space = 1,
+        .tiles = std::vector<std::uint8_t>(16U, 0),
+        .warps = {{.index = 1,
+                   .x = 0,
+                   .y = 1,
+                   .destination_map_id = 0xFF,
+                   .destination_warp_index = 0}},
+        .actors = {},
+    };
+    world.maps = {std::move(surface), std::move(house)};
+    pokered::InteractionCatalog interactions;
+    interactions.loaded = true;
+    std::string error;
+    check(state, pokered::initialize_world_runtime(world, interactions, error),
+          "world-space fixture initializes");
+
+    world.player.x = 0;
+    world.player.y = 0;
+    world.player.move_cooldown = 0;
+    pokered::step_world(world, interactions, {.right = true});
+    check(state,
+          world.player.map_index == 1 && world.current_space == 1 && world.player.x == 0 &&
+              world.player.y == 1,
+          "direct warp enters its destination world space");
+    check(state, world.last_warp.occurred && world.last_warp.source_map_id == 0 &&
+                     world.last_warp.destination_map_id == 37,
+          "direct warp records diagnostics");
+
+    world.player.x = 0;
+    world.player.y = 0;
+    world.player.move_cooldown = 0;
+    pokered::step_world(world, interactions, {.down = true});
+    check(state,
+          world.player.map_index == 0 && world.current_space == 0 && world.player.x == 1 &&
+              world.player.y == 0,
+          "LAST_MAP warp returns through the remembered outdoor endpoint");
+}
+
 } // namespace
 
 int main() {
@@ -378,6 +466,7 @@ int main() {
     test_battle_animation_lab(state);
     test_battle_ui(state);
     test_host_settings_and_clocks(state);
+    test_world_spaces_and_warps(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

@@ -1,17 +1,20 @@
 # Connected world renderer
 
-## Imported outdoor world
+## Imported campaign world
 
-The importer discovers the 36 named outdoor maps in Red's Town Map table. This
-includes every city, town, surface route, sea route, and Indigo Plateau. It does
-not include interiors, caves, building floors, or dungeon floors; those are
-separate resident maps reached through warps.
+The importer classifies all 248 Red map slots and decodes all 226 active maps.
+That includes the 36 cities, towns, surface routes, sea routes, and Indigo
+Plateau maps plus every active interior, gate, cave, dungeon, ship, gym, and
+ending room. The 22 unused slots remain explicit in the import accounting and
+never become synthetic maps.
 
-The importer reads names, IDs, dimensions, block grids, tilesets, graphics,
+The importer reads IDs, dimensions, block grids, tilesets, graphics,
 connection transforms, warps, and object events from the verified local ROM.
 It also decodes all 72 entries in Red's overworld sprite-sheet table into
-normalized directional standing frames. The engine contains no list of
-campaign map names, placements, NPCs, or warp endpoints.
+normalized directional standing frames. A non-payload Red importer profile
+assigns semantic map and sprite keys and validates every decoded header
+dimension. The generic engine contains no list of campaign map names,
+placements, NPCs, or warp endpoints.
 
 The ROM table contains numeric sprite IDs but no symbolic names. The
 Red-specific importer schema assigns stable readable keys such as `oak`,
@@ -31,10 +34,11 @@ data/runtime/imports/pokemon_red_us_rev_0/source/world/
     maps/
         0_pallet_town.sexpr
         ...
-        35_route_25.sexpr
+        247_agathas_room.sexpr
     tilesets/
         tileset_0.sexpr
-        tileset_23.sexpr
+        ...
+    world_spaces.sexpr
     overworld_sprites.sexpr
 ```
 
@@ -44,11 +48,13 @@ The ignored runtime cache is:
 data/runtime/imports/pokemon_red_us_rev_0/compiled/world_maps.bin
 ```
 
-It contains decoded tilesets, complete tile-ID layers, animation frames,
-normalized overworld sprites, 245 outdoor actor spawns, 143 outdoor warp
-endpoints, and global origins resolved from the ROM connection graph. Tile
-layers remain the authoritative terrain representation after loading. A map is
-a content and simulation boundary, not a render primitive.
+It contains 24 decoded tilesets, 226 complete tile-ID layers, animation frames,
+72 normalized overworld sprites, 924 actor spawns, 813 warp endpoints, and 99
+importer-derived world spaces. Surface origins come from the ROM connection
+graph. Indoor complexes are grouped through direct indoor warp topology and
+their maps are deterministically splayed into non-overlapping coordinates.
+Tile layers remain the authoritative terrain representation after loading. A
+map is a content and simulation boundary, not a render primitive.
 
 The renderer derives 32×32-tile GPU cache textures on a fixed global grid.
 These chunks may contain tiles from several connected maps, and a map may
@@ -82,10 +88,12 @@ baked into the terrain cache. A future renderer backend may replace the cache
 implementation with instanced tile draws without changing campaign data,
 simulation coordinates, or layer semantics.
 
-The actor atlas is uploaded once. Authored outdoor spawns become mutable actor
+The actor atlas is uploaded once. Authored spawns become mutable actor
 instances, are transformed from map-local 16×16 cells into global coordinates,
-and are drawn above terrain at every camera scale. Campaign predicates will
-later decide which instances are active.
+and are drawn above terrain at every camera scale. All actors in the current
+world space remain resident; ambient simulation does not advance actors in
+inactive spaces. Campaign predicates will decide which resident instances are
+visible and active.
 
 Red does not store a rectangular roam radius per NPC. Object records contain
 `WALK` or `STAY` and an any-direction, vertical, horizontal, or fixed-facing
@@ -164,8 +172,9 @@ simulation step count or environmental animation timing.
 The complete connected player world space is the initial view when its local
 cache exists.
 
-- `WASD` or arrow keys move and face the player.
-- `E`, `Z`, `X`, or Enter activates the faced actor/background interaction and
+- Semantic D-pad actions move and face the player; the default profile provides
+  WASD, arrow keys, and the controller D-pad.
+- Semantic A/confirm activates the faced actor/background interaction and
   advances dialogue.
 - `[` and `]` select imported maps for inspection.
 - `Tab` switches between the connected world and selected-map inspection.
@@ -174,7 +183,14 @@ cache exists.
 - `0` resets pan and zoom to the fitted view.
 - `F3` toggles map, warp, and actor annotations.
 - `B` switches between the connected world and battle-animation lab.
-- `F2` shows map provenance, global placement, camera controls, and selection.
+- `F2` shows map provenance, world-space placement, last-warp state, camera
+  controls, and selection.
+
+Stepping onto an authored warp resolves its destination map and zero-based
+destination warp endpoint. `LAST_MAP` exits return through the remembered
+outdoor map. A space change switches the resident actor set and camera surface;
+authored edge connections remain ordinary smooth movement and never invoke
+this warp path.
 
 Camera position and zoom move smoothly toward target values. Zoom is a
 multiplier over a fitted view and ranges from the entire connected surface to
@@ -199,9 +215,11 @@ does not mutate or participate in world simulation.
 
 ## Remaining world domains
 
-This slice displays resident outdoor geometry, environmental tile animation,
-mutable outdoor actors, imported collision, background triggers, faced-cell
-dialogue, and ambient roaming. Interior/cave/dungeon geometry, campaign
-visibility predicates, mutable blocks, warps, and authored cutscene movement
-remain independent work. Persistent whole-zone NPC simulation uses this same
-coordinate system and camera rather than cartridge-style screen streaming.
+This slice displays every active map, environmental tile animation,
+current-space resident actors, imported collision, background triggers,
+faced-cell dialogue, ambient roaming, ordinary direct warps, and `LAST_MAP`
+returns. Script-selected destinations, special transition policies, campaign
+visibility predicates, mutable blocks, ledges and field moves, indexed
+automatic triggers, and authored cutscene movement remain campaign-executor
+work. Persistent whole-zone NPC simulation uses this same coordinate system
+and camera rather than cartridge-style screen streaming.

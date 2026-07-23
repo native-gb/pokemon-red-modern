@@ -17,6 +17,11 @@ The repository currently provides:
 - a windowed 1280×720 GPU host with independent 60 Hz simulation and
   configurable 60–240 Hz rendering;
 - ImGui player tools on F1 and full-screen developer tools on F2;
+- persistent Primary/Alternate control profiles, complete rebinding,
+  controller navigation, hot-plug assignment, rescan diagnostics, and
+  left-trigger fast-forward;
+- independent deterministic game and unscaled real, presentation, audio, and
+  music clocks;
 - VSync, motion-interpolation, render-cap, and FPS-overlay controls;
 - fullscreen toggle on F11;
 - a flat source tree with a concrete `render/` module;
@@ -33,14 +38,14 @@ The repository currently provides:
 - a portable Gen I picture decoder which emits readable species/trainer
   bindings and a decoded local runtime cache for 151 species and 47 trainer
   classes;
-- a tile-authoritative GPU world renderer for all 36 ROM-derived outdoor maps,
-  with connection-derived global coordinates, fixed world-space render caches,
-  visible-chunk culling, smooth pan/zoom, and ROM-derived water and flower
-  animation;
-- all 72 ROM-decoded overworld sprite sheets, 245 authored outdoor actor
-  spawns, 143 outdoor warps, mutable resident actors, imported terrain
-  collision, scheduled roaming, faced-cell dialogue, and an F3
-  map/actor/warp annotation overlay;
+- a tile-authoritative GPU renderer for all 226 active ROM-derived maps,
+  classified into 99 named world spaces with connection-derived surface
+  coordinates and topology-derived interior layouts, visible-chunk culling,
+  smooth follow/pan/zoom, and ROM-derived water and flower animation;
+- all 72 ROM-decoded overworld sprite sheets, 924 authored actor spawns, 813
+  warps including ordinary and `LAST_MAP` traversal, current-space resident
+  actors, imported terrain collision, scheduled roaming, faced-cell dialogue,
+  and an F3 map/actor/warp annotation overlay;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.

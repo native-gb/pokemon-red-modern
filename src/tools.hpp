@@ -29,6 +29,6 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input);
 void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
                 const content::CatalogSummary& catalog, BattleAnimationLab& lab, WorldState& maps,
                 PresentationSettings& presentation, const GameClocks& clocks,
-                const render::WorldRenderResources& world_resources, const char* renderer_name);
+                const char* renderer_name);
 
 } // namespace pokered

@@ -30,6 +30,16 @@ constexpr std::size_t kMaximumWarps = 32;
 constexpr std::size_t kMaximumBackgroundEvents = 32;
 constexpr std::size_t kMaximumActors = 16;
 
+struct MapProfile {
+    const char* name;
+    std::uint8_t width;
+    std::uint8_t height;
+};
+
+constexpr std::array<MapProfile, kMapSlotCount> kMapProfiles{{
+#include "pokemon_red_map_profile.inc"
+}};
+
 struct InteractionOwner {
     std::uint8_t index{};
     std::uint8_t x{};
@@ -112,6 +122,17 @@ void add_text_file(ScriptImport& result, std::string path, std::string text) {
 }
 
 std::string map_slot_key(std::size_t map_id) {
+    if (map_id >= kMapProfiles.size()) return "invalid_map";
+    std::string key = kMapProfiles[map_id].name;
+    std::ranges::transform(key, key.begin(), [](char character) {
+        return character >= 'A' && character <= 'Z'
+                   ? static_cast<char>('a' + character - 'A')
+                   : character;
+    });
+    return key;
+}
+
+std::string map_slot_file_key(std::size_t map_id) {
     std::ostringstream key;
     key << "map_" << std::setfill('0') << std::setw(3) << map_id;
     return key.str();
@@ -344,7 +365,8 @@ void emit_map_source(const MapProgramInventory& map, ScriptImport& result) {
             source << '\n';
         }
     }
-    add_text_file(result, "source/scripts/maps/" + key + ".sexpr", source.str());
+    add_text_file(result, "source/scripts/maps/" + map_slot_file_key(map.map_id) + ".sexpr",
+                  source.str());
 }
 
 void emit_owned_entry_sources(const MapProgramInventory& map, ScriptImport& result) {
@@ -392,8 +414,11 @@ void emit_owned_entry_sources(const MapProgramInventory& map, ScriptImport& resu
         }
     }
     if (has_text)
-        add_text_file(result, "source/text/maps/" + map_key + ".sexpr", text_source.str());
-    add_text_file(result, "source/scripts/interactions/" + map_key + ".sexpr",
+        add_text_file(result,
+                      "source/text/maps/" + map_slot_file_key(map.map_id) + ".sexpr",
+                      text_source.str());
+    add_text_file(result,
+                  "source/scripts/interactions/" + map_slot_file_key(map.map_id) + ".sexpr",
                   interaction_source.str());
 }
 

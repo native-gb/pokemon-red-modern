@@ -124,6 +124,8 @@ if(BUILD_TESTING)
         src/catalog.cpp
         src/clocks.cpp
         src/diagnostics.cpp
+        src/interactions.cpp
+        src/maps.cpp
         src/overlays.cpp
         src/predicates.cpp
         src/sexpr.cpp

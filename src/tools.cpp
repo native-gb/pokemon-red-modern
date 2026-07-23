@@ -150,9 +150,23 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         if (maps.player.initialized) {
             ImGui::Text("Player map index: %zu", maps.player.map_index);
             ImGui::Text("Player cell: %d, %d", maps.player.x, maps.player.y);
-            ImGui::Text("Resident actors: %zu", maps.actors.size());
+            const std::size_t resident_actors =
+                static_cast<std::size_t>(std::count_if(
+                    maps.actors.begin(), maps.actors.end(), [&](const WorldActorState& actor) {
+                        return actor.map_index < maps.maps.size() &&
+                               maps.maps[actor.map_index].world_space == maps.current_space;
+                    }));
+            ImGui::Text("Resident actors: %zu / %zu", resident_actors, maps.actors.size());
             ImGui::Text("Spatial map indexes: %zu", maps.spatial.size());
             ImGui::Text("Dialogue: %s", maps.dialogue.open ? "open" : "closed");
+            if (maps.last_warp.occurred) {
+                ImGui::Text("Last warp: %02X:%u -> %02X:%u at tick %llu",
+                            static_cast<unsigned>(maps.last_warp.source_map_id),
+                            static_cast<unsigned>(maps.last_warp.source_warp_index),
+                            static_cast<unsigned>(maps.last_warp.destination_map_id),
+                            static_cast<unsigned>(maps.last_warp.destination_warp_index),
+                            static_cast<unsigned long long>(maps.last_warp.simulation_tick));
+            }
         }
         if (map != nullptr) {
             ImGui::Text("ROM ID: 0x%02X", static_cast<unsigned>(map->id));
@@ -162,7 +176,9 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
                         static_cast<unsigned>(map->height_tiles));
             ImGui::Text("Tileset: %u", static_cast<unsigned>(map->tileset_id));
             ImGui::Text("World origin: %d, %d tiles", map->global_x_tiles, map->global_y_tiles);
-            ImGui::Text("World component: %u", static_cast<unsigned>(map->world_component));
+            const WorldSpace* space = current_world_space(maps);
+            ImGui::Text("World space: %s [%u]", space == nullptr ? "none" : space->key.c_str(),
+                        static_cast<unsigned>(map->world_space));
         }
         if (ImGui::Button("Previous Map")) select_previous_map(maps);
         ImGui::SameLine();
@@ -265,12 +281,11 @@ std::string_view movement_label(const WorldActorSpawn& actor) {
     return "scripted";
 }
 
-void draw_world_annotations(const WorldState& world,
-                            const render::WorldRenderResources& resources) {
+void draw_world_annotations(const WorldState& world) {
     if (!world.show_annotations || !world.loaded) return;
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    const render::WorldProjection projection = render::world_projection(
-        static_cast<int>(display.x), static_cast<int>(display.y), world, resources);
+    const render::WorldProjection projection =
+        render::world_projection(static_cast<int>(display.x), static_cast<int>(display.y), world);
     if (projection.scale <= 0.0F) return;
 
     ImDrawList* draw = ImGui::GetForegroundDrawList();
@@ -289,7 +304,9 @@ void draw_world_annotations(const WorldState& world,
         };
     };
     for (const WorldMap& map : world.maps) {
-        if (world.view == WorldView::selected && &map != selected) continue;
+        if ((world.view == WorldView::selected && &map != selected) ||
+            (world.view == WorldView::world && map.world_space != world.current_space))
+            continue;
         const float map_x = static_cast<float>(map.global_x_tiles) * 8.0F;
         const float map_y = static_cast<float>(map.global_y_tiles) * 8.0F;
         const ImVec2 top_left = screen_point(map_x, map_y);
@@ -401,7 +418,7 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
                 const content::CatalogSummary& catalog, BattleAnimationLab& lab, WorldState& maps,
                 PresentationSettings& presentation, const GameClocks& clocks,
-                const render::WorldRenderResources& world_resources, const char* renderer_name) {
+                const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
@@ -438,7 +455,7 @@ void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
         draw_developer_tools(tools, game, catalog, lab, maps, presentation, clocks,
                              renderer_name);
 
-    if (game.mode == Mode::overworld) draw_world_annotations(maps, world_resources);
+    if (game.mode == Mode::overworld) draw_world_annotations(maps);
 
     if (presentation.show_fps) {
         std::array<char, 32> text{};

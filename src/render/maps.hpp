@@ -18,6 +18,7 @@ struct TilesetRenderResources {
 };
 
 struct TerrainChunk {
+    std::uint16_t world_space{};
     std::size_t texture_page{};
     int source_x{};
     int source_y{};
@@ -44,8 +45,6 @@ struct WorldRenderResources {
     std::vector<AnimatedWorldTile> animated_tiles;
     std::uint64_t animation_signature{};
     bool animation_cache_valid{};
-    int world_width_pixels{};
-    int world_height_pixels{};
 };
 
 struct WorldProjection {
@@ -57,8 +56,7 @@ struct WorldProjection {
 bool upload_world_textures(SDL_Renderer* renderer, const WorldState& world,
                            WorldRenderResources& resources);
 void destroy_world_textures(WorldRenderResources& resources);
-WorldProjection world_projection(int output_width, int output_height, const WorldState& world,
-                                 const WorldRenderResources& resources);
+WorldProjection world_projection(int output_width, int output_height, const WorldState& world);
 bool draw_world(SDL_Renderer* renderer, int output_width, int output_height,
                 const WorldState& world, WorldRenderResources& resources);
 

@@ -298,7 +298,7 @@ int main(int argc, char** argv) {
         }
 
         pokered::draw_tools(tools, window.runtime, game, catalog, animation_lab, world,
-                            presentation, clocks, world_resources,
+                            presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_dialogue_overlay(world);
         imgui_render_layer();

@@ -71,8 +71,11 @@ int main(int argc, char** argv) {
                     << "front_pictures " << pictures.front_pictures << '\n'
                     << "back_pictures " << pictures.back_pictures << '\n'
                     << "trainer_pictures " << pictures.trainer_classes << '\n'
-                    << "world_importer_version 1\n"
-                    << "outdoor_maps " << maps.maps << '\n'
+                    << "world_importer_version 2\n"
+                    << "map_slots 248\n"
+                    << "active_maps " << maps.maps << '\n'
+                    << "unused_map_slots " << maps.unused_map_slots << '\n'
+                    << "world_spaces " << maps.world_spaces << '\n'
                     << "overworld_sprites " << maps.sprites << '\n'
                     << "map_program_importer_version 3\n"
                     << "map_slots " << scripts.map_slots << '\n'
@@ -104,7 +107,8 @@ int main(int argc, char** argv) {
               << " trainer-class portraits\n";
     std::cout << "Picture cache: " << output_root / "compiled" / "battle_pictures.bin" << '\n';
     std::cout << "Battle UI cache: " << output_root / "compiled" / "battle_ui_tiles.bin" << '\n';
-    std::cout << "Imported " << maps.maps << " maps through " << maps.tilesets << " tilesets into "
+    std::cout << "Imported " << maps.maps << " active maps in " << maps.world_spaces
+              << " world spaces through " << maps.tilesets << " tilesets into "
               << maps.expanded_tiles << " expanded tiles, " << maps.sprites
               << " overworld sprites, " << maps.actors << " actor spawns, and " << maps.warps
               << " warps\n";

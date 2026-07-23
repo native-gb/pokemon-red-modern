@@ -35,6 +35,12 @@ struct WorldSprite {
     std::vector<std::uint8_t> pixels;
 };
 
+struct WorldSpace {
+    std::uint16_t id{};
+    std::string key;
+    bool outdoor{};
+};
+
 struct WorldWarp {
     std::uint8_t index{};
     std::uint8_t x{};
@@ -76,7 +82,7 @@ struct WorldMap {
     std::string display_name;
     std::int32_t global_x_tiles{};
     std::int32_t global_y_tiles{};
-    std::uint16_t world_component{};
+    std::uint16_t world_space{};
     std::vector<std::uint8_t> tiles;
     std::vector<WorldWarp> warps;
     std::vector<WorldActorSpawn> actors;
@@ -112,7 +118,17 @@ struct WorldPlayerState {
     float visual_global_y{};
     WorldDirection facing{WorldDirection::down};
     std::uint8_t move_cooldown{};
+    std::size_t last_outdoor_map_index{};
     bool initialized{};
+};
+
+struct WorldWarpState {
+    std::uint8_t source_map_id{};
+    std::uint8_t source_warp_index{};
+    std::uint8_t destination_map_id{};
+    std::uint8_t destination_warp_index{};
+    std::uint64_t simulation_tick{};
+    bool occurred{};
 };
 
 struct WorldMapCellIndex {
@@ -143,13 +159,16 @@ struct WorldState {
     std::filesystem::path source;
     std::vector<MapTileset> tilesets;
     std::vector<WorldSprite> sprites;
+    std::vector<WorldSpace> spaces;
     std::vector<WorldMap> maps;
     std::vector<WorldActorState> actors;
     std::vector<WorldMapCellIndex> spatial;
     std::vector<std::vector<std::size_t>> roam_schedule;
     WorldPlayerState player;
     DialogueState dialogue;
+    WorldWarpState last_warp;
     std::size_t current{};
+    std::uint16_t current_space{};
     WorldView view{WorldView::world};
     float zoom{1.0F};
     float target_zoom{1.0F};
@@ -180,6 +199,7 @@ void reset_world_view(WorldState& world);
 void update_world_view(WorldState& world, double elapsed_seconds);
 void step_world_animation(WorldState& world);
 const WorldMap* selected_map(const WorldState& world);
+const WorldSpace* current_world_space(const WorldState& world);
 const MapTileset* find_tileset(const WorldState& world, std::uint8_t id);
 const WorldSprite* find_world_sprite(const WorldState& world, std::uint8_t id);
 const WorldMapCellIndex* find_spatial_index(const WorldState& world, std::uint8_t map_id);

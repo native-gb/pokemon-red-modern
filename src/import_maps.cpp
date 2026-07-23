@@ -15,6 +15,8 @@ namespace pokered::import {
 namespace {
 
 constexpr std::size_t kBankSize = 0x4000;
+constexpr std::size_t kMapSlotCount = 248;
+constexpr std::size_t kActiveMapCount = 226;
 constexpr std::size_t kMapHeaderPointersOffset = 0x001AE;
 constexpr std::size_t kMapHeaderBanksOffset = 0x0C23D;
 constexpr std::size_t kTilesetHeadersOffset = 0x0C7BE;
@@ -106,12 +108,25 @@ constexpr std::array<std::string_view, kOverworldSpriteCount> kOverworldSpriteKe
     "gambler_asleep",
 }};
 
+struct MapProfile {
+    const char* name;
+    std::uint8_t width;
+    std::uint8_t height;
+};
+
+constexpr std::array<MapProfile, kMapSlotCount> kMapProfiles{{
+#include "pokemon_red_map_profile.inc"
+}};
+
 struct MapIdentity {
     std::uint8_t id{};
     std::string key;
     std::string display_name;
     std::uint8_t town_x{};
     std::uint8_t town_y{};
+    std::uint8_t expected_width{};
+    std::uint8_t expected_height{};
+    bool surface{};
 };
 
 struct ImportedConnection {
@@ -159,6 +174,12 @@ struct ImportedMap {
     };
     std::vector<Warp> warps;
     std::vector<Actor> actors;
+};
+
+struct ImportedWorldSpace {
+    std::uint16_t id{};
+    std::string key;
+    bool outdoor{};
 };
 
 struct ImportedTileset {
@@ -305,29 +326,69 @@ std::string make_map_key(std::string_view display_name, std::uint8_t id) {
     return "map_" + std::to_string(static_cast<unsigned>(id));
 }
 
-bool discover_outdoor_maps(std::span<const std::uint8_t> rom, std::vector<MapIdentity>& result,
-                           std::string& error) {
+std::string profile_display_name(std::string_view name) {
+    std::string result;
+    result.reserve(name.size());
+    bool capitalize = true;
+    for (const char character : name) {
+        if (character == '_') {
+            result.push_back(' ');
+            capitalize = true;
+        } else {
+            const char lower =
+                character >= 'A' && character <= 'Z'
+                    ? static_cast<char>('a' + character - 'A')
+                    : character;
+            result.push_back(capitalize && lower >= 'a' && lower <= 'z'
+                                 ? static_cast<char>('A' + lower - 'a')
+                                 : lower);
+            capitalize = false;
+        }
+    }
+    return result;
+}
+
+bool discover_maps(std::span<const std::uint8_t> rom, std::vector<MapIdentity>& result,
+                   std::string& error) {
     const std::size_t table_size = kTownMapExternalEntryCount * kTownMapExternalEntrySize;
     if (!has_range(rom, kTownMapExternalEntriesOffset, table_size)) {
         error = "Town Map external-entry table extends outside the verified ROM";
         return false;
     }
+    std::array<std::string, kTownMapExternalEntryCount> outdoor_names;
+    std::array<std::uint8_t, kTownMapExternalEntryCount> town_x{};
+    std::array<std::uint8_t, kTownMapExternalEntryCount> town_y{};
     for (std::size_t index = 0; index < kTownMapExternalEntryCount; ++index) {
         const std::size_t offset =
             kTownMapExternalEntriesOffset + index * kTownMapExternalEntrySize;
         const std::uint8_t packed = rom[offset];
         if (packed == 0) continue;
-        MapIdentity identity;
-        identity.id = static_cast<std::uint8_t>(index);
-        identity.town_x = static_cast<std::uint8_t>(packed & 0x0FU);
-        identity.town_y = static_cast<std::uint8_t>(packed >> 4U);
-        if (!decode_map_name(rom, read_u16(rom, offset + 1U), identity.display_name, error))
+        town_x[index] = static_cast<std::uint8_t>(packed & 0x0FU);
+        town_y[index] = static_cast<std::uint8_t>(packed >> 4U);
+        if (!decode_map_name(rom, read_u16(rom, offset + 1U), outdoor_names[index], error))
             return false;
-        identity.key = make_map_key(identity.display_name, identity.id);
+    }
+
+    result.reserve(kActiveMapCount);
+    for (std::size_t index = 0; index < kMapProfiles.size(); ++index) {
+        const MapProfile& profile = kMapProfiles[index];
+        if (profile.width == 0 || profile.height == 0) continue;
+        MapIdentity identity{
+            .id = static_cast<std::uint8_t>(index),
+            .key = make_map_key(profile.name, static_cast<std::uint8_t>(index)),
+            .display_name = profile_display_name(profile.name),
+            .town_x = index < town_x.size() ? town_x[index] : std::uint8_t{0},
+            .town_y = index < town_y.size() ? town_y[index] : std::uint8_t{0},
+            .expected_width = profile.width,
+            .expected_height = profile.height,
+            .surface = index < kTownMapExternalEntryCount,
+        };
+        if (index < outdoor_names.size() && !outdoor_names[index].empty())
+            identity.display_name = outdoor_names[index];
         result.push_back(std::move(identity));
     }
-    if (result.empty()) {
-        error = "Town Map table produced no outdoor maps";
+    if (result.size() != kActiveMapCount) {
+        error = "map profile does not classify exactly 226 active slots";
         return false;
     }
     return true;
@@ -469,7 +530,9 @@ bool decode_map(std::span<const std::uint8_t> rom, MapIdentity identity, Importe
     map.height_blocks = rom[map.header_offset + 1U];
     map.width_blocks = rom[map.header_offset + 2U];
     map.blocks_pointer = read_u16(rom, map.header_offset + 3U);
-    if (map.tileset_id >= 24 || map.width_blocks == 0 || map.height_blocks == 0) {
+    if (map.tileset_id >= 24 || map.width_blocks == 0 || map.height_blocks == 0 ||
+        map.width_blocks != map.identity.expected_width ||
+        map.height_blocks != map.identity.expected_height) {
         error = "map header has invalid tileset or dimensions";
         return false;
     }
@@ -618,15 +681,14 @@ void place_connection_target(const ImportedMap& source, const ImportedConnection
     }
 }
 
-void place_global_maps(std::vector<ImportedMap>& maps) {
-    std::uint16_t component = 0;
+void place_connected_surface(std::vector<ImportedMap>& maps) {
     for (ImportedMap& root : maps) {
-        if (root.placed) continue;
+        if (!root.identity.surface || root.placed) continue;
         const std::int32_t width = static_cast<std::int32_t>(root.width_blocks) * 2;
         const std::int32_t height = static_cast<std::int32_t>(root.height_blocks) * 2;
         root.global_x_cells = static_cast<std::int32_t>(root.identity.town_x) * 10 - width / 2;
         root.global_y_cells = static_cast<std::int32_t>(root.identity.town_y) * 9 - height / 2;
-        root.component = component;
+        root.component = 0;
         root.placed = true;
 
         std::vector<std::uint8_t> pending{root.identity.id};
@@ -635,16 +697,99 @@ void place_global_maps(std::vector<ImportedMap>& maps) {
             if (source == nullptr) continue;
             for (const ImportedConnection& connection : source->connections) {
                 ImportedMap* target = find_imported_map(maps, connection.target_map_id);
-                if (target == nullptr || target->placed) continue;
+                if (target == nullptr || !target->identity.surface || target->placed) continue;
                 place_connection_target(*source, connection, target->global_x_cells,
                                         target->global_y_cells);
-                target->component = component;
+                target->component = 0;
                 target->placed = true;
                 pending.push_back(target->identity.id);
             }
         }
-        ++component;
     }
+}
+
+void place_interior_world_spaces(std::vector<ImportedMap>& maps) {
+    std::uint16_t next_space = 1;
+    for (ImportedMap& root : maps) {
+        if (root.identity.surface || root.placed) continue;
+
+        // Direct indoor warp topology defines a complex. Outdoor endpoints and
+        // LAST_MAP returns do not merge independent buildings into the surface.
+        std::vector<ImportedMap*> members;
+        std::vector<std::uint8_t> pending{root.identity.id};
+        root.placed = true;
+        for (std::size_t cursor = 0; cursor < pending.size(); ++cursor) {
+            ImportedMap* source = find_imported_map(maps, pending[cursor]);
+            if (source == nullptr) continue;
+            members.push_back(source);
+            for (const ImportedMap::Warp& warp : source->warps) {
+                ImportedMap* target = find_imported_map(maps, warp.destination_map_id);
+                if (target == nullptr || target->identity.surface || target->placed) continue;
+                target->placed = true;
+                pending.push_back(target->identity.id);
+            }
+            for (ImportedMap& candidate : maps) {
+                if (candidate.identity.surface || candidate.placed) continue;
+                const bool links_to_source =
+                    std::ranges::any_of(candidate.warps, [&](const ImportedMap::Warp& warp) {
+                        return warp.destination_map_id == source->identity.id;
+                    });
+                if (links_to_source) {
+                    candidate.placed = true;
+                    pending.push_back(candidate.identity.id);
+                }
+            }
+        }
+
+        // Splay every map in the complex into one non-overlapping gameplay
+        // surface. Warps retain authored endpoints while overview zoom can show
+        // every floor at once.
+        constexpr std::int32_t row_limit = 128;
+        constexpr std::int32_t gap = 4;
+        std::int32_t x = 0;
+        std::int32_t y = 0;
+        std::int32_t row_height = 0;
+        for (ImportedMap* map : members) {
+            const std::int32_t width = static_cast<std::int32_t>(map->width_blocks) * 2;
+            const std::int32_t height = static_cast<std::int32_t>(map->height_blocks) * 2;
+            if (x != 0 && x + width > row_limit) {
+                x = 0;
+                y += row_height + gap;
+                row_height = 0;
+            }
+            map->global_x_cells = x;
+            map->global_y_cells = y;
+            map->component = next_space;
+            x += width + gap;
+            row_height = std::max(row_height, height);
+        }
+        ++next_space;
+    }
+}
+
+std::vector<ImportedWorldSpace> build_world_spaces(const std::vector<ImportedMap>& maps) {
+    std::uint16_t maximum = 0;
+    for (const ImportedMap& map : maps)
+        maximum = std::max(maximum, map.component);
+    std::vector<ImportedWorldSpace> spaces(static_cast<std::size_t>(maximum) + 1U);
+    for (std::uint16_t id = 0; id <= maximum; ++id) {
+        const auto first =
+            std::find_if(maps.begin(), maps.end(),
+                         [id](const ImportedMap& map) { return map.component == id; });
+        spaces[id] = {
+            .id = id,
+            .key = id == 0 ? "kanto_surface"
+                           : (first == maps.end() ? "world_space_" + std::to_string(id)
+                                                : first->identity.key + "_space"),
+            .outdoor = id == 0,
+        };
+    }
+    return spaces;
+}
+
+void place_world_spaces(std::vector<ImportedMap>& maps) {
+    place_connected_surface(maps);
+    place_interior_world_spaces(maps);
 }
 
 bool decode_tileset(std::span<const std::uint8_t> rom, const std::vector<ImportedMap>& maps,
@@ -838,6 +983,7 @@ bool expand_maps(const std::vector<ImportedTileset>& tilesets, std::vector<Impor
 
 void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                           const std::vector<ImportedSprite>& sprites,
+                          const std::vector<ImportedWorldSpace>& spaces,
                           const std::vector<ImportedMap>& maps, MapImport& result) {
     const auto direction_name = [](std::uint8_t direction) {
         if (direction == 8) return "north";
@@ -883,6 +1029,21 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
     }
     add_text_file(result, "source/world/overworld_sprites.sexpr", sprite_source.str());
 
+    std::ostringstream space_source;
+    space_source << "; Importer-derived continuous gameplay coordinate systems.\n";
+    for (const ImportedWorldSpace& space : spaces) {
+        space_source << "world_space " << space.key << '\n'
+                     << "    id " << space.id << '\n'
+                     << "    environment " << (space.outdoor ? "outdoor" : "interior") << '\n';
+        for (const ImportedMap& map : maps) {
+            if (map.component != space.id) continue;
+            space_source << "    map_placement " << map.identity.key << " origin "
+                         << map.global_x_cells << ' ' << map.global_y_cells
+                         << " layer 0 global_cells\n";
+        }
+    }
+    add_text_file(result, "source/world/world_spaces.sexpr", space_source.str());
+
     for (const ImportedMap& map : maps) {
         const std::size_t width_tiles = static_cast<std::size_t>(map.width_blocks) * 4U;
         const std::size_t height_tiles = static_cast<std::size_t>(map.height_blocks) * 4U;
@@ -899,7 +1060,7 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                << "    size_tiles " << width_tiles << ' ' << height_tiles << '\n'
                << "    world_origin_cells " << map.global_x_cells << ' ' << map.global_y_cells
                << '\n'
-               << "    world_component " << map.component << '\n'
+               << "    world_space " << spaces[map.component].key << '\n'
                << "    header_source " << map.header_offset << '\n'
                << "    block_source " << map.blocks_offset << ' ' << map.blocks.size() << '\n'
                << "    objects_source " << map.objects_offset << '\n';
@@ -952,8 +1113,9 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
 
 void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedSprite>& sprites,
+                        const std::vector<ImportedWorldSpace>& spaces,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '8'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '9'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
@@ -975,6 +1137,14 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
         bytes.push_back(sprite.still ? 1U : 0U);
         write_u32(bytes, sprite.pixels.size());
         bytes.insert(bytes.end(), sprite.pixels.begin(), sprite.pixels.end());
+    }
+
+    write_u16(bytes, spaces.size());
+    for (const ImportedWorldSpace& space : spaces) {
+        write_u16(bytes, space.id);
+        bytes.push_back(static_cast<std::uint8_t>(space.key.size()));
+        bytes.insert(bytes.end(), space.key.begin(), space.key.end());
+        bytes.push_back(space.outdoor ? 1U : 0U);
     }
 
     write_u16(bytes, maps.size());
@@ -1036,7 +1206,7 @@ bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result, std
     if (!verify_pokemon_red_us_rev_0(rom, error)) return false;
 
     std::vector<MapIdentity> identities;
-    if (!discover_outdoor_maps(rom, identities, error)) return false;
+    if (!discover_maps(rom, identities, error)) return false;
     std::vector<ImportedSprite> sprites;
     if (!decode_overworld_sprites(rom, sprites, error)) return false;
     std::vector<ImportedMap> maps;
@@ -1050,7 +1220,8 @@ bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result, std
         }
         maps.push_back(std::move(map));
     }
-    place_global_maps(maps);
+    place_world_spaces(maps);
+    const std::vector<ImportedWorldSpace> spaces = build_world_spaces(maps);
 
     std::vector<std::uint8_t> tileset_ids;
     for (const ImportedMap& map : maps) {
@@ -1066,9 +1237,11 @@ bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result, std
     }
     if (!expand_maps(tilesets, maps, error)) return false;
 
-    emit_readable_source(tilesets, sprites, maps, result);
-    emit_runtime_cache(tilesets, sprites, maps, result);
+    emit_readable_source(tilesets, sprites, spaces, maps, result);
+    emit_runtime_cache(tilesets, sprites, spaces, maps, result);
     result.maps = maps.size();
+    result.world_spaces = spaces.size();
+    result.unused_map_slots = kMapSlotCount - maps.size();
     result.tilesets = tilesets.size();
     result.sprites = sprites.size();
     for (const ImportedMap& map : maps) {
