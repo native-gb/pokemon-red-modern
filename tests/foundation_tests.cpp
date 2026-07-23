@@ -207,10 +207,10 @@ void test_predicates(TestState& state) {
 void test_animations(TestState& state) {
     constexpr std::string_view source =
         "animation original_title\n"
-        "    set_position logo 40 -20 native_canvas\n"
+        "    set_offset logo 0 -36 native_canvas\n"
         "    show logo\n"
         "    parallel\n"
-        "        tween_position logo 40 16 4 ease_out native_canvas\n"
+        "        tween_offset logo 0 0 4 ease_out native_canvas\n"
         "        sequence\n"
         "            wait 2\n"
         "            play_sound title_rise\n"
@@ -236,6 +236,8 @@ void test_animations(TestState& state) {
     // Step the executor and observe movement, sound, visibility, and signal output.
     std::vector<pokered::AnimationTarget> targets(2);
     targets[0].name = symbol("logo");
+    targets[0].x = 40.0F;
+    targets[0].y = 16.0F;
     targets[1].name = symbol("version_label");
     pokered::AnimationState animation;
     check(state, pokered::start_animation(program, targets, animation, diagnostics),
@@ -244,7 +246,8 @@ void test_animations(TestState& state) {
     const pokered::AnimationTarget* target =
         pokered::find_animation_target(animation, symbol("logo"));
     check(state, target != nullptr && target->visible, "title logo becomes visible");
-    check(state, target != nullptr && target->y == -20.0F, "title logo starts above canvas");
+    check(state, target != nullptr && target->y == 16.0F && target->offset_y == -36.0F,
+          "title logo starts above its renderer-owned anchor");
     pokered::step_animation(animation);
     pokered::step_animation(animation);
     check(state,
@@ -254,7 +257,8 @@ void test_animations(TestState& state) {
     while (!animation.finished)
         pokered::step_animation(animation);
     target = pokered::find_animation_target(animation, symbol("logo"));
-    check(state, target != nullptr && target->y == 16.0F, "title logo tween reaches destination");
+    check(state, target != nullptr && target->y == 16.0F && target->offset_y == 0.0F,
+          "title logo tween reaches its renderer-owned anchor");
     const pokered::AnimationTarget* version =
         pokered::find_animation_target(animation, symbol("version_label"));
     check(state, version != nullptr && version->visible, "version label appears after tween");

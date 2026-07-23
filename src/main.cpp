@@ -68,8 +68,15 @@ int main(int argc, char** argv) {
     pokered::GameState game;
     pokered::BattleAnimationLab animation_lab;
     pokered::Diagnostics animation_diagnostics;
+    const std::filesystem::path generated_animation_root =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "source" / "animations" /
+        "battle_moves";
+    const std::filesystem::path fixture_animation_root =
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "dev" /
+        "battle_animations";
     const std::filesystem::path animation_root =
-        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "dev" / "battle_animations";
+        std::filesystem::exists(generated_animation_root) ? generated_animation_root
+                                                          : fixture_animation_root;
     if (!pokered::load_battle_animation_lab(animation_root, animation_lab, animation_diagnostics)) {
         for (const pokered::Diagnostic& diagnostic : animation_diagnostics.entries)
             std::fprintf(stderr, "%s\n", pokered::format_diagnostic(diagnostic).c_str());

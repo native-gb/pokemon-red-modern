@@ -1,10 +1,10 @@
 ; Original development fixtures for the isolated battle-animation lab.
 
 animation tackle
-    set_position attacker 42 92 native_canvas
-    tween_position attacker 86 62 7 ease_in native_canvas
+    set_offset attacker 0 0 native_canvas
+    tween_offset attacker 44 -30 7 ease_in native_canvas
     wait 2
-    tween_position attacker 42 92 7 ease_out native_canvas
+    tween_offset attacker 0 0 7 ease_out native_canvas
     signal animation_finished
 
 animation scratch

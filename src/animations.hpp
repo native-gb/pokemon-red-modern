@@ -14,6 +14,8 @@ struct AnimationTarget {
     Symbol name;
     float x{};
     float y{};
+    float offset_x{};
+    float offset_y{};
     bool visible{};
     content::CoordinateSpace space{content::CoordinateSpace::native_canvas};
 };
@@ -28,6 +30,7 @@ struct AnimationTween {
     float to_y{};
     content::AnimationEase ease{content::AnimationEase::linear};
     content::CoordinateSpace space{content::CoordinateSpace::native_canvas};
+    bool offset{};
 };
 
 struct AnimationEffect {

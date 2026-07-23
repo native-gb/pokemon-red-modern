@@ -51,15 +51,38 @@ column.
 ## Red import boundary
 
 The committed fixtures contain no cartridge graphics or animation programs.
-The Red importer will decode its attack programs, subanimations, frame blocks,
-base coordinates, tile sets, and transform modes into generated local source
-and normalized sprites. Generated files will be untracked and loaded through
-the same compiler.
+Import the real programs and graphics from a locally owned Pokemon Red US Rev
+0 ROM:
+
+```sh
+./scripts/import_battle_animations.sh
+```
+
+The importer verifies SHA1
+`ea9bcae617fdf159b045185467ae58b2e4a48b9a`. It decodes 203 attack programs,
+86 subanimations, 122 frame blocks, 177 base coordinates, two tile sets, and
+the player-side transform rules. Its ignored local output is:
+
+```text
+data/runtime/imports/pokemon_red_us_rev_0/
+    source/animations/battle_moves/
+        001_pound.sexpr
+        033_tackle.sexpr
+        165_struggle.sexpr
+    compiled/battle_animation_frames.bin
+```
+
+Normal runs prefer these imported programs when the directory exists and
+otherwise use the committed fixtures. Every ROM special-effect command is
+retained by name in generated source. Common battler movement, visibility, and
+delay effects are normalized now; the other named signals remain explicit
+implementation work rather than silently disappearing.
 
 The intended normalized split is:
 
 - battle views own persistent battlers, HUD, and screen layout;
-- reusable battle clips own imported temporary sprite frames and positions;
+- persistent targets move through offsets from renderer-owned anchors;
+- imported temporary sprite pieces retain exact 160 by 144 canvas positions;
 - animation programs sequence clips, battler transforms, sounds, flashes, and
   other Pokémon-specific presentation operations;
 - battle-effect programs independently decide damage and move behavior.

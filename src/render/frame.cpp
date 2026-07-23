@@ -3,7 +3,9 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 
 namespace pokered::render {
 namespace {
@@ -26,8 +28,8 @@ void fill_native_rect(SDL_Renderer* renderer, const ViewLayout& view, float x, f
 void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const AnimationTarget& target,
                   bool player) {
     if (!target.visible) return;
-    const float x = target.x;
-    const float y = target.y;
+    const float x = target.x + target.offset_x;
+    const float y = target.y + target.offset_y;
 
     // Use deliberately original block creatures while the ROM asset importer is absent.
     if (player)
@@ -44,8 +46,65 @@ void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const Animatio
     fill_native_rect(renderer, view, x + 1.0F, y - 17.0F, 3.0F, 3.0F);
 }
 
-void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const AnimationEffect& effect) {
+void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel,
+                              std::uint8_t attributes) {
+    const std::uint8_t palette = (attributes & 0x10U) == 0 ? 0xE4U : 0x6CU;
+    const std::uint8_t shade = static_cast<std::uint8_t>((palette >> (pixel * 2U)) & 0x03U);
+    constexpr std::array<std::array<std::uint8_t, 3>, 4> colors{{
+        {246, 238, 230},
+        {190, 172, 176},
+        {116, 100, 124},
+        {54, 47, 58},
+    }};
+    const auto& color = colors[shade];
+    (void)SDL_SetRenderDrawColor(renderer, color[0], color[1], color[2], 255);
+}
+
+bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
+                          const AnimationEffect& effect,
+                          const ImportedAnimationAssets& assets) {
+    const ImportedAnimationVisual* visual =
+        find_imported_animation_visual(assets, effect.visual);
+    if (visual == nullptr) return false;
+    // Lower OAM indexes win sprite overlap priority, so draw them last.
+    for (auto piece_iterator = visual->pieces.rbegin();
+         piece_iterator != visual->pieces.rend(); ++piece_iterator) {
+        const ImportedAnimationPiece& piece = *piece_iterator;
+        const std::vector<std::uint8_t>& tiles =
+            piece.tile_set == 0 ? assets.tile_set_0 : assets.tile_set_1;
+        const std::size_t tile_begin = static_cast<std::size_t>(piece.tile) * 16U;
+        for (std::uint8_t output_y = 0; output_y < 8; ++output_y) {
+            const std::uint8_t source_y =
+                (piece.attributes & 0x40U) == 0 ? output_y
+                                               : static_cast<std::uint8_t>(7U - output_y);
+            const std::uint8_t low = tiles[tile_begin + static_cast<std::size_t>(source_y) * 2U];
+            const std::uint8_t high =
+                tiles[tile_begin + static_cast<std::size_t>(source_y) * 2U + 1U];
+            for (std::uint8_t output_x = 0; output_x < 8; ++output_x) {
+                const std::uint8_t source_x =
+                    (piece.attributes & 0x20U) == 0 ? output_x
+                                                   : static_cast<std::uint8_t>(7U - output_x);
+                const std::uint8_t bit = static_cast<std::uint8_t>(7U - source_x);
+                const std::uint8_t pixel = static_cast<std::uint8_t>(
+                    ((high >> bit) & 1U) << 1U | ((low >> bit) & 1U));
+                if (pixel == 0) continue;
+                set_imported_pixel_color(renderer, pixel, piece.attributes);
+                fill_native_rect(renderer, view,
+                                 effect.x + static_cast<float>(piece.x) +
+                                     static_cast<float>(output_x),
+                                 effect.y + static_cast<float>(piece.y) +
+                                     static_cast<float>(output_y),
+                                 1.0F, 1.0F);
+            }
+        }
+    }
+    return true;
+}
+
+void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const AnimationEffect& effect,
+                 const ImportedAnimationAssets& imported_assets) {
     if (!effect.visible) return;
+    if (draw_imported_effect(renderer, view, effect, imported_assets)) return;
     const float x = view.x + effect.x * view.scale;
     const float y = view.y + effect.y * view.scale;
     const float unit = view.scale;
@@ -99,7 +158,7 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     if (attacker != nullptr) draw_battler(renderer, view, *attacker, true);
     if (defender != nullptr) draw_battler(renderer, view, *defender, false);
     for (const AnimationEffect& effect : lab.animation.effects)
-        draw_effect(renderer, view, effect);
+        draw_effect(renderer, view, effect, lab.imported_assets);
 
     // Reserve the lower portion as the familiar battle message area.
     (void)SDL_SetRenderDrawColor(renderer, 54, 47, 58, 255);

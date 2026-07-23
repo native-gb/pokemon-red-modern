@@ -493,6 +493,7 @@ Transform and ordering:
 
 ```text
 set_position
+set_offset
 set_scale
 set_rotation
 set_pivot
@@ -500,6 +501,7 @@ set_layer
 set_clip_rect
 set_mask
 tween_position
+tween_offset
 tween_scale
 tween_rotation
 follow_path
@@ -548,24 +550,31 @@ world
 node_local
 ```
 
+Persistent view targets keep renderer-owned base positions. `set_offset` and
+`tween_offset` move those targets relative to their anchors; authored
+animations must not copy battle-layout coordinates into their programs.
+Temporary imported effect pieces may use exact `native_canvas` positions when
+reproducing a cartridge-authored 160 by 144 composition.
+
 Title example:
 
 ```text
 animation title_intro
-    set_position logo 40 -56 native_canvas
+    set_offset logo 0 -72 native_canvas
     show logo
 
     parallel
-        tween_position logo 40 16 24 ease_out native_canvas
+        tween_offset logo 0 0 24 ease_out native_canvas
         sequence
             wait 8
             play_sound title_riser
 
     wait 18
+    set_offset version_label -32 0 native_canvas
     show version_label
 
     parallel
-        tween_position version_label 54 48 8 linear native_canvas
+        tween_offset version_label 0 0 8 linear native_canvas
         play_sound title_impact
 
     signal title_ready

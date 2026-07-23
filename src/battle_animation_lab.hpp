@@ -5,6 +5,7 @@
 #include "diagnostics.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string_view>
 #include <vector>
@@ -16,10 +17,30 @@ struct BattleAnimationLabEntry {
     content::AnimationProgram program;
 };
 
+struct ImportedAnimationPiece {
+    std::int16_t x{};
+    std::int16_t y{};
+    std::uint8_t tile_set{};
+    std::uint8_t tile{};
+    std::uint8_t attributes{};
+};
+
+struct ImportedAnimationVisual {
+    Symbol name;
+    std::vector<ImportedAnimationPiece> pieces;
+};
+
+struct ImportedAnimationAssets {
+    std::vector<std::uint8_t> tile_set_0;
+    std::vector<std::uint8_t> tile_set_1;
+    std::vector<ImportedAnimationVisual> visuals;
+};
+
 struct BattleAnimationLab {
     std::filesystem::path source_root;
     content::Catalog catalog;
     std::vector<BattleAnimationLabEntry> entries;
+    ImportedAnimationAssets imported_assets;
     AnimationState animation;
     std::size_t current{};
     std::uint32_t finished_ticks{};
@@ -35,5 +56,7 @@ void restart_battle_animation_lab(BattleAnimationLab& lab);
 void next_battle_animation_lab(BattleAnimationLab& lab);
 void previous_battle_animation_lab(BattleAnimationLab& lab);
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab);
+const ImportedAnimationVisual* find_imported_animation_visual(
+    const ImportedAnimationAssets& assets, const Symbol& name);
 
 } // namespace pokered

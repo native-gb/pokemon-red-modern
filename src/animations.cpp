@@ -130,7 +130,7 @@ std::uint32_t compile_visibility(const sexpr::Form& form, std::uint32_t at_tick,
 }
 
 std::uint32_t compile_set_position(const sexpr::Form& form, std::uint32_t at_tick,
-                                   TimelineCompiler& compiler) {
+                                   TimelineCompiler& compiler, bool offset) {
     if (!exact_arguments(form, 4, compiler.diagnostics)) return 0;
     const Symbol* node = symbol_argument(form, 0, compiler.diagnostics);
     const auto x = integer_argument(form, 1, compiler.diagnostics);
@@ -141,11 +141,13 @@ std::uint32_t compile_set_position(const sexpr::Form& form, std::uint32_t at_tic
     const auto space = coordinate_space(*space_name);
     if (!subject || !space || !integer_fits_i32(*x) || !integer_fits_i32(*y)) {
         add_error(compiler.diagnostics, form.source, "invalid_animation_position",
-                  "set_position uses an unknown space or out-of-range coordinate");
+                  form.head.symbol.text +
+                      " uses an unknown space or out-of-range coordinate");
         return 0;
     }
     compiler.program.events.push_back({
-        .operation = content::AnimationOp::set_position,
+        .operation =
+            offset ? content::AnimationOp::set_offset : content::AnimationOp::set_position,
         .at_tick = at_tick,
         .subject = *subject,
         .visual = 0,
@@ -159,7 +161,7 @@ std::uint32_t compile_set_position(const sexpr::Form& form, std::uint32_t at_tic
 }
 
 std::uint32_t compile_tween_position(const sexpr::Form& form, std::uint32_t at_tick,
-                                     TimelineCompiler& compiler) {
+                                     TimelineCompiler& compiler, bool offset) {
     if (!exact_arguments(form, 6, compiler.diagnostics)) return 0;
     const Symbol* node = symbol_argument(form, 0, compiler.diagnostics);
     const auto x = integer_argument(form, 1, compiler.diagnostics);
@@ -176,11 +178,13 @@ std::uint32_t compile_tween_position(const sexpr::Form& form, std::uint32_t at_t
     if (!subject || !ease || !space || !integer_fits_i32(*x) || !integer_fits_i32(*y) ||
         !integer_fits_u32(*duration) || *duration == 0) {
         add_error(compiler.diagnostics, form.source, "invalid_animation_tween",
-                  "tween_position uses an invalid coordinate, duration, easing, or space");
+                  form.head.symbol.text +
+                      " uses an invalid coordinate, duration, easing, or space");
         return 0;
     }
     compiler.program.events.push_back({
-        .operation = content::AnimationOp::tween_position,
+        .operation =
+            offset ? content::AnimationOp::tween_offset : content::AnimationOp::tween_position,
         .at_tick = at_tick,
         .duration = static_cast<std::uint32_t>(*duration),
         .subject = *subject,
@@ -266,8 +270,12 @@ std::uint32_t compile_statement(const sexpr::Form& form, std::uint32_t at_tick,
         });
         return 0;
     }
-    if (operation == "set_position") return compile_set_position(form, at_tick, compiler);
-    if (operation == "tween_position") return compile_tween_position(form, at_tick, compiler);
+    if (operation == "set_position") return compile_set_position(form, at_tick, compiler, false);
+    if (operation == "tween_position")
+        return compile_tween_position(form, at_tick, compiler, false);
+    if (operation == "set_offset") return compile_set_position(form, at_tick, compiler, true);
+    if (operation == "tween_offset")
+        return compile_tween_position(form, at_tick, compiler, true);
     if (operation == "play_sound") {
         if (!exact_arguments(form, 1, compiler.diagnostics)) return 0;
         const Symbol* sound_name = symbol_argument(form, 0, compiler.diagnostics);
@@ -375,9 +383,18 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
     const auto effect_index = runtime_effect_index(state, subject);
     if (!target_index && !effect_index) return;
 
-    // Persistent battlers and temporary effects expose the same small transform surface.
-    float* x = target_index ? &state.targets[*target_index].x : &state.effects[*effect_index].x;
-    float* y = target_index ? &state.targets[*target_index].y : &state.effects[*effect_index].y;
+    // Persistent target offsets remain separate from renderer-owned base positions.
+    const bool offset_operation = event.operation == content::AnimationOp::set_offset ||
+                                  event.operation == content::AnimationOp::tween_offset;
+    if (offset_operation && !target_index) return;
+    float* x = target_index
+                   ? (offset_operation ? &state.targets[*target_index].offset_x
+                                       : &state.targets[*target_index].x)
+                   : &state.effects[*effect_index].x;
+    float* y = target_index
+                   ? (offset_operation ? &state.targets[*target_index].offset_y
+                                       : &state.targets[*target_index].y)
+                   : &state.effects[*effect_index].y;
     bool* visible = target_index ? &state.targets[*target_index].visible
                                  : &state.effects[*effect_index].visible;
     content::CoordinateSpace* space =
@@ -386,11 +403,13 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
         *visible = true;
     else if (event.operation == content::AnimationOp::hide)
         *visible = false;
-    else if (event.operation == content::AnimationOp::set_position) {
+    else if (event.operation == content::AnimationOp::set_position ||
+             event.operation == content::AnimationOp::set_offset) {
         *x = static_cast<float>(event.x);
         *y = static_cast<float>(event.y);
         *space = event.space;
-    } else if (event.operation == content::AnimationOp::tween_position) {
+    } else if (event.operation == content::AnimationOp::tween_position ||
+               event.operation == content::AnimationOp::tween_offset) {
         state.tweens.erase(std::remove_if(state.tweens.begin(), state.tweens.end(),
                                           [&event](const AnimationTween& tween) {
                                               return tween.subject == event.subject;
@@ -406,6 +425,7 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
             .to_y = static_cast<float>(event.y),
             .ease = event.ease,
             .space = event.space,
+            .offset = offset_operation,
         });
         *space = event.space;
     }
@@ -493,8 +513,14 @@ void step_animation(AnimationState& state) {
         const float progress =
             static_cast<float>(state.tick - tween.begin_tick) / static_cast<float>(tween.duration);
         const float amount = eased(progress, tween.ease);
-        float* x = target_index ? &state.targets[*target_index].x : &state.effects[*effect_index].x;
-        float* y = target_index ? &state.targets[*target_index].y : &state.effects[*effect_index].y;
+        float* x = target_index
+                       ? (tween.offset ? &state.targets[*target_index].offset_x
+                                       : &state.targets[*target_index].x)
+                       : &state.effects[*effect_index].x;
+        float* y = target_index
+                       ? (tween.offset ? &state.targets[*target_index].offset_y
+                                       : &state.targets[*target_index].y)
+                       : &state.effects[*effect_index].y;
         *x = tween.from_x + (tween.to_x - tween.from_x) * amount;
         *y = tween.from_y + (tween.to_y - tween.from_y) * amount;
     }

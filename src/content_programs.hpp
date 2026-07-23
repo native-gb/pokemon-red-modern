@@ -118,6 +118,8 @@ enum class AnimationOp : std::uint8_t {
     hide,
     set_position,
     tween_position,
+    set_offset,
+    tween_offset,
     play_sound,
     signal,
 };
