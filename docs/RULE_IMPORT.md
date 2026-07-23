@@ -146,7 +146,7 @@ minimum-one behavior, 255 cap, and strict random comparison. The generic
 executor therefore preserves maximum accuracy's one-in-256 miss without
 owning Gen I ratios.
 
-The first move-effect program is also executable:
+The ordinary-damage move-effect program is executable:
 
 ```text
 source/battle_effects/move_effects/ordinary_damage.sexpr
@@ -157,6 +157,13 @@ HP application through the generic `BattleState` owner. A complete ordinary
 turn now owns speed ordering, PP consumption, deterministic RNG, fainting,
 replacement, victory/defeat, and experience awards transactionally.
 Unsupported effects reject the turn without consuming PP or HP.
+
+All 24 direct one-stage and two-stage stat programs are also imported from
+the cartridge's four six-entry handler families. Their readable programs
+select user/target, attack/defense/speed/special/accuracy/evasion, and signed
+stage amount. Stat-down programs include the source game's enemy-only random
+failure gate before accuracy. The runtime owns only generic `modify_stage` and
+`enemy_random_gate` operations.
 
 Wild encounters now join that battle owner through a separate exhaustive
 import. `encounters.bin` accounts for all 248 map slots, all 55 active land
@@ -198,8 +205,8 @@ record is complete data but not a complete playable battle implementation.
 This distinction is enforced in the import report:
 
 ```text
-move_effect_programs 1
-bound_source_move_effects 1
+move_effect_programs 25
+bound_source_move_effects 25
 status_programs 0
 ```
 

@@ -122,7 +122,7 @@ bool execute_action(const RuleCatalog& rules,
                     const AccuracyFormulaProgram& accuracy_formula,
                     PokemonState& attacker, PokemonState& defender,
                     BattleSideState& attacker_side,
-                    const BattleSideState& defender_side,
+                    BattleSideState& defender_side,
                     bool player_actor, const SelectedMove& selected,
                     BattleState& battle, ActionResult& result,
                     std::string& error) {
@@ -149,12 +149,14 @@ bool execute_action(const RuleCatalog& rules,
     bool hit = true;
     bool critical = false;
     bool damage_ready = false;
-    bool damage_dealt = false;
+    bool outcome_reached = false;
+    bool effect_applies = true;
     std::uint16_t damage = 0U;
     for (const MoveEffectInstruction& instruction :
          selected.effect->instructions) {
         switch (instruction.opcode) {
         case MoveEffectOpcode::check_accuracy: {
+            if (!effect_applies) break;
             const auto random = preview_random(battle.random_state);
             AccuracyFormulaResult accuracy;
             if (!execute_accuracy_formula(
@@ -172,17 +174,20 @@ bool execute_action(const RuleCatalog& rules,
             consume_random(battle.random_state,
                            accuracy.random_bytes_consumed);
             hit = accuracy.hit;
-            if (!hit)
+            if (!hit) {
+                effect_applies = false;
+                outcome_reached = true;
                 battle.events.push_back({
                     .kind = BattleEventKind::missed,
                     .player_actor = player_actor,
                     .move_id = selected.rule->id,
                     .text = "The attack missed",
                 });
+            }
             break;
         }
         case MoveEffectOpcode::calculate_critical: {
-            if (!hit) break;
+            if (!hit || !effect_applies) break;
             const auto random = preview_random(battle.random_state);
             CriticalHitResult critical_result;
             if (!execute_critical_hit_program(
@@ -209,7 +214,7 @@ bool execute_action(const RuleCatalog& rules,
             break;
         }
         case MoveEffectOpcode::calculate_damage: {
-            if (!hit) break;
+            if (!hit || !effect_applies) break;
             const bool physical =
                 selected.rule->damage_class == MoveDamageClass::physical;
             const std::uint16_t raw_attack =
@@ -251,8 +256,8 @@ bool execute_action(const RuleCatalog& rules,
             break;
         }
         case MoveEffectOpcode::deal_damage:
-            if (!hit) {
-                damage_dealt = true;
+            if (!hit || !effect_applies) {
+                outcome_reached = true;
                 break;
             }
             if (!damage_ready) {
@@ -270,7 +275,7 @@ bool execute_action(const RuleCatalog& rules,
                 .value = damage,
                 .text = {},
             });
-            damage_dealt = true;
+            outcome_reached = true;
             if (defender.current_hp == 0U) {
                 battle.events.push_back({
                     .kind = BattleEventKind::fainted,
@@ -280,10 +285,50 @@ bool execute_action(const RuleCatalog& rules,
                 result.target_fainted = true;
             }
             break;
+        case MoveEffectOpcode::enemy_random_gate:
+            if (!player_actor) {
+                const std::uint8_t random =
+                    next_random_byte(battle.random_state);
+                if (random < instruction.operands[0]) {
+                    effect_applies = false;
+                    outcome_reached = true;
+                    battle.events.push_back({
+                        .kind = BattleEventKind::failed,
+                        .player_actor = player_actor,
+                        .move_id = selected.rule->id,
+                        .text = "But it failed",
+                    });
+                }
+            }
+            break;
+        case MoveEffectOpcode::modify_stage: {
+            if (!effect_applies) break;
+            BattleSideState& side =
+                instruction.operands[0] == 0U ? attacker_side
+                                              : defender_side;
+            const std::size_t stage_index = instruction.operands[1];
+            const std::int16_t delta =
+                static_cast<std::int16_t>(instruction.operands[2]);
+            const int updated =
+                static_cast<int>(side.stat_stages[stage_index]) + delta;
+            side.stat_stages[stage_index] = static_cast<std::uint8_t>(
+                std::clamp(updated, 1, 13));
+            battle.events.push_back({
+                .kind = BattleEventKind::stat_changed,
+                .player_actor =
+                    instruction.operands[0] == 0U ? player_actor
+                                                  : !player_actor,
+                .move_id = selected.rule->id,
+                .value = side.stat_stages[stage_index],
+                .text = {},
+            });
+            outcome_reached = true;
+            break;
+        }
         }
     }
-    if (!damage_dealt) {
-        error = "move-effect program did not reach a damage outcome";
+    if (!outcome_reached) {
+        error = "move-effect program did not reach an action outcome";
         return false;
     }
     error.clear();
@@ -529,7 +574,7 @@ bool execute_battle_turn(const RuleCatalog& rules,
             player_actor ? enemy_pokemon : player_pokemon;
         BattleSideState& attacker_side =
             player_actor ? battle_work.player : battle_work.enemy;
-        const BattleSideState& defender_side =
+        BattleSideState& defender_side =
             player_actor ? battle_work.enemy : battle_work.player;
         const SelectedMove& selected =
             player_actor ? player_move : enemy_move;

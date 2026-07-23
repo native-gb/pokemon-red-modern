@@ -71,8 +71,11 @@ AccuracyFormulaInstruction accuracy_instruction(
     return {.opcode = opcode, .operands = {a, b, c, d}};
 }
 
-MoveEffectInstruction move_effect_instruction(MoveEffectOpcode opcode) {
-    return {.opcode = opcode};
+MoveEffectInstruction move_effect_instruction(
+    MoveEffectOpcode opcode, std::uint16_t a = 0U,
+    std::uint16_t b = 0U, std::uint16_t c = 0U,
+    std::uint16_t d = 0U) {
+    return {.opcode = opcode, .operands = {a, b, c, d}};
 }
 
 DamageFormulaProgram lift_original_damage_formula() {
@@ -327,6 +330,86 @@ MoveEffectProgram lift_original_ordinary_move_effect() {
     return program;
 }
 
+std::uint16_t move_effect_pointer(std::span<const std::uint8_t> rom,
+                                  std::uint8_t effect) {
+    constexpr std::size_t pointer_table = 0x03F150U;
+    const std::size_t offset =
+        pointer_table + static_cast<std::size_t>(effect - 1U) * 2U;
+    return static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(rom[offset]) |
+        static_cast<std::uint16_t>(
+            static_cast<std::uint16_t>(rom[offset + 1U]) << 8U));
+}
+
+bool lift_stat_stage_move_effects(
+    std::span<const std::uint8_t> rom,
+    std::vector<MoveEffectProgram>& programs, std::string& error) {
+    constexpr std::size_t pointer_table = 0x03F150U;
+    constexpr std::size_t pointer_bytes = 0x56U * 2U;
+    if (pointer_table + pointer_bytes > rom.size()) {
+        error = "move-effect pointer table exceeds the verified cartridge";
+        return false;
+    }
+
+    // Validate the four six-entry handler families before assigning semantic
+    // operands. The program bindings remain cartridge-owned.
+    constexpr std::array<std::uint8_t, 4> family_bases{
+        0x0AU, 0x12U, 0x32U, 0x3AU};
+    std::array<std::uint16_t, 4> family_pointers{};
+    for (std::size_t family = 0; family < family_bases.size(); ++family) {
+        family_pointers[family] =
+            move_effect_pointer(rom, family_bases[family]);
+        if (family_pointers[family] == 0U) {
+            error = "stat-stage move-effect family has a null handler";
+            return false;
+        }
+        for (std::uint8_t stat = 1U; stat < 6U; ++stat)
+            if (move_effect_pointer(
+                    rom, static_cast<std::uint8_t>(
+                             family_bases[family] + stat)) !=
+                family_pointers[family]) {
+                error = "stat-stage move-effect family changes handler";
+                return false;
+            }
+    }
+    if (family_pointers[0] != family_pointers[2] ||
+        family_pointers[1] != family_pointers[3] ||
+        family_pointers[0] == family_pointers[1]) {
+        error = "stat-stage move-effect handler families are inconsistent";
+        return false;
+    }
+
+    constexpr std::array<std::string_view, 6> stat_names{
+        "attack", "defense", "speed", "special", "accuracy", "evasion"};
+    for (std::size_t family = 0; family < family_bases.size(); ++family) {
+        const bool raise = family == 0U || family == 2U;
+        const std::int16_t amount =
+            raise ? static_cast<std::int16_t>(family < 2U ? 1 : 2)
+                  : static_cast<std::int16_t>(family < 2U ? -1 : -2);
+        for (std::uint8_t stat = 0U; stat < 6U; ++stat) {
+            MoveEffectProgram program;
+            program.key =
+                std::string(raise ? "raise_" : "lower_") +
+                std::string(stat_names[stat]) + "_" +
+                std::to_string(amount < 0 ? -amount : amount);
+            program.source_effect_ids = {
+                static_cast<std::uint8_t>(family_bases[family] + stat)};
+            if (!raise) {
+                program.instructions.push_back(move_effect_instruction(
+                    MoveEffectOpcode::enemy_random_gate, 64U));
+                program.instructions.push_back(move_effect_instruction(
+                    MoveEffectOpcode::check_accuracy));
+            }
+            program.instructions.push_back(move_effect_instruction(
+                MoveEffectOpcode::modify_stage, raise ? 0U : 1U, stat,
+                static_cast<std::uint16_t>(amount)));
+            programs.push_back(std::move(program));
+        }
+    }
+    error.clear();
+    return true;
+}
+
 bool lift_original_capture_formula(
     std::span<const std::uint8_t> rom, CaptureFormulaProgram& program,
     std::string& error) {
@@ -474,7 +557,7 @@ void emit_source(const DamageFormulaProgram& program,
                  const ExperienceFormulaProgram& experience,
                  const StatFormulaProgram& stats,
                  const AccuracyFormulaProgram& accuracy,
-                 const MoveEffectProgram& ordinary_effect,
+                 const std::vector<MoveEffectProgram>& move_effects,
                  BattleRuleImport& result) {
     std::ostringstream source;
     source << "; Semantic lift from the verified cartridge's damage routines.\n"
@@ -696,37 +779,60 @@ void emit_source(const DamageFormulaProgram& program,
     add_text_file(result, "source/battle_effects/accuracy.sexpr",
                   accuracy_source.str());
 
-    std::ostringstream effect_source;
-    effect_source
-        << "; Semantic ordinary-damage path selected by source effect zero.\n"
-        << "; The importer owns this cartridge binding; the battle engine\n"
-        << "; dispatches source effect IDs only through imported programs.\n\n"
-        << "move_effect " << ordinary_effect.key << '\n'
-        << "    source_effect_ids";
-    for (const std::uint8_t source_effect :
-         ordinary_effect.source_effect_ids)
-        effect_source << ' ' << static_cast<unsigned>(source_effect);
-    effect_source << '\n';
-    for (const MoveEffectInstruction& instruction :
-         ordinary_effect.instructions) {
-        switch (instruction.opcode) {
-        case MoveEffectOpcode::check_accuracy:
-            effect_source << "    check_accuracy\n";
-            break;
-        case MoveEffectOpcode::calculate_critical:
-            effect_source << "    calculate_critical\n";
-            break;
-        case MoveEffectOpcode::calculate_damage:
-            effect_source << "    calculate_damage\n";
-            break;
-        case MoveEffectOpcode::deal_damage:
-            effect_source << "    deal_damage\n";
-            break;
+    std::size_t bound_source_effects = 0U;
+    constexpr std::array<std::string_view, 6> stat_names{
+        "attack", "defense", "speed", "special", "accuracy", "evasion"};
+    for (const MoveEffectProgram& move_effect : move_effects) {
+        std::ostringstream effect_source;
+        effect_source
+            << "; Semantic move-effect program lifted from the verified\n"
+            << "; cartridge handler binding at 0x03f150.\n\n"
+            << "move_effect " << move_effect.key << '\n'
+            << "    source_effect_ids";
+        for (const std::uint8_t source_effect :
+             move_effect.source_effect_ids) {
+            effect_source << ' ' << static_cast<unsigned>(source_effect);
+            ++bound_source_effects;
         }
+        effect_source << '\n';
+        for (const MoveEffectInstruction& instruction :
+             move_effect.instructions) {
+            switch (instruction.opcode) {
+            case MoveEffectOpcode::check_accuracy:
+                effect_source << "    check_accuracy\n";
+                break;
+            case MoveEffectOpcode::calculate_critical:
+                effect_source << "    calculate_critical\n";
+                break;
+            case MoveEffectOpcode::calculate_damage:
+                effect_source << "    calculate_damage\n";
+                break;
+            case MoveEffectOpcode::deal_damage:
+                effect_source << "    deal_damage\n";
+                break;
+            case MoveEffectOpcode::enemy_random_gate:
+                effect_source
+                    << "    enemy_random_gate below "
+                    << instruction.operands[0] << '\n';
+                break;
+            case MoveEffectOpcode::modify_stage: {
+                const std::int16_t delta = static_cast<std::int16_t>(
+                    instruction.operands[2]);
+                effect_source
+                    << "    modify_stage "
+                    << (instruction.operands[0] == 0U ? "user " : "target ")
+                    << stat_names[instruction.operands[1]] << ' '
+                    << delta << '\n';
+                break;
+            }
+            }
+        }
+        add_text_file(
+            result,
+            "source/battle_effects/move_effects/" + move_effect.key +
+                ".sexpr",
+            effect_source.str());
     }
-    add_text_file(
-        result, "source/battle_effects/move_effects/ordinary_damage.sexpr",
-        effect_source.str());
 
     std::ostringstream report;
     report << "Pokemon Red semantic battle-rule import\n"
@@ -738,14 +844,15 @@ void emit_source(const DamageFormulaProgram& program,
            << "experience_formula_programs 1\n"
            << "stat_formula_programs 1\n"
            << "accuracy_formula_programs 1\n"
-           << "move_effect_programs 1\n"
-           << "bound_source_move_effects 1\n"
+           << "move_effect_programs " << move_effects.size() << '\n'
+           << "bound_source_move_effects " << bound_source_effects << '\n'
            << "status_programs 0\n"
            << "coverage_note damage, critical-hit, capture, experience, "
               "owned-Pokemon stat, and ordinary accuracy calculations are "
               "executable; source effect zero also owns the executable "
-              "ordinary-damage pipeline; remaining battle program domains "
-              "stay explicitly incomplete\n";
+              "ordinary-damage pipeline and all direct one/two-stage stat "
+              "moves are executable; remaining battle program domains stay "
+              "explicitly incomplete\n";
     add_text_file(result, "reports/battle_rule_import_summary.txt",
                   report.str());
 }
@@ -756,9 +863,9 @@ void emit_cache(const DamageFormulaProgram& program,
                 const ExperienceFormulaProgram& experience,
                 const StatFormulaProgram& stats,
                 const AccuracyFormulaProgram& accuracy,
-                const MoveEffectProgram& ordinary_effect,
+                const std::vector<MoveEffectProgram>& move_effects,
                 BattleRuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '7'};
+    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '8'};
     write_u16(bytes, 1U);
     write_u16(bytes, 0U);
     write_string(bytes, program.key);
@@ -854,19 +961,22 @@ void emit_cache(const DamageFormulaProgram& program,
             write_u16(bytes, operand);
     }
 
-    write_u16(bytes, 1U);
-    write_string(bytes, ordinary_effect.key);
-    write_u16(bytes, static_cast<std::uint16_t>(
-                         ordinary_effect.source_effect_ids.size()));
-    bytes.insert(bytes.end(), ordinary_effect.source_effect_ids.begin(),
-                 ordinary_effect.source_effect_ids.end());
-    write_u16(bytes, static_cast<std::uint16_t>(
-                         ordinary_effect.instructions.size()));
-    for (const MoveEffectInstruction& value :
-         ordinary_effect.instructions) {
-        bytes.push_back(static_cast<std::uint8_t>(value.opcode));
-        for (const std::uint16_t operand : value.operands)
-            write_u16(bytes, operand);
+    write_u16(bytes,
+              static_cast<std::uint16_t>(move_effects.size()));
+    for (const MoveEffectProgram& move_effect : move_effects) {
+        write_string(bytes, move_effect.key);
+        write_u16(bytes, static_cast<std::uint16_t>(
+                             move_effect.source_effect_ids.size()));
+        bytes.insert(bytes.end(), move_effect.source_effect_ids.begin(),
+                     move_effect.source_effect_ids.end());
+        write_u16(bytes, static_cast<std::uint16_t>(
+                             move_effect.instructions.size()));
+        for (const MoveEffectInstruction& value :
+             move_effect.instructions) {
+            bytes.push_back(static_cast<std::uint8_t>(value.opcode));
+            for (const std::uint16_t operand : value.operands)
+                write_u16(bytes, operand);
+        }
     }
     result.files.push_back(
         {"compiled/battle_rules.bin", std::move(bytes)});
@@ -897,19 +1007,21 @@ bool decode_battle_rule_import(std::span<const std::uint8_t> rom,
     if (!lift_original_stat_formula(rom, stats, error)) return false;
     AccuracyFormulaProgram accuracy;
     if (!lift_original_accuracy_formula(rom, accuracy, error)) return false;
-    const MoveEffectProgram ordinary_effect =
-        lift_original_ordinary_move_effect();
+    std::vector<MoveEffectProgram> move_effects{
+        lift_original_ordinary_move_effect()};
+    if (!lift_stat_stage_move_effects(rom, move_effects, error))
+        return false;
     emit_source(program, critical, capture, experience, stats, accuracy,
-                ordinary_effect, result);
+                move_effects, result);
     emit_cache(program, critical, capture, experience, stats, accuracy,
-               ordinary_effect, result);
+               move_effects, result);
     result.damage_formulas = 1U;
     result.critical_hit_programs = 1U;
     result.capture_formulas = 1U;
     result.experience_formulas = 1U;
     result.stat_formulas = 1U;
     result.accuracy_formulas = 1U;
-    result.move_effect_programs = 1U;
+    result.move_effect_programs = move_effects.size();
     error.clear();
     return true;
 }

@@ -29,7 +29,7 @@ battle_rule_magic="$(head -c 4 "$battle_rule_cache" 2>/dev/null || true)"
 encounter_magic="$(head -c 4 "$encounter_cache" 2>/dev/null || true)"
 boot_magic="$(head -c 4 "$boot_cache" 2>/dev/null || true)"
 if [[ "$world_magic" != "PMVA" || "$interaction_magic" != "PWI1" ||
-      "$rule_magic" != "PRL1" || "$battle_rule_magic" != "PBR7" ||
+      "$rule_magic" != "PRL1" || "$battle_rule_magic" != "PBR8" ||
       "$encounter_magic" != "PEC1" ||
       "$boot_magic" != "PBT1" ]]; then
     rom="$repo_root/../native-gb-pokemon-red/roms/pokemon_red.gb"

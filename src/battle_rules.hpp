@@ -161,6 +161,8 @@ enum class MoveEffectOpcode : std::uint8_t {
     calculate_critical,
     calculate_damage,
     deal_damage,
+    enemy_random_gate,
+    modify_stage,
 };
 
 struct MoveEffectInstruction {

@@ -157,6 +157,20 @@ bool valid_instruction(const MoveEffectInstruction& instruction) {
         return std::ranges::all_of(
             instruction.operands,
             [](std::uint16_t value) { return value == 0U; });
+    case MoveEffectOpcode::enemy_random_gate:
+        return instruction.operands[0] <= 0xFFU &&
+               instruction.operands[1] == 0U &&
+               instruction.operands[2] == 0U &&
+               instruction.operands[3] == 0U;
+    case MoveEffectOpcode::modify_stage: {
+        const std::int16_t delta =
+            static_cast<std::int16_t>(instruction.operands[2]);
+        return instruction.operands[0] <= 1U &&
+               instruction.operands[1] < 6U &&
+               (delta == -2 || delta == -1 || delta == 1 ||
+                delta == 2) &&
+               instruction.operands[3] == 0U;
+    }
     }
     return false;
 }
@@ -187,7 +201,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '7'}) {
+        magic != std::array{'P', 'B', 'R', '8'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -607,7 +621,7 @@ bool load_battle_rules(const std::filesystem::path& path,
             std::uint8_t opcode = 0;
             if (!read_u8(input, opcode) ||
                 opcode > static_cast<std::uint8_t>(
-                             MoveEffectOpcode::deal_damage)) {
+                             MoveEffectOpcode::modify_stage)) {
                 error = "battle rule cache has an unknown move-effect opcode";
                 return false;
             }

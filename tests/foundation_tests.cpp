@@ -1183,6 +1183,14 @@ void test_local_rule_cache(TestState& state) {
               ordinary_effect->instructions.size() == 4U,
           "ordinary damage moves resolve through an imported source-effect "
           "binding");
+    const pokered::MoveEffectProgram* lower_defense =
+        pokered::find_move_effect_program(battle_rules, 0x13U);
+    check(state,
+          battle_rules.move_effect_programs.size() == 25U &&
+              lower_defense != nullptr &&
+              lower_defense->key == "lower_defense_1" &&
+              lower_defense->instructions.size() == 3U,
+          "all direct stat-stage effects resolve through imported programs");
     if (stats != nullptr && experience != nullptr &&
         ordinary_effect != nullptr) {
         pokered::PokemonState player_mon;
@@ -1223,18 +1231,38 @@ void test_local_rule_cache(TestState& state) {
               "battle owner resolves a complete speed-ordered ordinary move "
               "exchange through imported effect and formula programs");
 
-        const pokered::PokemonState before_unsupported =
+        const pokered::PokemonState before_stat_move =
             player_party.members[0];
         check(state,
-              !pokered::execute_battle_turn(
+              pokered::execute_battle_turn(
                   rules, battle_rules, 0x1234U, player_party, exchange,
                   {1U, 0U}, error) &&
                   player_party.members[0].moves[1].pp ==
-                      before_unsupported.moves[1].pp &&
-                  player_party.members[0].current_hp ==
-                      before_unsupported.current_hp,
-              "unimported move effects fail transactionally without "
-              "consuming campaign PP or HP");
+                      before_stat_move.moves[1].pp - 1U &&
+                  exchange.enemy.stat_stages[1] == 6U,
+              "imported Tail Whip program consumes PP and lowers enemy "
+              "defense one stage");
+
+        pokered::PartyState gate_player{{player_mon}};
+        pokered::BattleState enemy_gate;
+        check(state,
+              pokered::begin_battle(
+                  rules, battle_rules, gate_player,
+                  pokered::PartyState{{enemy_mon}},
+                  pokered::BattleKind::wild, 1U, enemy_gate, error) &&
+                  pokered::execute_battle_turn(
+                      rules, battle_rules, 0x1234U, gate_player,
+                      enemy_gate, {0U, 1U}, error) &&
+                  enemy_gate.player.stat_stages[0] == 7U &&
+                  std::ranges::any_of(
+                      enemy_gate.events,
+                      [](const pokered::BattleEvent& event) {
+                          return event.kind ==
+                                     pokered::BattleEventKind::failed &&
+                                 !event.player_actor;
+                      }),
+              "enemy stat-down program applies its imported random failure "
+              "gate before accuracy");
 
         pokered::PartyState victory_party{{player_mon}};
         enemy_mon.current_hp = 1U;

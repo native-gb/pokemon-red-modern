@@ -41,6 +41,8 @@ enum class BattleEventKind : std::uint8_t {
     fainted,
     gained_experience,
     sent_out,
+    failed,
+    stat_changed,
 };
 
 struct BattleEvent {
