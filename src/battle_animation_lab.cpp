@@ -13,12 +13,12 @@ namespace {
 std::array<AnimationTarget, 3> battle_targets() {
     std::array<AnimationTarget, 3> targets;
     targets[0].name = Symbol{"attacker"};
-    targets[0].x = 42.0F;
-    targets[0].y = 92.0F;
+    targets[0].x = 36.0F;
+    targets[0].y = 68.0F;
     targets[0].visible = true;
     targets[1].name = Symbol{"defender"};
-    targets[1].x = 116.0F;
-    targets[1].y = 42.0F;
+    targets[1].x = 124.0F;
+    targets[1].y = 28.0F;
     targets[1].visible = true;
     targets[2].name = Symbol{"battle_screen"};
     targets[2].visible = true;

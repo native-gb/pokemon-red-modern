@@ -36,14 +36,15 @@ void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const Animatio
         (void)SDL_SetRenderDrawColor(renderer, 68, 104, 156, 255);
     else
         (void)SDL_SetRenderDrawColor(renderer, 176, 104, 72, 255);
-    fill_native_rect(renderer, view, x - 12.0F, y - 12.0F, 22.0F, 18.0F);
-    fill_native_rect(renderer, view, x - 7.0F, y - 20.0F, 14.0F, 10.0F);
-    fill_native_rect(renderer, view, player ? x - 17.0F : x + 8.0F, y - 7.0F, 8.0F, 6.0F);
-    fill_native_rect(renderer, view, x - 9.0F, y + 5.0F, 6.0F, 6.0F);
-    fill_native_rect(renderer, view, x + 3.0F, y + 5.0F, 6.0F, 6.0F);
+    fill_native_rect(renderer, view, x - 18.0F, y - 16.0F, 34.0F, 28.0F);
+    fill_native_rect(renderer, view, x - 11.0F, y - 28.0F, 22.0F, 15.0F);
+    fill_native_rect(renderer, view, player ? x - 25.0F : x + 14.0F, y - 10.0F, 12.0F,
+                     10.0F);
+    fill_native_rect(renderer, view, x - 14.0F, y + 9.0F, 9.0F, 11.0F);
+    fill_native_rect(renderer, view, x + 5.0F, y + 9.0F, 9.0F, 11.0F);
 
     (void)SDL_SetRenderDrawColor(renderer, 246, 242, 224, 255);
-    fill_native_rect(renderer, view, x + 1.0F, y - 17.0F, 3.0F, 3.0F);
+    fill_native_rect(renderer, view, x + 2.0F, y - 24.0F, 4.0F, 4.0F);
 }
 
 void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel,
@@ -151,8 +152,8 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
 
     // Draw a fixed Pokémon battle composition; animation state supplies only overrides.
     (void)SDL_SetRenderDrawColor(renderer, 190, 181, 167, 255);
-    fill_native_rect(renderer, view, 18.0F, 101.0F, 58.0F, 4.0F);
-    fill_native_rect(renderer, view, 88.0F, 54.0F, 54.0F, 4.0F);
+    fill_native_rect(renderer, view, 8.0F, 94.0F, 56.0F, 2.0F);
+    fill_native_rect(renderer, view, 96.0F, 54.0F, 56.0F, 2.0F);
     const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
     const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
     if (attacker != nullptr) draw_battler(renderer, view, *attacker, true);
@@ -160,11 +161,11 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     for (const AnimationEffect& effect : lab.animation.effects)
         draw_effect(renderer, view, effect, lab.imported_assets);
 
-    // Reserve the lower portion as the familiar battle message area.
+    // Gen 1 reserves the lower six tile rows for battle text and action menus.
     (void)SDL_SetRenderDrawColor(renderer, 54, 47, 58, 255);
-    fill_native_rect(renderer, view, 4.0F, 112.0F, 152.0F, 28.0F);
+    fill_native_rect(renderer, view, 0.0F, 96.0F, 160.0F, 48.0F);
     (void)SDL_SetRenderDrawColor(renderer, 250, 247, 238, 255);
-    fill_native_rect(renderer, view, 6.0F, 114.0F, 148.0F, 24.0F);
+    fill_native_rect(renderer, view, 2.0F, 98.0F, 156.0F, 44.0F);
 }
 
 } // namespace

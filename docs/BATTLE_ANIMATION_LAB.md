@@ -78,6 +78,10 @@ retained by name in generated source. Common battler movement, visibility, and
 delay effects are normalized now; the other named signals remain explicit
 implementation work rather than silently disappearing.
 
+The verification view uses Red's fixed battle picture boxes: the enemy 7 by 7
+tile picture begins at `(96, 0)`, the player picture begins at `(8, 40)`, and
+the six-row message region begins at `y = 96`.
+
 The intended normalized split is:
 
 - battle views own persistent battlers, HUD, and screen layout;
