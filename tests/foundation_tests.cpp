@@ -1,9 +1,12 @@
+#include "animations.hpp"
 #include "catalog.hpp"
 #include "content_index.hpp"
 #include "overlays.hpp"
+#include "predicates.hpp"
 #include "sexpr.hpp"
 #include "symbols.hpp"
 
+#include <array>
 #include <cstdio>
 #include <string>
 #include <utility>
@@ -159,6 +162,115 @@ void test_indexes_and_catalog(TestState& state) {
           "invalid map cell count is rejected");
 }
 
+void test_predicates(TestState& state) {
+    constexpr std::string_view source = "predicate can_receive_lapras\n"
+                                        "    and\n"
+                                        "        party_has_space\n"
+                                        "        not\n"
+                                        "            species_owned lapras\n";
+
+    // Resolve a species reference while compiling the expression to typed instructions.
+    pokered::content::Catalog catalog;
+    pokered::Diagnostics catalog_diagnostics;
+    const auto lapras =
+        pokered::content::add(catalog.species, symbol("lapras"), pokered::content::SpeciesDef{},
+                              {"species.sexpr", 1, 1}, catalog_diagnostics);
+    pokered::sexpr::Document document;
+    pokered::Diagnostics diagnostics;
+    check(state, pokered::sexpr::parse("predicate.sexpr", source, document, diagnostics),
+          "predicate source parses");
+    pokered::content::PredicateProgram program;
+    check(state, pokered::compile_predicate(document.forms.front(), catalog, program, diagnostics),
+          "predicate compiles");
+    check(state, program.instructions.size() == 4, "predicate emits four typed instructions");
+
+    // Evaluate the same program against explicit state without catalog or string lookups.
+    const std::array<std::uint8_t, 1> not_owned = {0};
+    pokered::PredicateState predicate_state;
+    predicate_state.species_owned = not_owned;
+    predicate_state.party_capacity = 6;
+    bool value = false;
+    check(state, lapras.has_value(), "lapras receives a dense ID");
+    check(state, pokered::evaluate_predicate(program, predicate_state, value, diagnostics),
+          "predicate evaluates");
+    check(state, value, "space and unowned species permits gift");
+
+    const std::array<std::uint8_t, 1> owned = {1};
+    predicate_state.species_owned = owned;
+    check(state, pokered::evaluate_predicate(program, predicate_state, value, diagnostics),
+          "predicate reevaluates");
+    check(state, !value, "owned species rejects gift");
+}
+
+void test_animations(TestState& state) {
+    constexpr std::string_view source =
+        "animation original_title\n"
+        "    scene original_title\n"
+        "    set_position logo 40 -20 native_canvas\n"
+        "    show logo\n"
+        "    parallel\n"
+        "        tween_position logo 40 16 4 ease_out native_canvas\n"
+        "        sequence\n"
+        "            wait 2\n"
+        "            play_sound title_rise\n"
+        "    wait 1\n"
+        "    show version_label\n"
+        "    signal title_ready\n";
+
+    // Build an original two-node scene and resolve its one semantic sound cue.
+    pokered::content::Catalog catalog;
+    pokered::content::SceneDef scene;
+    pokered::content::SceneNodeDef logo;
+    logo.name = symbol("logo");
+    logo.visible = false;
+    scene.nodes.push_back(std::move(logo));
+    pokered::content::SceneNodeDef version_label;
+    version_label.name = symbol("version_label");
+    version_label.visible = false;
+    scene.nodes.push_back(std::move(version_label));
+    pokered::Diagnostics diagnostics;
+    pokered::content::add(catalog.scenes, symbol("original_title"), std::move(scene),
+                          {"scene.sexpr", 1, 1}, diagnostics);
+    pokered::content::add(catalog.sounds, symbol("title_rise"), pokered::content::SoundProgram{},
+                          {"sound.sexpr", 1, 1}, diagnostics);
+
+    // Compile sequence and parallel forms into one stable event timeline.
+    pokered::sexpr::Document document;
+    check(state, pokered::sexpr::parse("animation.sexpr", source, document, diagnostics),
+          "animation source parses");
+    pokered::content::AnimationProgram program;
+    check(state, pokered::compile_animation(document.forms.front(), catalog, program, diagnostics),
+          "animation compiles");
+    check(state, program.duration == 5, "parallel duration contributes to sequence");
+
+    // Step the executor and observe movement, sound, visibility, and signal output.
+    pokered::AnimationState animation;
+    check(state, pokered::start_animation(program, catalog, animation, diagnostics),
+          "animation starts");
+    pokered::step_animation(animation);
+    const pokered::AnimationNode* node = pokered::find_animation_node(animation, symbol("logo"));
+    check(state, node != nullptr && node->visible, "title logo becomes visible");
+    check(state, node != nullptr && node->y == -20.0F, "title logo starts above canvas");
+    pokered::step_animation(animation);
+    pokered::step_animation(animation);
+    check(state,
+          animation.cues.size() == 1 &&
+              animation.cues.front().kind == pokered::AnimationCueKind::sound,
+          "parallel sound cue fires on schedule");
+    while (!animation.finished)
+        pokered::step_animation(animation);
+    node = pokered::find_animation_node(animation, symbol("logo"));
+    check(state, node != nullptr && node->y == 16.0F, "title logo tween reaches destination");
+    const pokered::AnimationNode* version =
+        pokered::find_animation_node(animation, symbol("version_label"));
+    check(state, version != nullptr && version->visible, "version label appears after tween");
+    check(state,
+          animation.cues.size() == 1 &&
+              animation.cues.front().kind == pokered::AnimationCueKind::signal &&
+              animation.cues.front().signal.text == "title_ready",
+          "title_ready signal ends timeline");
+}
+
 } // namespace
 
 int main() {
@@ -167,6 +279,8 @@ int main() {
     test_sexpr(state);
     test_overlays(state);
     test_indexes_and_catalog(state);
+    test_predicates(state);
+    test_animations(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

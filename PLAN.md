@@ -22,6 +22,8 @@ rendering or memory constraints.
   diagnostics.
 - [x] Parse the indented S-expression notation and resolve deterministic
   package overlays with provenance.
+- [x] Compile and execute typed predicates and the first animation timeline
+  instruction subset.
 - Verify supported ROM identity and header.
 - Define pack manifest, schema versions, cache keys, and provenance.
 - Emit deterministic readable source for every imported content/program domain.

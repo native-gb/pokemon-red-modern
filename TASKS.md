@@ -2,8 +2,8 @@
 
 ## Next
 
-1. Implement predicate, animation, campaign, and battle-effect compilers.
-2. Prove animation execution with an original placeholder title sequence.
+1. Implement campaign and battle-effect compilers and executors.
+2. Implement battle-AI and audio compilers and executors.
 3. Port only ROM verification/hash utilities into the importer boundary.
 4. Build the domain inventory and deterministic readable-source emitter.
 5. Compile generated source into the indexed runtime pack and startup fast path.
@@ -18,6 +18,10 @@
 - Implemented deterministic package `define`/`override` resolution with
   per-field provenance.
 - Implemented the indented S-expression reader and canonical printer.
+- Implemented the typed predicate compiler and bounded executor.
+- Implemented the first typed animation timeline compiler and executor.
+- Proved sequence, parallel, tween, sound-cue, and signal execution with an
+  original placeholder title fixture.
 
 ## Deliberately deferred
 

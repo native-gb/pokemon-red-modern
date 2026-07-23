@@ -45,8 +45,9 @@ The reader has no knowledge of Pokémon operations:
 
 ```cpp
 struct Form {
-    Symbol head;
-    std::vector<Node> arguments;
+    Atom head;
+    std::vector<Atom> arguments;
+    std::vector<Form> children;
     SourceSpan source;
 };
 ```
@@ -175,6 +176,10 @@ friendship
 battle_result
 option_enabled
 ```
+
+The initial compiler uses `current_map pallet_town` as a direct boolean query.
+This keeps symbolic map resolution typed without introducing an untyped symbol
+value into the expression stack.
 
 Example:
 
@@ -631,3 +636,21 @@ Developer tools expose:
 
 The generated source and source maps make imported behavior inspectable without
 reading raw disassembly during ordinary debugging.
+
+## Implemented foundation
+
+The current engine code includes:
+
+- typed postorder predicate instructions with catalog reference resolution,
+  static value checks, bounded stack sizing, and source-located runtime errors;
+- explicit predicate state views for flags, variables, inventory, party,
+  Pokédex ownership, actor visibility, map, level, friendship, and battle
+  result;
+- a typed animation timeline compiler for `sequence`, `parallel`, `wait`,
+  visibility, position, position tweens, semantic sound cues, and signals;
+- an animation executor whose mutable nodes and tweens are independent of SDL
+  and concrete rendering.
+
+Campaign, battle-effect, AI, and audio compilers remain the next implementation
+slices. Their documented instruction sets are contracts, not claims that every
+operation is already executable.

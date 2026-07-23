@@ -61,10 +61,12 @@ else()
 endif()
 
 add_executable(native-gb-pokemon-red-modern
+    src/animations.cpp
     src/catalog.cpp
     src/diagnostics.cpp
     src/main.cpp
     src/overlays.cpp
+    src/predicates.cpp
     src/render/frame.cpp
     src/sexpr.cpp
     src/state.cpp
@@ -88,9 +90,11 @@ pokered_modern_target_defaults(native-gb-pokemon-red-modern)
 if(BUILD_TESTING)
     add_executable(pokered-modern-foundation-tests
         tests/foundation_tests.cpp
+        src/animations.cpp
         src/catalog.cpp
         src/diagnostics.cpp
         src/overlays.cpp
+        src/predicates.cpp
         src/sexpr.cpp
         src/symbols.cpp
     )
