@@ -12,6 +12,7 @@ struct DecodedTextProgram {
     std::size_t source_bytes{};
     bool complete{};
     bool dynamic{};
+    bool interaction{};
     std::string unresolved_reason;
 };
 

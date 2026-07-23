@@ -416,6 +416,7 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
     if (!special.empty()) {
         state.operations << "    invoke_builtin " << special << '\n';
         state.bytes = 1;
+        result.interaction = true;
     } else if (first == 0xFEU) {
         if (!has_range(rom, offset, 2)) {
             result.unresolved_reason = "mart_header_out_of_range";
@@ -427,6 +428,7 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
             return false;
         }
         state.operations << "    open_shop\n";
+        result.interaction = true;
         for (std::uint8_t index = 0; index < count; ++index)
             state.operations << "    item_id " << static_cast<unsigned>(rom[offset + 2U + index])
                              << '\n';
@@ -447,6 +449,7 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
     result.source_bytes = state.bytes;
     result.complete = true;
     result.dynamic = state.dynamic;
+    result.interaction = result.interaction || state.dynamic;
     return true;
 }
 

@@ -71,10 +71,17 @@ only from machine-code routines, trainer/event-flag ownership, movement paths,
 and each routine's campaign-ISA translation remain open. The importer must
 continue reporting those gaps explicitly.
 
-The text-command decoder currently emits all 1,126 directly owned map text
-programs under `source/text/maps`. Of these, 486 are complete data-language
-programs with readable dialogue and formatting operations. The other 640 begin
-with `text_asm`; they are indexed as `dynamic_untranslated` because their
-branches and referenced dialogue must be recovered while lifting their native
-routine. No entry is silently discarded or represented as decoded text when
-only its address is known.
+The text-command decoder classifies all 1,126 directly owned map-table entries.
+Presentation-only programs are emitted under `source/text/maps` with readable
+dialogue and formatting operations. Gameplay-bearing entries—including
+`text_asm`, marts, nurses, and PCs—are emitted under
+`source/scripts/interactions` instead of masquerading as text.
+
+Native `text_asm` entries use `interaction_script_untranslated` until their
+branches and referenced dialogue are recovered. Already semantic special
+entries, such as mart inventories, are emitted as decoded interaction scripts.
+Every presentation-only entry also receives a trivial decoded interaction
+script containing `show_text`, so actors and background events uniformly
+reference `ScriptId`; they never alternate between script and text targets.
+No entry is silently discarded or represented as decoded text when only its
+address is known.

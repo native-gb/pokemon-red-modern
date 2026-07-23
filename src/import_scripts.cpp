@@ -10,6 +10,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -53,6 +54,7 @@ struct MapProgramInventory {
     std::vector<InteractionOwner> backgrounds;
     std::vector<InteractionOwner> actors;
     std::vector<std::size_t> text_entry_offsets;
+    std::vector<DecodedTextProgram> owned_entries;
     std::string unresolved_reason;
     std::size_t alias_of{kMapSlotCount};
     bool decoded{};
@@ -271,6 +273,9 @@ bool decode_map_program(std::span<const std::uint8_t> rom, std::size_t map_id,
             return false;
         }
         map.text_entry_offsets.push_back(text_offset);
+        DecodedTextProgram program;
+        decode_text_program(rom, source_bank(map.bank, text_offset), text_offset, program);
+        map.owned_entries.push_back(std::move(program));
     }
 
     map.decoded = true;
@@ -285,6 +290,20 @@ void assign_aliases(std::vector<MapProgramInventory>& maps) {
         const auto [position, inserted] = canonical.emplace(identity, map.map_id);
         if (!inserted) map.alias_of = position->second;
     }
+}
+
+std::string owned_entry_key(const MapProgramInventory& map, std::size_t index,
+                            std::string_view domain) {
+    std::ostringstream key;
+    key << map_slot_key(map.map_id) << '_' << domain << '_' << std::setfill('0') << std::setw(2)
+        << index + 1U;
+    return key.str();
+}
+
+void emit_interaction_target(std::ostringstream& source, const MapProgramInventory& map,
+                             std::uint8_t text_id) {
+    const std::size_t index = static_cast<std::size_t>(text_id - 1U);
+    source << " script " << owned_entry_key(map, index, "interaction");
 }
 
 void emit_map_source(const MapProgramInventory& map, ScriptImport& result) {
@@ -307,58 +326,75 @@ void emit_map_source(const MapProgramInventory& map, ScriptImport& result) {
                << "    object_table " << source_address(map.bank, map.objects_offset) << '\n';
         if (map.alias_of != kMapSlotCount)
             source << "    alias_of " << map_slot_key(map.alias_of) << '\n';
-        for (std::size_t index = 0; index < map.text_entry_offsets.size(); ++index) {
-            source << "    owned_text text_" << std::setfill('0') << std::setw(2) << index + 1U
-                   << ' ' << key << "_text_" << std::setw(2) << index + 1U << '\n';
+        for (std::size_t index = 0; index < map.owned_entries.size(); ++index) {
+            source << "    owned_entry entry_" << std::setfill('0') << std::setw(2) << index + 1U
+                   << " script " << owned_entry_key(map, index, "interaction") << '\n';
         }
         for (const InteractionOwner& background : map.backgrounds) {
             source << "    background_interaction " << static_cast<unsigned>(background.index)
                    << " at " << static_cast<unsigned>(background.x) << ' '
-                   << static_cast<unsigned>(background.y) << " text text_" << std::setfill('0')
-                   << std::setw(2) << static_cast<unsigned>(background.text_id) << '\n';
+                   << static_cast<unsigned>(background.y);
+            emit_interaction_target(source, map, background.text_id);
+            source << '\n';
         }
         for (const InteractionOwner& actor : map.actors) {
             source << "    actor_interaction " << static_cast<unsigned>(actor.index) << " at "
-                   << static_cast<unsigned>(actor.x) << ' ' << static_cast<unsigned>(actor.y)
-                   << " text text_" << std::setfill('0') << std::setw(2)
-                   << static_cast<unsigned>(actor.text_id) << '\n';
+                   << static_cast<unsigned>(actor.x) << ' ' << static_cast<unsigned>(actor.y);
+            emit_interaction_target(source, map, actor.text_id);
+            source << '\n';
         }
     }
     add_text_file(result, "source/scripts/maps/" + key + ".sexpr", source.str());
 }
 
-void emit_map_text_source(std::span<const std::uint8_t> rom, const MapProgramInventory& map,
-                          ScriptImport& result) {
-    if (!map.decoded || map.text_entry_offsets.empty()) return;
+void emit_owned_entry_sources(const MapProgramInventory& map, ScriptImport& result) {
+    if (!map.decoded || map.owned_entries.empty()) return;
 
     const std::string map_key = map_slot_key(map.map_id);
-    std::ostringstream source;
-    source << "; ROM-decoded text programs directly owned by " << map_key << ".\n";
-    for (std::size_t index = 0; index < map.text_entry_offsets.size(); ++index) {
+    std::ostringstream text_source;
+    std::ostringstream interaction_source;
+    text_source << "; ROM-decoded presentation text directly owned by " << map_key << ".\n";
+    interaction_source << "; ROM-decoded gameplay interactions directly owned by " << map_key
+                       << ".\n";
+    bool has_text = false;
+    for (std::size_t index = 0; index < map.owned_entries.size(); ++index) {
         const std::size_t text_offset = map.text_entry_offsets[index];
         const std::uint8_t text_bank = source_bank(map.bank, text_offset);
-        const std::string key =
-            map_key + "_text_" + (index + 1U < 10U ? "0" : "") + std::to_string(index + 1U);
-        DecodedTextProgram program;
-        const bool decoded = decode_text_program(rom, text_bank, text_offset, program);
+        const DecodedTextProgram& program = map.owned_entries[index];
+        has_text = has_text || !program.interaction;
 
-        source << "\ntext " << key << '\n'
-               << "    entry_source " << source_address(text_bank, text_offset) << '\n'
-               << "    decoded_bytes " << program.source_bytes << '\n';
-        if (!decoded) {
-            source << "    status unresolved\n"
-                   << "    reason " << program.unresolved_reason << '\n'
-                   << program.operations;
-            ++result.unresolved_text_programs;
+        if (!program.interaction) {
+            text_source << "\ntext " << owned_entry_key(map, index, "text") << '\n'
+                        << "    entry_source " << source_address(text_bank, text_offset) << '\n'
+                        << "    decoded_bytes " << program.source_bytes << '\n';
+        }
+        interaction_source << "\nscript " << owned_entry_key(map, index, "interaction") << '\n'
+                           << "    entry_source " << source_address(text_bank, text_offset) << '\n'
+                           << "    decoded_bytes " << program.source_bytes << '\n';
+        if (!program.complete) {
+            interaction_source << "    status unresolved\n"
+                               << "    reason " << program.unresolved_reason << '\n'
+                               << program.operations;
+            ++result.unresolved_owned_entries;
         } else if (program.dynamic) {
-            source << "    status dynamic_untranslated\n" << program.operations;
-            ++result.dynamic_text_programs;
+            interaction_source << "    status interaction_script_untranslated\n"
+                               << program.operations;
+            ++result.untranslated_interaction_scripts;
+        } else if (program.interaction) {
+            interaction_source << "    status decoded\n" << program.operations;
+            ++result.decoded_interaction_scripts;
         } else {
-            source << "    status decoded\n" << program.operations;
+            text_source << "    status decoded\n" << program.operations;
+            interaction_source << "    status decoded\n"
+                               << "    show_text " << owned_entry_key(map, index, "text") << '\n';
             ++result.decoded_text_programs;
+            ++result.decoded_interaction_scripts;
         }
     }
-    add_text_file(result, "source/text/maps/" + map_key + ".sexpr", source.str());
+    if (has_text)
+        add_text_file(result, "source/text/maps/" + map_key + ".sexpr", text_source.str());
+    add_text_file(result, "source/scripts/interactions/" + map_key + ".sexpr",
+                  interaction_source.str());
 }
 
 void emit_reports(const std::vector<MapProgramInventory>& maps, ScriptImport& result) {
@@ -369,10 +405,12 @@ void emit_reports(const std::vector<MapProgramInventory>& maps, ScriptImport& re
             << "header_aliases " << result.aliases << '\n'
             << "unresolved_slots " << result.unresolved_slots << '\n'
             << "script_entry_points " << result.script_entry_points << '\n'
-            << "owned_text_entries " << result.owned_text_entries << '\n'
+            << "owned_map_entries " << result.owned_map_entries << '\n'
             << "decoded_text_programs " << result.decoded_text_programs << '\n'
-            << "dynamic_text_programs " << result.dynamic_text_programs << '\n'
-            << "unresolved_text_programs " << result.unresolved_text_programs << '\n'
+            << "decoded_interaction_scripts " << result.decoded_interaction_scripts << '\n'
+            << "untranslated_interaction_scripts " << result.untranslated_interaction_scripts
+            << '\n'
+            << "unresolved_owned_entries " << result.unresolved_owned_entries << '\n'
             << "background_interactions " << result.background_interactions << '\n'
             << "actor_interactions " << result.actor_interactions << '\n'
             << "semantic_scripts_translated 0\n"
@@ -435,7 +473,7 @@ bool decode_script_import(std::span<const std::uint8_t> rom, ScriptImport& resul
     result.map_slots = maps.size();
     for (const MapProgramInventory& map : maps) {
         emit_map_source(map, result);
-        emit_map_text_source(rom, map, result);
+        emit_owned_entry_sources(map, result);
         if (!map.decoded) {
             ++result.unresolved_slots;
             continue;
@@ -443,7 +481,7 @@ bool decode_script_import(std::span<const std::uint8_t> rom, ScriptImport& resul
         ++result.decoded_maps;
         ++result.script_entry_points;
         if (map.alias_of != kMapSlotCount) ++result.aliases;
-        result.owned_text_entries += map.text_entry_offsets.size();
+        result.owned_map_entries += map.text_entry_offsets.size();
         result.background_interactions += map.backgrounds.size();
         result.actor_interactions += map.actors.size();
     }

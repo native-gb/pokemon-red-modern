@@ -74,13 +74,16 @@ int main(int argc, char** argv) {
                     << "world_importer_version 1\n"
                     << "outdoor_maps " << maps.maps << '\n'
                     << "overworld_sprites " << maps.sprites << '\n'
-                    << "map_program_importer_version 2\n"
+                    << "map_program_importer_version 3\n"
                     << "map_slots " << scripts.map_slots << '\n'
                     << "decoded_map_programs " << scripts.decoded_maps << '\n'
                     << "unused_map_slots " << scripts.unresolved_slots << '\n'
                     << "decoded_map_text_programs " << scripts.decoded_text_programs << '\n'
-                    << "dynamic_map_text_programs " << scripts.dynamic_text_programs << '\n'
-                    << "unresolved_map_text_programs " << scripts.unresolved_text_programs << '\n';
+                    << "decoded_map_interaction_scripts " << scripts.decoded_interaction_scripts
+                    << '\n'
+                    << "untranslated_map_interaction_scripts "
+                    << scripts.untranslated_interaction_scripts << '\n'
+                    << "unresolved_map_owned_entries " << scripts.unresolved_owned_entries << '\n';
     const std::string domain_manifest_text = domain_manifest.str();
     manifest->bytes.insert(manifest->bytes.end(), domain_manifest_text.begin(),
                            domain_manifest_text.end());
@@ -107,7 +110,7 @@ int main(int argc, char** argv) {
               << " warps\n";
     std::cout << "World map cache: " << output_root / "compiled" / "world_maps.bin" << '\n';
     std::cout << "Indexed " << scripts.script_entry_points << " map script entry points, "
-              << scripts.owned_text_entries << " owned text entries, "
+              << scripts.owned_map_entries << " owned map-table entries, "
               << scripts.background_interactions << " background interactions, and "
               << scripts.actor_interactions << " actor interactions across " << scripts.map_slots
               << " ROM map slots (" << scripts.unresolved_slots << " unresolved slots)\n";
