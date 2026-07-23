@@ -71,6 +71,20 @@ constexpr std::size_t kOakLabPokedexInventionTextOffset = 0x01D3E6U;
 constexpr std::size_t kOakLabGotPokedexTextOffset = 0x01D3EBU;
 constexpr std::size_t kOakLabDreamTextOffset = 0x01D3F1U;
 constexpr std::size_t kOakLabRivalLeaveTextOffset = 0x01D3F6U;
+constexpr std::size_t kRoute22WantsBattleCheckOffset = 0x050F00U;
+constexpr std::size_t kRoute22BattleCoordsOffset = 0x050F2DU;
+constexpr std::size_t kRoute22ApproachPathOffset = 0x050EFBU;
+constexpr std::size_t kRoute22TrainerSelectorOffset = 0x050F9EU;
+constexpr std::size_t kRoute22TrainerTableOffset = 0x050FAFU;
+constexpr std::size_t kRoute22BeatRivalFlagOffset = 0x050FD7U;
+constexpr std::size_t kRoute22ExitPathUpperOffset = 0x05101FU;
+constexpr std::size_t kRoute22ExitPathLowerOffset = 0x051017U;
+constexpr std::size_t kRoute22HideRivalOffset = 0x051034U;
+constexpr std::size_t kRoute22ClearFlagsOffset = 0x051041U;
+constexpr std::size_t kRoute22BeforeBattleTextOffset = 0x0511ADU;
+constexpr std::size_t kRoute22AfterBattleTextOffset = 0x0511B2U;
+constexpr std::size_t kRoute22DefeatedTextOffset = 0x0511B7U;
+constexpr std::size_t kRoute22VictoryTextOffset = 0x0511BCU;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -89,6 +103,7 @@ enum class TriggerKind : std::uint8_t {
     player_y,
     actor_activation,
     map_entry,
+    player_rectangle,
 };
 
 enum class Opcode : std::uint8_t {
@@ -117,9 +132,11 @@ enum class Opcode : std::uint8_t {
     jump,
     wait_ticks,
     actor_path_by_player_x,
+    actor_path_by_player_y,
     start_trainer_battle,
     say_if_player_won,
     say_if_player_lost,
+    end_if_player_lost,
     heal_party,
     unlock_input,
     end,
@@ -148,7 +165,10 @@ struct Program {
     std::string key;
     TriggerKind trigger_kind{TriggerKind::player_y};
     std::uint8_t trigger_map{};
-    std::uint8_t trigger_value{};
+    std::uint8_t trigger_x{};
+    std::uint8_t trigger_y{};
+    std::uint8_t trigger_width{};
+    std::uint8_t trigger_height{};
     std::uint32_t required_flag{0xFFFFFFFFU};
     std::uint32_t absent_flag{0xFFFFFFFFU};
     std::uint16_t required_variable{0xFFFFU};
@@ -213,6 +233,27 @@ struct OakReturnProgram {
     DecodedTextProgram got_pokedex;
     DecodedTextProgram oak_dream;
     DecodedTextProgram rival_leave;
+};
+
+struct Route22FirstRivalProgram {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::uint8_t trigger_x{};
+    std::uint8_t trigger_y{};
+    std::uint8_t trigger_width{};
+    std::uint8_t trigger_height{};
+    std::uint32_t first_rival_flag{};
+    std::uint32_t wants_battle_flag{};
+    std::uint32_t beat_rival_flag{};
+    std::array<RivalBattleChoice, 3> battles;
+    std::vector<PathCommand> approach_upper;
+    std::vector<PathCommand> approach_lower;
+    std::vector<PathCommand> exit_upper;
+    std::vector<PathCommand> exit_lower;
+    DecodedTextProgram before_battle;
+    DecodedTextProgram defeated;
+    DecodedTextProgram victory;
+    DecodedTextProgram after_battle;
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -607,7 +648,10 @@ void write_program(std::vector<std::uint8_t>& bytes,
     write_string(bytes, program.key);
     bytes.push_back(static_cast<std::uint8_t>(program.trigger_kind));
     bytes.push_back(program.trigger_map);
-    bytes.push_back(program.trigger_value);
+    bytes.push_back(program.trigger_x);
+    bytes.push_back(program.trigger_y);
+    bytes.push_back(program.trigger_width);
+    bytes.push_back(program.trigger_height);
     write_u32(bytes, program.required_flag);
     write_u32(bytes, program.absent_flag);
     write_u16(bytes, program.required_variable);
@@ -978,6 +1022,205 @@ bool decode_oak_return_program(
             text->pages.empty()) {
             error =
                 "Oak request dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    return true;
+}
+
+bool decode_route_22_first_rival(
+    std::span<const std::uint8_t> rom,
+    const std::array<StarterChoice, 3>& starters,
+    const std::vector<ToggleActor>& toggle_actors,
+    const OakReturnProgram& oak_return,
+    Route22FirstRivalProgram& result, std::string& error) {
+    result = {};
+
+    if (!decode_checked_event(
+            rom, kRoute22WantsBattleCheckOffset,
+            result.wants_battle_flag, error) ||
+        kRoute22BattleCoordsOffset + 5U > rom.size() ||
+        rom[kRoute22BattleCoordsOffset + 4U] != 0xFFU) {
+        if (error.empty())
+            error =
+                "Route 22 rival trigger does not match the verified ROM";
+        return false;
+    }
+    const std::uint8_t upper_y =
+        rom[kRoute22BattleCoordsOffset];
+    const std::uint8_t upper_x =
+        rom[kRoute22BattleCoordsOffset + 1U];
+    const std::uint8_t lower_y =
+        rom[kRoute22BattleCoordsOffset + 2U];
+    const std::uint8_t lower_x =
+        rom[kRoute22BattleCoordsOffset + 3U];
+    if (upper_x != lower_x || lower_y != upper_y + 1U) {
+        error =
+            "Route 22 rival trigger is not the expected vertical rectangle";
+        return false;
+    }
+    result.map_id = oak_return.route_22_rival.map_id;
+    result.actor_index =
+        oak_return.route_22_rival.actor_index;
+    result.trigger_x = upper_x;
+    result.trigger_y = upper_y;
+    result.trigger_width = 1U;
+    result.trigger_height =
+        static_cast<std::uint8_t>(lower_y - upper_y + 1U);
+
+    if (!decode_direct_npc_path(
+            rom, kRoute22ApproachPathOffset,
+            result.approach_upper, error) ||
+        result.approach_upper.size() < 2U ||
+        !std::ranges::all_of(
+            result.approach_upper,
+            [](PathCommand command) {
+                return command == PathCommand::right;
+            })) {
+        if (error.empty())
+            error =
+                "Route 22 rival approach path is invalid";
+        return false;
+    }
+    result.approach_lower = result.approach_upper;
+    result.approach_lower.erase(
+        result.approach_lower.begin());
+    if (!decode_direct_npc_path(
+            rom, kRoute22ExitPathUpperOffset,
+            result.exit_upper, error) ||
+        !decode_direct_npc_path(
+            rom, kRoute22ExitPathLowerOffset,
+            result.exit_lower, error))
+        return false;
+
+    constexpr std::array<std::uint8_t, 9> selector_tail{
+        0xEAU, 0x59U, 0xD0U, 0x21U, 0xAFU,
+        0x4FU, 0xCDU, 0xD6U, 0x4EU};
+    if (kRoute22TrainerSelectorOffset + 11U > rom.size() ||
+        rom[kRoute22TrainerSelectorOffset] != 0x3EU ||
+        !has_bytes(
+            rom, kRoute22TrainerSelectorOffset + 2U,
+            selector_tail)) {
+        error =
+            "Route 22 rival trainer selector does not match the verified ROM";
+        return false;
+    }
+    const std::uint8_t opponent =
+        rom[kRoute22TrainerSelectorOffset + 1U];
+    if (opponent <= kTrainerOpponentOffset) {
+        error =
+            "Route 22 rival trainer selector has an invalid class";
+        return false;
+    }
+    const std::uint8_t trainer_class =
+        static_cast<std::uint8_t>(
+            opponent - kTrainerOpponentOffset);
+    std::array<bool, 3> matched{};
+    for (std::size_t record = 0U; record < 3U; ++record) {
+        const std::size_t offset =
+            kRoute22TrainerTableOffset + record * 2U;
+        if (offset + 2U > rom.size() ||
+            rom[offset + 1U] == 0U) {
+            error =
+                "Route 22 rival trainer table is truncated";
+            return false;
+        }
+        const std::uint8_t species =
+            dex_for_internal_species(rom, rom[offset]);
+        const auto starter = std::ranges::find_if(
+            starters,
+            [species](const StarterChoice& choice) {
+                return choice.rival_species == species;
+            });
+        if (species == 0U || starter == starters.end()) {
+            error =
+                "Route 22 rival trainer table references an unknown starter branch";
+            return false;
+        }
+        const std::size_t index = static_cast<std::size_t>(
+            std::distance(starters.begin(), starter));
+        if (matched[index]) {
+            error =
+                "Route 22 rival trainer table repeats a starter branch";
+            return false;
+        }
+        matched[index] = true;
+        result.battles[index] = {
+            .rival_species = species,
+            .trainer_class = trainer_class,
+            .trainer_party = static_cast<std::uint16_t>(
+                rom[offset + 1U] - 1U),
+        };
+    }
+    if (!std::ranges::all_of(
+            matched, [](bool value) { return value; })) {
+        error =
+            "Route 22 rival trainer table misses a starter branch";
+        return false;
+    }
+
+    if (!decode_set_event(
+            rom, kRoute22BeatRivalFlagOffset,
+            result.beat_rival_flag, error) ||
+        kRoute22ClearFlagsOffset + 7U > rom.size() ||
+        rom[kRoute22ClearFlagsOffset] != 0x21U) {
+        if (error.empty())
+            error =
+                "Route 22 rival event mutations do not match the verified ROM";
+        return false;
+    }
+    const std::uint16_t flag_address =
+        static_cast<std::uint16_t>(
+            rom[kRoute22ClearFlagsOffset + 1U] |
+            static_cast<std::uint16_t>(
+                rom[kRoute22ClearFlagsOffset + 2U])
+                << 8U);
+    if (!decode_reused_event(
+            rom, kRoute22ClearFlagsOffset + 3U,
+            flag_address, false, result.first_rival_flag,
+            error)) {
+        return false;
+    }
+    std::uint32_t cleared_wants = 0U;
+    if (!decode_reused_event(
+            rom, kRoute22ClearFlagsOffset + 5U,
+            flag_address, false, cleared_wants, error) ||
+        result.first_rival_flag !=
+            oak_return.first_route_22_rival_flag ||
+        result.wants_battle_flag !=
+            oak_return.route_22_rival_wants_battle_flag ||
+        cleared_wants != result.wants_battle_flag) {
+        if (error.empty())
+            error =
+                "Route 22 rival event paths disagree";
+        return false;
+    }
+
+    ToggleActor hidden_rival;
+    if (!decode_toggle_operation(
+            rom, kRoute22HideRivalOffset, 0x11U,
+            toggle_actors, hidden_rival, error) ||
+        hidden_rival.map_id != result.map_id ||
+        hidden_rival.actor_index != result.actor_index) {
+        if (error.empty())
+            error =
+                "Route 22 rival hide operation disagrees with its imported actor";
+        return false;
+    }
+
+    const std::array<std::pair<std::size_t, DecodedTextProgram*>, 4>
+        text_programs{{
+            {kRoute22BeforeBattleTextOffset,
+             &result.before_battle},
+            {kRoute22DefeatedTextOffset, &result.defeated},
+            {kRoute22VictoryTextOffset, &result.victory},
+            {kRoute22AfterBattleTextOffset,
+             &result.after_battle},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(rom, 0x14U, offset, *text) ||
+            text->pages.empty()) {
+            error =
+                "Route 22 rival dialogue could not be decoded from the pinned ROM";
             return false;
         }
     return true;
@@ -1486,6 +1729,110 @@ GeneratedFile readable_oak_return_source(
     };
 }
 
+GeneratedFile readable_route_22_first_rival_source(
+    std::string_view key, const Route22FirstRivalProgram& route,
+    const RivalBattleChoice& battle) {
+    const auto path_name = [](PathCommand command) {
+        switch (command) {
+        case PathCommand::down:
+            return "down";
+        case PathCommand::up:
+            return "up";
+        case PathCommand::left:
+            return "left";
+        case PathCommand::right:
+            return "right";
+        case PathCommand::wait:
+            return "wait";
+        case PathCommand::face_down:
+            return "face_down";
+        }
+        return "invalid";
+    };
+    const auto append_path =
+        [&](std::ostringstream& output,
+            const std::vector<PathCommand>& path) {
+            for (const PathCommand command : path)
+                output << ' ' << path_name(command);
+        };
+
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Route 22 program.\n"
+        << "; Trigger, paths, starter branch, trainer party, text, actors, and flags are ROM-derived.\n\n"
+        << "campaign_program " << key << '\n'
+        << "    source bank_14 0x050f00\n"
+        << "    trigger_rectangle map route_22 x "
+        << static_cast<unsigned>(route.trigger_x) << " y "
+        << static_cast<unsigned>(route.trigger_y)
+        << " width "
+        << static_cast<unsigned>(route.trigger_width)
+        << " height "
+        << static_cast<unsigned>(route.trigger_height) << '\n'
+        << "    required_flag 0x" << std::hex
+        << route.wants_battle_flag << '\n'
+        << "    absent_flag 0x" << route.beat_rival_flag
+        << std::dec << '\n'
+        << "    required_variable rival_starter "
+        << static_cast<unsigned>(battle.rival_species) << '\n'
+        << "    lock_input\n"
+        << "    actor_path_by_player_y map route_22 actor "
+        << static_cast<unsigned>(route.actor_index)
+        << " equals "
+        << static_cast<unsigned>(
+               route.trigger_y + route.trigger_height - 1U)
+        << "\n"
+        << "        equal";
+    append_path(source, route.approach_lower);
+    source << "\n        otherwise";
+    append_path(source, route.approach_upper);
+    source
+        << "\n"
+        << "    face_pair_by_player_y lower horizontal otherwise vertical\n"
+        << "    say\n"
+        << page_source(route.before_battle.pages, "        ")
+        << "    start_trainer_battle class "
+        << static_cast<unsigned>(battle.trainer_class)
+        << " party " << battle.trainer_party << '\n'
+        << "    say_if_player_won\n"
+        << page_source(route.defeated.pages, "        ")
+        << "    say_if_player_lost\n"
+        << page_source(route.victory.pages, "        ")
+        << "    end_if_player_lost\n"
+        << "    set_flag 0x" << std::hex
+        << route.beat_rival_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(route.after_battle.pages, "        ")
+        << "    actor_path_by_player_y map route_22 actor "
+        << static_cast<unsigned>(route.actor_index)
+        << " equals "
+        << static_cast<unsigned>(
+               route.trigger_y + route.trigger_height - 1U)
+        << "\n"
+        << "        equal";
+    append_path(source, route.exit_lower);
+    source << "\n        otherwise";
+    append_path(source, route.exit_upper);
+    source
+        << "\n"
+        << "    hide_actor map route_22 actor "
+        << static_cast<unsigned>(route.actor_index) << '\n'
+        << "    clear_flag 0x" << std::hex
+        << route.first_rival_flag << '\n'
+        << "    clear_flag 0x" << route.wants_battle_flag
+        << std::dec << '\n'
+        << "    unlock_input\n"
+        << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/" + std::string(key) +
+            ".sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -1603,6 +1950,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_oak_return_program(
             rom, parcel, toggle_actors, oak_return, error))
         return false;
+    Route22FirstRivalProgram route_22_first_rival;
+    if (!decode_route_22_first_rival(
+            rom, starter_choices, toggle_actors, oak_return,
+            route_22_first_rival, error))
+        return false;
 
     std::vector<PathCommand> oak_path;
     std::vector<PathCommand> player_path;
@@ -1676,7 +2028,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     Program opening;
     opening.key = "pallet_oak_interception";
     opening.trigger_map = 0U;
-    opening.trigger_value = 1U;
+    opening.trigger_y = 1U;
     opening.absent_flag = kFollowedOakFlag;
     for (const ToggleActor& actor : toggle_actors)
         if (!actor.initially_visible)
@@ -1694,9 +2046,16 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         "oaks_lab_first_rival_after_squirtle",
         "oaks_lab_first_rival_after_bulbasaur",
     };
+    constexpr std::array<std::string_view, 3>
+        route_22_rival_keys{
+            "route_22_first_rival_after_charmander",
+            "route_22_first_rival_after_squirtle",
+            "route_22_first_rival_after_bulbasaur",
+        };
     std::vector<Program> programs;
     programs.reserve(3U + starter_choices.size() +
-                     rival_battles.size());
+                     rival_battles.size() +
+                     route_22_first_rival.battles.size());
     programs.push_back(std::move(opening));
     for (std::size_t index = 0U; index < starter_choices.size(); ++index) {
         const StarterChoice& choice = starter_choices[index];
@@ -1704,7 +2063,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         starter.key = starter_keys[index];
         starter.trigger_kind = TriggerKind::actor_activation;
         starter.trigger_map = 40U;
-        starter.trigger_value = choice.selected_ball;
+        starter.trigger_x = choice.selected_ball;
         starter.required_flag = kOakAskedToChooseFlag;
         starter.absent_flag = kGotStarterFlag;
 
@@ -1759,7 +2118,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         Program rival;
         rival.key = rival_battle_keys[index];
         rival.trigger_map = 40U;
-        rival.trigger_value = 6U;
+        rival.trigger_y = 6U;
         rival.required_flag = kGotStarterFlag;
         rival.absent_flag = kBattledLabRivalFlag;
         rival.required_variable = kRivalStarterVariable;
@@ -1837,7 +2196,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         "oaks_lab_deliver_parcel_and_get_pokedex";
     oak_request.trigger_kind = TriggerKind::actor_activation;
     oak_request.trigger_map = 40U;
-    oak_request.trigger_value = 5U;
+    oak_request.trigger_x = 5U;
     oak_request.required_flag = kBattledLabRivalFlag;
     oak_request.absent_flag = oak_return.oak_got_parcel_flag;
     oak_request.required_item_id = oak_return.parcel_item_id;
@@ -1986,7 +2345,129 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     oak_request.instructions.push_back(operation(Opcode::end));
     programs.push_back(std::move(oak_request));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '6'};
+    for (std::size_t index = 0U;
+         index < route_22_first_rival.battles.size();
+         ++index) {
+        const RivalBattleChoice& battle =
+            route_22_first_rival.battles[index];
+        Program rival;
+        rival.key = route_22_rival_keys[index];
+        rival.trigger_kind = TriggerKind::player_rectangle;
+        rival.trigger_map = route_22_first_rival.map_id;
+        rival.trigger_x = route_22_first_rival.trigger_x;
+        rival.trigger_y = route_22_first_rival.trigger_y;
+        rival.trigger_width =
+            route_22_first_rival.trigger_width;
+        rival.trigger_height =
+            route_22_first_rival.trigger_height;
+        rival.required_flag =
+            route_22_first_rival.wants_battle_flag;
+        rival.absent_flag =
+            route_22_first_rival.beat_rival_flag;
+        rival.required_variable = kRivalStarterVariable;
+        rival.required_variable_value =
+            battle.rival_species;
+
+        rival.instructions.push_back(
+            operation(Opcode::lock_input));
+        Instruction approach = operation(
+            Opcode::actor_path_by_player_y,
+            route_22_first_rival.actor_index,
+            static_cast<std::uint8_t>(
+                route_22_first_rival.trigger_y +
+                route_22_first_rival.trigger_height - 1U),
+            route_22_first_rival.map_id);
+        approach.actor_path =
+            route_22_first_rival.approach_lower;
+        approach.player_path =
+            route_22_first_rival.approach_upper;
+        rival.instructions.push_back(std::move(approach));
+
+        const std::size_t lower_condition =
+            rival.instructions.size();
+        rival.instructions.push_back(operation(
+            Opcode::jump_if_player_y,
+            static_cast<std::uint8_t>(
+                route_22_first_rival.trigger_y +
+                route_22_first_rival.trigger_height - 1U)));
+        rival.instructions.push_back(operation(
+            Opcode::face_actor,
+            route_22_first_rival.actor_index, 1U,
+            route_22_first_rival.map_id));
+        rival.instructions.push_back(
+            operation(Opcode::face_player, 0U));
+        const std::size_t upper_exit =
+            rival.instructions.size();
+        rival.instructions.push_back(
+            operation(Opcode::jump));
+        const std::size_t lower_branch =
+            rival.instructions.size();
+        rival.instructions.push_back(operation(
+            Opcode::face_actor,
+            route_22_first_rival.actor_index, 3U,
+            route_22_first_rival.map_id));
+        rival.instructions.push_back(
+            operation(Opcode::face_player, 2U));
+        const std::size_t face_join =
+            rival.instructions.size();
+        rival.instructions[lower_condition].value =
+            static_cast<std::uint32_t>(lower_branch);
+        rival.instructions[upper_exit].value =
+            static_cast<std::uint32_t>(face_join);
+
+        rival.instructions.push_back(dialogue(
+            route_22_first_rival.before_battle.pages));
+        rival.instructions.push_back(operation(
+            Opcode::start_trainer_battle,
+            battle.trainer_class, 0U,
+            battle.trainer_party));
+        Instruction defeated =
+            operation(Opcode::say_if_player_won);
+        defeated.pages =
+            route_22_first_rival.defeated.pages;
+        rival.instructions.push_back(std::move(defeated));
+        Instruction victory =
+            operation(Opcode::say_if_player_lost);
+        victory.pages =
+            route_22_first_rival.victory.pages;
+        rival.instructions.push_back(std::move(victory));
+        rival.instructions.push_back(
+            operation(Opcode::end_if_player_lost));
+        rival.instructions.push_back(operation(
+            Opcode::set_flag, 0U, 0U,
+            route_22_first_rival.beat_rival_flag));
+        rival.instructions.push_back(dialogue(
+            route_22_first_rival.after_battle.pages));
+
+        Instruction exit = operation(
+            Opcode::actor_path_by_player_y,
+            route_22_first_rival.actor_index,
+            static_cast<std::uint8_t>(
+                route_22_first_rival.trigger_y +
+                route_22_first_rival.trigger_height - 1U),
+            route_22_first_rival.map_id);
+        exit.actor_path =
+            route_22_first_rival.exit_lower;
+        exit.player_path =
+            route_22_first_rival.exit_upper;
+        rival.instructions.push_back(std::move(exit));
+        rival.instructions.push_back(operation(
+            Opcode::hide_actor,
+            route_22_first_rival.actor_index, 0U,
+            route_22_first_rival.map_id));
+        rival.instructions.push_back(operation(
+            Opcode::clear_flag, 0U, 0U,
+            route_22_first_rival.first_rival_flag));
+        rival.instructions.push_back(operation(
+            Opcode::clear_flag, 0U, 0U,
+            route_22_first_rival.wants_battle_flag));
+        rival.instructions.push_back(
+            operation(Opcode::unlock_input));
+        rival.instructions.push_back(operation(Opcode::end));
+        programs.push_back(std::move(rival));
+    }
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '7'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
@@ -2012,6 +2493,14 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         readable_viridian_mart_parcel_source(parcel));
     result.files.push_back(
         readable_oak_return_source(oak_return));
+    for (std::size_t index = 0U;
+         index < route_22_first_rival.battles.size();
+         ++index)
+        result.files.push_back(
+            readable_route_22_first_rival_source(
+                route_22_rival_keys[index],
+                route_22_first_rival,
+                route_22_first_rival.battles[index]));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

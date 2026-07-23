@@ -200,6 +200,7 @@ struct WorldScriptMotion {
     std::uint8_t step_cooldown{};
     bool hide_actor_at_end{};
     bool actor_may_overlap_player{};
+    bool actor_ignores_terrain{};
     bool active{};
 };
 
@@ -293,7 +294,8 @@ bool start_world_parallel_motion(
     const std::vector<WorldPathCommand>& actor_path,
     const std::vector<WorldPathCommand>& player_path,
     bool hide_actor_at_end, std::string& error,
-    bool actor_may_overlap_player = false);
+    bool actor_may_overlap_player = false,
+    bool actor_ignores_terrain = false);
 bool start_world_player_motion(
     WorldState& world, const std::vector<WorldPathCommand>& player_path,
     std::string& error);

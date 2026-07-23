@@ -108,12 +108,14 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                !instruction.actor_path.empty() &&
                !instruction.player_path.empty();
     case CampaignOpcode::actor_path_by_player_x:
+    case CampaignOpcode::actor_path_by_player_y:
         return owns_actor() && !instruction.actor_path.empty() &&
                !instruction.player_path.empty();
     case CampaignOpcode::lock_input:
     case CampaignOpcode::set_flag:
     case CampaignOpcode::clear_flag:
     case CampaignOpcode::end_if_choice_no:
+    case CampaignOpcode::end_if_player_lost:
     case CampaignOpcode::heal_party:
     case CampaignOpcode::unlock_input:
     case CampaignOpcode::end:
@@ -189,7 +191,7 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
                world.last_actor_activation.map_id ==
                    program.trigger_map_id &&
                world.last_actor_activation.actor_index ==
-                   program.trigger_value;
+                   program.trigger_x;
     if (program.trigger_kind == CampaignTriggerKind::map_entry)
         return world.last_warp.occurred &&
                world.last_warp.destination_map_id ==
@@ -197,10 +199,23 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
                world.player.map_index < world.maps.size() &&
                world.maps[world.player.map_index].id ==
                    program.trigger_map_id;
+    if (program.trigger_kind ==
+        CampaignTriggerKind::player_rectangle)
+        return world.player.map_index < world.maps.size() &&
+               world.maps[world.player.map_index].id ==
+                   program.trigger_map_id &&
+               world.player.x >= program.trigger_x &&
+               world.player.y >= program.trigger_y &&
+               world.player.x <
+                   static_cast<std::int32_t>(program.trigger_x) +
+                       program.trigger_width &&
+               world.player.y <
+                   static_cast<std::int32_t>(program.trigger_y) +
+                       program.trigger_height;
     return world.player.map_index < world.maps.size() &&
            world.maps[world.player.map_index].id ==
                program.trigger_map_id &&
-           world.player.y == program.trigger_value;
+           world.player.y == program.trigger_y;
 }
 
 void replace_all(std::string& text, std::string_view token,
@@ -239,7 +254,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '6'}) {
+        magic != std::array{'P', 'C', 'P', '7'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -278,9 +293,12 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
             !read_u8(input, trigger_kind) ||
             trigger_kind >
                 static_cast<std::uint8_t>(
-                    CampaignTriggerKind::map_entry) ||
+                    CampaignTriggerKind::player_rectangle) ||
             !read_u8(input, program.trigger_map_id) ||
-            !read_u8(input, program.trigger_value) ||
+            !read_u8(input, program.trigger_x) ||
+            !read_u8(input, program.trigger_y) ||
+            !read_u8(input, program.trigger_width) ||
+            !read_u8(input, program.trigger_height) ||
             !read_u32(input, program.required_flag) ||
             !read_u32(input, program.absent_flag) ||
             !read_u16(input, program.required_variable) ||
@@ -303,6 +321,14 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
         }
         program.trigger_kind =
             static_cast<CampaignTriggerKind>(trigger_kind);
+        if (program.trigger_kind ==
+                CampaignTriggerKind::player_rectangle &&
+            (program.trigger_width == 0U ||
+             program.trigger_height == 0U)) {
+            error =
+                "campaign rectangle trigger has an empty extent";
+            return false;
+        }
         program.initially_hidden.reserve(hidden_count);
         for (std::uint16_t hidden = 0U; hidden < hidden_count; ++hidden) {
             CampaignActorRef actor;
@@ -694,7 +720,24 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                     world,
                     static_cast<std::uint8_t>(instruction.value),
                     instruction.a, selected, player_waits, false, error,
-                    true))
+                    true, true))
+                return false;
+            fiber.waiting_motion = true;
+            error.clear();
+            return true;
+        }
+        case CampaignOpcode::actor_path_by_player_y: {
+            const std::vector<WorldPathCommand>& selected =
+                world.player.y == static_cast<std::int32_t>(instruction.b)
+                    ? instruction.actor_path
+                    : instruction.player_path;
+            const std::vector<WorldPathCommand> player_waits(
+                selected.size(), WorldPathCommand::wait);
+            if (!start_world_parallel_motion(
+                    world,
+                    static_cast<std::uint8_t>(instruction.value),
+                    instruction.a, selected, player_waits, false, error,
+                    true, true))
                 return false;
             fiber.waiting_motion = true;
             error.clear();
@@ -732,6 +775,15 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             fiber.waiting_dialogue = world.dialogue.open;
             error.clear();
             return true;
+        case CampaignOpcode::end_if_player_lost:
+            if (campaign.battle.outcome ==
+                BattleOutcome::player_defeat) {
+                campaign.input_locked = false;
+                fiber = {};
+                error.clear();
+                return true;
+            }
+            break;
         case CampaignOpcode::heal_party:
             heal_party(campaign.party);
             break;

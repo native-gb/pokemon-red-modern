@@ -18,6 +18,7 @@ enum class CampaignTriggerKind : std::uint8_t {
     player_y,
     actor_activation,
     map_entry,
+    player_rectangle,
 };
 
 enum class CampaignOpcode : std::uint8_t {
@@ -46,9 +47,11 @@ enum class CampaignOpcode : std::uint8_t {
     jump,
     wait_ticks,
     actor_path_by_player_x,
+    actor_path_by_player_y,
     start_trainer_battle,
     say_if_player_won,
     say_if_player_lost,
+    end_if_player_lost,
     heal_party,
     unlock_input,
     end,
@@ -73,7 +76,10 @@ struct CampaignProgram {
     std::string key;
     CampaignTriggerKind trigger_kind{CampaignTriggerKind::player_y};
     std::uint8_t trigger_map_id{};
-    std::uint8_t trigger_value{};
+    std::uint8_t trigger_x{};
+    std::uint8_t trigger_y{};
+    std::uint8_t trigger_width{};
+    std::uint8_t trigger_height{};
     std::uint32_t required_flag{0xFFFFFFFFU};
     std::uint32_t absent_flag{0xFFFFFFFFU};
     std::uint16_t required_variable{0xFFFFU};

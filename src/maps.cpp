@@ -1095,6 +1095,7 @@ void append_axis_path(std::int32_t current, std::int32_t target, WorldPathComman
 bool apply_actor_path_command(WorldState& world, std::size_t runtime_index,
                               WorldPathCommand command,
                               bool may_overlap_player,
+                              bool ignores_terrain,
                               std::string& error) {
     if (runtime_index >= world.actors.size()) {
         error = "campaign actor path lost its owner";
@@ -1120,7 +1121,8 @@ bool apply_actor_path_command(WorldState& world, std::size_t runtime_index,
     const std::int32_t global_x = map.global_x_tiles / 2 + target_x;
     const std::int32_t global_y = map.global_y_tiles / 2 + target_y;
     if (!inside(cells, target_x, target_y) ||
-        !is_passable(world, actor.map_index, global_x, global_y) ||
+        (!ignores_terrain &&
+         !is_passable(world, actor.map_index, global_x, global_y)) ||
         cells.actor_by_cell[cell_offset(cells, target_x, target_y)] >= 0 ||
         (!may_overlap_player &&
          world.player.map_index == actor.map_index &&
@@ -1283,7 +1285,8 @@ bool start_world_parallel_motion(WorldState& world, std::uint8_t map_id, std::ui
                                  const std::vector<WorldPathCommand>& actor_path,
                                  const std::vector<WorldPathCommand>& player_path,
                                  bool hide_actor_at_end, std::string& error,
-                                 bool actor_may_overlap_player) {
+                                 bool actor_may_overlap_player,
+                                 bool actor_ignores_terrain) {
     std::size_t runtime_index = 0U;
     if (!find_runtime_actor(world, map_id, actor_index, runtime_index) || actor_path.empty() ||
         player_path.empty()) {
@@ -1299,6 +1302,7 @@ bool start_world_parallel_motion(WorldState& world, std::uint8_t map_id, std::ui
         .step_cooldown = 0U,
         .hide_actor_at_end = hide_actor_at_end,
         .actor_may_overlap_player = actor_may_overlap_player,
+        .actor_ignores_terrain = actor_ignores_terrain,
         .active = true,
     };
     error.clear();
@@ -1322,6 +1326,7 @@ bool start_world_player_motion(
         .step_cooldown = 0U,
         .hide_actor_at_end = false,
         .actor_may_overlap_player = false,
+        .actor_ignores_terrain = false,
         .active = true,
     };
     error.clear();
@@ -1342,7 +1347,8 @@ bool step_world_script_motion(WorldState& world, std::string& error) {
     if (motion.actor_cursor < motion.actor_path.size() &&
         !apply_actor_path_command(world, motion.actor_runtime_index,
                                   motion.actor_path[motion.actor_cursor++],
-                                  motion.actor_may_overlap_player, error))
+                                  motion.actor_may_overlap_player,
+                                  motion.actor_ignores_terrain, error))
         return false;
     if (motion.player_cursor < motion.player_path.size() &&
         !apply_player_path_command(world, motion.player_path[motion.player_cursor++],

@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first nine imported story fibers are executable from the ordinary
+The first twelve imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -711,6 +711,18 @@ Campaign initialization now consumes all 228 cartridge toggleable-object
 records rather than a handwritten opening list. All 32 source-default-hidden
 actors are hidden through generated map/actor references before play begins.
 
+Walking into either source trigger cell on Route 22 now starts the first rival
+encounter. The imported branch:
+
+- selects the three-step or four-step approach from the player's actual row;
+- selects the exact RIVAL1 party from the imported rival starter variable;
+- presents the before-battle and outcome dialogue around the real trainer
+  battle owner;
+- advances the beat flag only after player victory, then executes the matching
+  seven-step or ten-step exit path, hides Blue, and clears both source gate
+  flags;
+- exits without granting progression after player defeat.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -723,11 +735,14 @@ state. The same check then uses the real Viridian City-to-Mart warp, advances
 the parcel interruption, and verifies movement, inventory, event state, and
 final placement. It returns through Pallet's real lab warp, walks the aisle,
 activates Oak from below, and verifies parcel removal, the selected Blue path,
-Pokédex progression, all affected actor toggles, and Route 22 gate state.
+Pokédex progression, all affected actor toggles, and Route 22 gate state. It
+then enters the exact Route 22 rectangle, verifies the imported two-Pokémon
+RIVAL1 party, returns a battle victory to the campaign continuation, and
+verifies Blue's path, visibility, and event mutations.
 
 This is not full-campaign completion. The next campaign blocker begins with
-the first Route 22 rival encounter, Oak's subsequent Poké Ball delivery, and
-the Blue's House/Town Map/Daisy gates. Every later map program still requires
+Oak's subsequent Poké Ball delivery and the Blue's House/Town Map/Daisy
+gates. Every later map program still requires
 semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance

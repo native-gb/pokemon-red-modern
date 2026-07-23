@@ -151,9 +151,10 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
-nine programs import Pallet Town's Oak interception, all three Oak's Lab
+twelve programs import Pallet Town's Oak interception, all three Oak's Lab
 starter-ball branches, all three first-rival battle branches, the Viridian
-Mart Oak's Parcel handoff, and Oak's parcel-return/Pokédex request. The Pallet
+Mart Oak's Parcel handoff, Oak's parcel-return/Pokédex request, and all three
+starter-dependent branches of the first Route 22 rival encounter. The Pallet
 and opening-lab programs include
 both Pallet dialogue programs, Oak/player movement streams, the ordinary lab
 warp, Oak's two lab actor placements, both lab entry paths, the four
@@ -181,6 +182,14 @@ Pokédex and parcel flags, the sleeping/standing Viridian old-man transition,
 and the first Route 22 rival flag/visibility setup. Generic bounded jumps,
 actor placement, actor-only paths, item removal, and flag mutation execute
 those records.
+The Route 22 programs import the exact two-cell sight rectangle, both approach
+and exit paths, all four dialogue programs, RIVAL1 class and party selection,
+victory-only beat flag, actor removal, and source event resets. Generic
+rectangle triggers, player-coordinate path selection, trainer-battle
+continuations, and loss exits execute those records. Forced source movement
+may cross collision terrain while retaining map bounds and actor collision
+checks, which permits cartridge exit paths without weakening ordinary
+movement.
 The cache also initializes all 228 records from the cartridge toggleable-object
 table, including its 32 default-hidden actors. The readable accounting peer is
 `source/world/initial_actor_visibility.sexpr`; runtime initialization does not

@@ -1770,7 +1770,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 9> source_names{
+    constexpr std::array<std::string_view, 12> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1780,6 +1780,9 @@ void test_local_pallet_campaign_program(TestState& state) {
         "oaks_lab_first_rival_after_bulbasaur.sexpr",
         "viridian_mart_oaks_parcel.sexpr",
         "oaks_lab_deliver_parcel_and_get_pokedex.sexpr",
+        "route_22_first_rival_after_charmander.sexpr",
+        "route_22_first_rival_after_squirtle.sexpr",
+        "route_22_first_rival_after_bulbasaur.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2198,6 +2201,98 @@ void test_local_pallet_campaign_program(TestState& state) {
               actor_visible(33U, 1U) &&
               !actor_visible(33U, 2U),
           "Pokedex, old-man, and Route 22 actor toggles match the cartridge");
+
+    // Enter the exact two-cell Route 22 sight trigger. The imported program
+    // chooses Blue's approach, party, dialogue, exit, and progression from
+    // the player coordinate and selected rival starter.
+    check(state,
+          pokered::enter_world_at(world, 33U, 29, 4, error),
+          "campaign fixture reaches the first Route 22 rival trigger");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Route 22 rectangle starts the imported rival program");
+    for (std::size_t guard = 0U;
+         guard < 1000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Route 22 rival challenge advances to battle");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id ==
+                  25U &&
+              campaign.trainer_battle_request.trainer_party_index ==
+                  3U,
+          "rival starter selects the imported Route 22 RIVAL1 party");
+    battle_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign,
+              battle_view, battle_began, error),
+          "Route 22 campaign request starts its trainer battle");
+    check(state,
+          battle_began && campaign.battle.active &&
+              campaign.battle.enemy_party.members.size() == 2U &&
+              campaign.battle.enemy_party.members[0].species_dex ==
+                  16U &&
+              campaign.battle.enemy_party.members[0].level == 9U &&
+              campaign.battle.enemy_party.members[1].species_dex ==
+                  7U &&
+              campaign.battle.enemy_party.members[1].level == 8U,
+          "Route 22 battle materializes Blue's imported two-Pokemon party");
+
+    // Battle mechanics are exercised independently above. Return a victory
+    // result here to isolate the campaign continuation and both path owners.
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Route 22 post-battle campaign advances");
+        if (!error.empty()) {
+            std::fprintf(stderr, "Route 22 campaign error: %s\n",
+                         error.c_str());
+            for (const pokered::WorldActorState& actor :
+                 world.actors) {
+                const pokered::WorldMap& map =
+                    world.maps[actor.map_index];
+                if (map.id == 33U)
+                    std::fprintf(
+                        stderr,
+                        "Route 22 actor %u at %d,%d visible=%d\n",
+                        static_cast<unsigned>(
+                            map.actors[actor.spawn_index].index),
+                        actor.x, actor.y,
+                        actor.visible ? 1 : 0);
+            }
+            break;
+        }
+    }
+    check(state,
+          error.empty() && !campaign.fiber.active &&
+              !campaign.input_locked &&
+              pokered::campaign_flag(campaign, 0x6BF5DU) &&
+              !pokered::campaign_flag(campaign, 0x6BF58U) &&
+              !pokered::campaign_flag(campaign, 0x6BF5FU) &&
+              !actor_visible(33U, 1U),
+          "Route 22 victory records the beat flag and completes Blue's imported exit");
 }
 
 } // namespace
