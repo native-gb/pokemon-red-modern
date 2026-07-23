@@ -28,6 +28,17 @@ bool read_u16(std::istream& input, std::uint16_t& result) {
     return true;
 }
 
+bool read_u32(std::istream& input, std::uint32_t& result) {
+    std::array<std::uint8_t, 4> bytes{};
+    for (std::uint8_t& byte : bytes)
+        if (!read_u8(input, byte)) return false;
+    result = static_cast<std::uint32_t>(bytes[0]) |
+             static_cast<std::uint32_t>(bytes[1]) << 8U |
+             static_cast<std::uint32_t>(bytes[2]) << 16U |
+             static_cast<std::uint32_t>(bytes[3]) << 24U;
+    return true;
+}
+
 bool read_owner(std::istream& input, InteractionOwner& owner) {
     return read_u8(input, owner.index) && read_u8(input, owner.x) &&
            read_u8(input, owner.y) && read_u8(input, owner.program_id);
@@ -71,6 +82,45 @@ bool read_programs(std::istream& input, std::vector<InteractionProgram>& program
     return true;
 }
 
+bool read_pages(std::istream& input, std::vector<std::string>& pages) {
+    std::uint16_t page_count = 0U;
+    if (!read_u16(input, page_count) || page_count > 64U)
+        return false;
+    pages.reserve(page_count);
+    for (std::uint16_t page = 0U; page < page_count; ++page) {
+        std::uint16_t size = 0U;
+        if (!read_u16(input, size) || size == 0U || size > 8192U)
+            return false;
+        std::string text(size, '\0');
+        if (!input.read(text.data(),
+                        static_cast<std::streamsize>(text.size())))
+            return false;
+        pages.push_back(std::move(text));
+    }
+    return true;
+}
+
+bool read_trainers(std::istream& input,
+                   std::vector<TrainerInteractionRule>& trainers) {
+    std::uint16_t count = 0U;
+    if (!read_u16(input, count) || count > 16U) return false;
+    trainers.reserve(count);
+    for (std::uint16_t index = 0U; index < count; ++index) {
+        TrainerInteractionRule trainer;
+        if (!read_u8(input, trainer.actor_index) ||
+            trainer.actor_index == 0U ||
+            !read_u8(input, trainer.sight_range) ||
+            trainer.sight_range > 15U ||
+            !read_u32(input, trainer.defeated_flag) ||
+            !read_pages(input, trainer.before_pages) ||
+            !read_pages(input, trainer.after_pages) ||
+            !read_pages(input, trainer.end_pages))
+            return false;
+        trainers.push_back(std::move(trainer));
+    }
+    return true;
+}
+
 } // namespace
 
 bool load_interactions(const std::filesystem::path& path, InteractionCatalog& result,
@@ -78,7 +128,7 @@ bool load_interactions(const std::filesystem::path& path, InteractionCatalog& re
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'W', 'I', '1'}) {
+        magic != std::array{'P', 'W', 'I', '2'}) {
         error = "world interaction cache is missing or has an invalid header";
         return false;
     }
@@ -95,7 +145,9 @@ bool load_interactions(const std::filesystem::path& path, InteractionCatalog& re
         MapInteractions map;
         std::uint8_t decoded = 0;
         if (!read_u8(input, map.map_id) || !read_u8(input, decoded) || decoded > 1U ||
-            !read_owners(input, map.backgrounds) || !read_owners(input, map.actors) ||
+            !read_owners(input, map.backgrounds) ||
+            !read_owners(input, map.actors) ||
+            !read_trainers(input, map.trainers) ||
             !read_programs(input, map.programs)) {
             error = "world interaction cache has an invalid map record";
             return false;
@@ -128,6 +180,20 @@ const InteractionProgram* find_interaction(const InteractionCatalog& catalog,
     const std::size_t index = static_cast<std::size_t>(program_id - 1U);
     if (map == nullptr || index >= map->programs.size()) return nullptr;
     return &map->programs[index];
+}
+
+const TrainerInteractionRule* find_trainer_interaction(
+    const InteractionCatalog& catalog, std::uint8_t map_id,
+    std::uint8_t actor_index) {
+    const MapInteractions* map =
+        find_map_interactions(catalog, map_id);
+    if (map == nullptr) return nullptr;
+    const auto found = std::ranges::find_if(
+        map->trainers,
+        [actor_index](const TrainerInteractionRule& trainer) {
+            return trainer.actor_index == actor_index;
+        });
+    return found == map->trainers.end() ? nullptr : &*found;
 }
 
 } // namespace pokered

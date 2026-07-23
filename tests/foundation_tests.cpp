@@ -438,6 +438,7 @@ void test_world_spaces_and_warps(TestState& state) {
         .backgrounds =
             {{.index = 1, .x = 0, .y = 1, .program_id = 1}},
         .actors = {},
+        .trainers = {},
         .programs =
             {{
                 .status = pokered::InteractionProgramStatus::dialogue,
@@ -769,6 +770,25 @@ void test_local_rule_cache(TestState& state) {
               static_pokemon_actors == 12U,
           "all map-owned trainer and static-Pokemon actors resolve through "
           "imported semantic bindings");
+
+    pokered::InteractionCatalog interaction_catalog;
+    check(state,
+          pokered::load_interactions(
+              path.parent_path() / "world_interactions.bin",
+              interaction_catalog, error),
+          "complete world interaction cache loads for trainer ownership");
+    std::size_t trainer_interaction_count = 0U;
+    for (const pokered::MapInteractions& map :
+         interaction_catalog.maps)
+        trainer_interaction_count += map.trainers.size();
+    const pokered::TrainerInteractionRule* articuno =
+        pokered::find_trainer_interaction(interaction_catalog, 162U, 3U);
+    check(state,
+          trainer_interaction_count == 322U && articuno != nullptr &&
+              articuno->sight_range == 0U &&
+              articuno->defeated_flag == 443410U,
+          "all trainer headers load, including the static encounter whose "
+          "flag bit differs from its actor index");
 
     const pokered::SpeciesRule* bulbasaur = pokered::find_species(rules, 1);
     check(state,

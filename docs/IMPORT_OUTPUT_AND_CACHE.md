@@ -150,7 +150,12 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `world_interactions.bin` contains typed map-local interaction programs and
-owner bindings. Normal startup does not parse the readable `.sexpr` files.
+owner bindings. Its imported trainer-header index covers all 322 ordinary and
+static trainer interactions, including sight range, defeated flag, and
+before/end/after battle text programs. Header ownership is resolved separately
+from the 346 opponent actor parameters because special static encounters can
+use a flag bit that differs from their actor index. Normal startup does not
+parse the readable `.sexpr` files.
 
 ## Readable generated source
 

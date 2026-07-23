@@ -147,13 +147,15 @@ int main(int argc, char** argv) {
                     << "evolutions " << rules.evolutions << '\n'
                     << "growth_curves " << rules.growth_curves << '\n'
                     << "machines " << rules.machines << '\n'
-                    << "map_program_importer_version 3\n"
+                    << "map_program_importer_version 4\n"
                     << "map_slots " << scripts.map_slots << '\n'
                     << "decoded_map_programs " << scripts.decoded_maps << '\n'
                     << "unused_map_slots " << scripts.unresolved_slots << '\n'
                     << "decoded_map_text_programs " << scripts.decoded_text_programs << '\n'
                     << "decoded_map_interaction_scripts " << scripts.decoded_interaction_scripts
                     << '\n'
+                    << "trainer_interactions "
+                    << scripts.trainer_interactions << '\n'
                     << "untranslated_map_interaction_scripts "
                     << scripts.untranslated_interaction_scripts << '\n'
                     << "unresolved_map_owned_entries " << scripts.unresolved_owned_entries << '\n';

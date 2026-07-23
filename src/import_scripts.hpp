@@ -24,6 +24,7 @@ struct ScriptImport {
     std::size_t unresolved_owned_entries{};
     std::size_t background_interactions{};
     std::size_t actor_interactions{};
+    std::size_t trainer_interactions{};
 };
 
 // Inventory every map-owned program and interaction before semantic lifting.

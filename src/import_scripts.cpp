@@ -23,6 +23,7 @@ constexpr std::size_t kMapHeaderBanksOffset = 0x0C23D;
 constexpr std::size_t kMapSlotCount = 0xF8;
 constexpr std::size_t kExpectedDecodedMapCount = 226;
 constexpr std::size_t kExpectedUnusedMapCount = 22;
+constexpr std::size_t kExpectedTrainerInteractionCount = 322;
 constexpr std::size_t kFixedHeaderSize = 10;
 constexpr std::size_t kConnectionSize = 11;
 constexpr std::size_t kMaximumMapDimension = 128;
@@ -45,6 +46,17 @@ struct InteractionOwner {
     std::uint8_t x{};
     std::uint8_t y{};
     std::uint8_t text_id{};
+    std::uint8_t kind{};
+};
+
+struct TrainerInteraction {
+    std::uint8_t actor_index{};
+    std::uint8_t sight_range{};
+    std::uint32_t flag_key{};
+    std::size_t source_offset{};
+    DecodedTextProgram before;
+    DecodedTextProgram after;
+    DecodedTextProgram end;
 };
 
 struct MapProgramInventory {
@@ -65,6 +77,7 @@ struct MapProgramInventory {
     std::vector<InteractionOwner> actors;
     std::vector<std::size_t> text_entry_offsets;
     std::vector<DecodedTextProgram> owned_entries;
+    std::vector<TrainerInteraction> trainers;
     std::string unresolved_reason;
     std::size_t alias_of{kMapSlotCount};
     bool decoded{};
@@ -180,6 +193,7 @@ bool decode_object_owners(std::span<const std::uint8_t> rom, MapProgramInventory
             .x = rom[cursor + 1U],
             .y = rom[cursor],
             .text_id = rom[cursor + 2U],
+            .kind = 0U,
         });
         cursor += 3U;
     }
@@ -207,6 +221,8 @@ bool decode_object_owners(std::span<const std::uint8_t> rom, MapProgramInventory
             .x = static_cast<std::uint8_t>(stored_x - 4U),
             .y = static_cast<std::uint8_t>(stored_y - 4U),
             .text_id = static_cast<std::uint8_t>(encoded_text & 0x3FU),
+            .kind = static_cast<std::uint8_t>(
+                (encoded_text & 0xC0U) >> 6U),
         });
         cursor += 6U;
 
@@ -219,6 +235,123 @@ bool decode_object_owners(std::span<const std::uint8_t> rom, MapProgramInventory
         cursor += extra_bytes;
     }
     return true;
+}
+
+bool decode_trainer_text(std::span<const std::uint8_t> rom,
+                         const MapProgramInventory& map,
+                         std::size_t pointer_offset,
+                         DecodedTextProgram& result) {
+    std::size_t text_offset = 0U;
+    if (!visible_pointer_to_offset(
+            rom, map.bank, read_u16(rom, pointer_offset), text_offset))
+        return false;
+    decode_text_program(rom, source_bank(map.bank, text_offset),
+                        text_offset, result);
+    return result.complete;
+}
+
+bool decode_trainer_table_at(std::span<const std::uint8_t> rom,
+                             const MapProgramInventory& map,
+                             std::size_t table_offset,
+                             std::vector<TrainerInteraction>& result) {
+    std::vector<TrainerInteraction> decoded;
+    std::array<bool, kMaximumActors + 1U> owned_actor{};
+    std::size_t cursor = table_offset;
+    for (std::size_t record = 0U; record < kMaximumActors; ++record) {
+        if (!has_range(rom, cursor, 1U)) return false;
+        if (rom[cursor] == 0xFFU) {
+            if (decoded.empty()) return false;
+            result = std::move(decoded);
+            return true;
+        }
+        if (!has_range(rom, cursor, 12U)) return false;
+        const std::uint8_t flag_bit = rom[cursor];
+        const std::uint8_t packed_sight = rom[cursor + 1U];
+        if ((packed_sight & 0x0FU) != 0U ||
+            read_u16(rom, cursor + 8U) !=
+                read_u16(rom, cursor + 10U))
+            return false;
+
+        // Ordinarily the trainer flag bit begins at the trainer's object ID.
+        // A zero-sight static encounter can differ; its owned text script
+        // explicitly loads this header, so recover that owner from the ROM.
+        std::uint8_t actor_index = flag_bit;
+        const bool direct_owner =
+            actor_index != 0U && actor_index <= map.actors.size() &&
+            map.actors[actor_index - 1U].kind == 1U;
+        if (!direct_owner) {
+            actor_index = 0U;
+            const std::uint16_t table_pointer =
+                static_cast<std::uint16_t>(
+                    table_offset < kBankSize
+                        ? table_offset
+                        : 0x4000U + table_offset % kBankSize);
+            for (const InteractionOwner& actor : map.actors) {
+                if (actor.kind != 1U || actor.text_id == 0U ||
+                    actor.text_id > map.text_entry_offsets.size())
+                    continue;
+                const std::size_t text_offset =
+                    map.text_entry_offsets[actor.text_id - 1U];
+                const std::size_t end =
+                    std::min(rom.size(), text_offset + 48U);
+                for (std::size_t code = text_offset;
+                     code + 3U <= end; ++code) {
+                    if (rom[code] == 0x21U &&
+                        read_u16(rom, code + 1U) == table_pointer) {
+                        actor_index = actor.index;
+                        break;
+                    }
+                }
+                if (actor_index != 0U) break;
+            }
+        }
+        if (actor_index == 0U || owned_actor[actor_index]) return false;
+
+        TrainerInteraction trainer;
+        trainer.actor_index = actor_index;
+        trainer.sight_range =
+            static_cast<std::uint8_t>(packed_sight >> 4U);
+        trainer.flag_key =
+            static_cast<std::uint32_t>(read_u16(rom, cursor + 2U)) *
+                8U +
+            flag_bit;
+        trainer.source_offset = cursor;
+        if (!decode_trainer_text(rom, map, cursor + 4U,
+                                 trainer.before) ||
+            !decode_trainer_text(rom, map, cursor + 6U,
+                                 trainer.after) ||
+            !decode_trainer_text(rom, map, cursor + 8U,
+                                 trainer.end))
+            return false;
+        owned_actor[actor_index] = true;
+        decoded.push_back(std::move(trainer));
+        cursor += 12U;
+    }
+    return false;
+}
+
+void decode_trainer_interactions(std::span<const std::uint8_t> rom,
+                                 MapProgramInventory& map) {
+    if (!map.decoded) return;
+    constexpr std::size_t minimum_scan_bytes = 128U;
+    const std::size_t end = std::min(
+        rom.size(),
+        std::max(map.script_offset + minimum_scan_bytes,
+                 map.objects_offset));
+    for (std::size_t cursor = map.script_offset;
+         cursor + 3U <= end; ++cursor) {
+        if (rom[cursor] != 0x21U) continue;
+        std::size_t table_offset = 0U;
+        if (!visible_pointer_to_offset(
+                rom, map.bank, read_u16(rom, cursor + 1U),
+                table_offset))
+            continue;
+        std::vector<TrainerInteraction> decoded;
+        if (!decode_trainer_table_at(rom, map, table_offset, decoded))
+            continue;
+        if (decoded.size() > map.trainers.size())
+            map.trainers = std::move(decoded);
+    }
 }
 
 bool decode_map_program(std::span<const std::uint8_t> rom, std::size_t map_id,
@@ -364,6 +497,16 @@ void emit_map_source(const MapProgramInventory& map, ScriptImport& result) {
             emit_interaction_target(source, map, actor.text_id);
             source << '\n';
         }
+        for (const TrainerInteraction& trainer : map.trainers) {
+            source << "    trainer_interaction actor "
+                   << static_cast<unsigned>(trainer.actor_index)
+                   << " sight_range "
+                   << static_cast<unsigned>(trainer.sight_range)
+                   << " defeated_flag " << trainer.flag_key
+                   << " source "
+                   << source_address(map.bank, trainer.source_offset)
+                   << '\n';
+        }
     }
     add_text_file(result, "source/scripts/maps/" + map_slot_file_key(map.map_id) + ".sexpr",
                   source.str());
@@ -438,6 +581,8 @@ void emit_reports(const std::vector<MapProgramInventory>& maps, ScriptImport& re
             << "unresolved_owned_entries " << result.unresolved_owned_entries << '\n'
             << "background_interactions " << result.background_interactions << '\n'
             << "actor_interactions " << result.actor_interactions << '\n'
+            << "trainer_interactions " << result.trainer_interactions
+            << '\n'
             << "semantic_scripts_translated 0\n"
             << "coverage_note every ROM map slot is classified; decoded routines remain queued "
                "for semantic lifting\n";
@@ -484,7 +629,7 @@ void emit_compiled_index(const std::vector<MapProgramInventory>& maps, ScriptImp
 
     // Runtime interaction data is a compact typed cache. The engine never reparses
     // the readable generated sources or reaches back into the cartridge.
-    std::vector<std::uint8_t> interactions{'P', 'W', 'I', '1'};
+    std::vector<std::uint8_t> interactions{'P', 'W', 'I', '2'};
     write_u16(interactions, maps.size());
     for (const MapProgramInventory& map : maps) {
         interactions.push_back(map.map_id);
@@ -502,6 +647,22 @@ void emit_compiled_index(const std::vector<MapProgramInventory>& maps, ScriptImp
             interactions.push_back(owner.x);
             interactions.push_back(owner.y);
             interactions.push_back(owner.text_id);
+        }
+        write_u16(interactions, map.trainers.size());
+        for (const TrainerInteraction& trainer : map.trainers) {
+            interactions.push_back(trainer.actor_index);
+            interactions.push_back(trainer.sight_range);
+            write_u32(interactions, trainer.flag_key);
+            const std::array<const DecodedTextProgram*, 3> programs{
+                &trainer.before, &trainer.after, &trainer.end};
+            for (const DecodedTextProgram* program : programs) {
+                write_u16(interactions, program->pages.size());
+                for (const std::string& page : program->pages) {
+                    write_u16(interactions, page.size());
+                    interactions.insert(interactions.end(), page.begin(),
+                                        page.end());
+                }
+            }
         }
         write_u16(interactions, map.owned_entries.size());
         for (const DecodedTextProgram& program : map.owned_entries) {
@@ -531,6 +692,8 @@ bool decode_script_import(std::span<const std::uint8_t> rom, ScriptImport& resul
     for (std::size_t map_id = 0; map_id < maps.size(); ++map_id)
         decode_map_program(rom, map_id, maps[map_id]);
     assign_aliases(maps);
+    for (MapProgramInventory& map : maps)
+        decode_trainer_interactions(rom, map);
 
     result.map_slots = maps.size();
     for (const MapProgramInventory& map : maps) {
@@ -546,10 +709,18 @@ bool decode_script_import(std::span<const std::uint8_t> rom, ScriptImport& resul
         result.owned_map_entries += map.text_entry_offsets.size();
         result.background_interactions += map.backgrounds.size();
         result.actor_interactions += map.actors.size();
+        result.trainer_interactions += map.trainers.size();
     }
     if (result.decoded_maps != kExpectedDecodedMapCount ||
-        result.unresolved_slots != kExpectedUnusedMapCount) {
-        error = "map-program inventory does not match the pinned ROM profile";
+        result.unresolved_slots != kExpectedUnusedMapCount ||
+        result.trainer_interactions !=
+            kExpectedTrainerInteractionCount) {
+        error =
+            "map-program inventory does not match the pinned ROM profile "
+            "(decoded=" +
+            std::to_string(result.decoded_maps) + ", unused=" +
+            std::to_string(result.unresolved_slots) + ", trainers=" +
+            std::to_string(result.trainer_interactions) + ')';
         result = {};
         return false;
     }
