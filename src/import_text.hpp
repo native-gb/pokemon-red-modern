@@ -4,11 +4,14 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace pokered::import {
 
 struct DecodedTextProgram {
     std::string operations;
+    // Presentation-ready pages retained beside the readable instruction stream.
+    std::vector<std::string> pages;
     std::size_t source_bytes{};
     bool complete{};
     bool dynamic{};

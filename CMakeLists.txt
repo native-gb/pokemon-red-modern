@@ -83,11 +83,13 @@ add_executable(native-gb-pokemon-red-modern
     src/battle_ui.cpp
     src/catalog.cpp
     src/diagnostics.cpp
+    src/interactions.cpp
     src/main.cpp
     src/maps.cpp
     src/overlays.cpp
     src/predicates.cpp
     src/render/frame.cpp
+    src/render/dialogue.cpp
     src/render/maps.cpp
     src/sexpr.cpp
     src/source_loader.cpp

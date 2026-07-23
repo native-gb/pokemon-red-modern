@@ -48,8 +48,8 @@ void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog)
         ImGui::BulletText("GPU render target; no CPU framebuffer");
         ImGui::BulletText("World view supports arbitrary pan and zoom");
         ImGui::Spacing();
-        ImGui::TextUnformatted("Controls and accessibility settings will be added "
-                               "with the first playable vertical slice.");
+        ImGui::TextWrapped("WASD/arrows move. E, Z, X, or Enter interacts. Tab switches "
+                           "map/world view. IJKL pans and +/- zooms.");
     }
     ImGui::End();
 }
@@ -102,6 +102,13 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Text("View: %.*s", static_cast<int>(label(maps.view).size()),
                     label(maps.view).data());
         ImGui::Checkbox("World annotations (F3)", &maps.show_annotations);
+        if (maps.player.initialized) {
+            ImGui::Text("Player map index: %zu", maps.player.map_index);
+            ImGui::Text("Player cell: %d, %d", maps.player.x, maps.player.y);
+            ImGui::Text("Resident actors: %zu", maps.actors.size());
+            ImGui::Text("Spatial map indexes: %zu", maps.spatial.size());
+            ImGui::Text("Dialogue: %s", maps.dialogue.open ? "open" : "closed");
+        }
         if (map != nullptr) {
             ImGui::Text("ROM ID: 0x%02X", static_cast<unsigned>(map->id));
             ImGui::Text("Blocks: %u x %u", static_cast<unsigned>(map->width_blocks),
@@ -290,9 +297,22 @@ void draw_world_annotations(const WorldState& world,
             }
         }
 
-        for (const WorldActorSpawn& actor : map.actors) {
-            const ImVec2 center = screen_point(map_x + static_cast<float>(actor.x) * 16.0F + 8.0F,
-                                               map_y + static_cast<float>(actor.y) * 16.0F + 8.0F);
+        for (std::size_t spawn_index = 0; spawn_index < map.actors.size(); ++spawn_index) {
+            const WorldActorSpawn& actor = map.actors[spawn_index];
+            const auto state = std::find_if(
+                world.actors.begin(), world.actors.end(),
+                [&](const WorldActorState& value) {
+                    return value.map_index ==
+                               static_cast<std::size_t>(&map - world.maps.data()) &&
+                           value.spawn_index == spawn_index;
+                });
+            const float actor_x =
+                state == world.actors.end() ? map_x + static_cast<float>(actor.x) * 16.0F
+                                            : state->visual_global_x * 16.0F;
+            const float actor_y =
+                state == world.actors.end() ? map_y + static_cast<float>(actor.y) * 16.0F
+                                            : state->visual_global_y * 16.0F;
+            const ImVec2 center = screen_point(actor_x + 8.0F, actor_y + 8.0F);
             const ImU32 color = actor.kind == WorldActorKind::item ? IM_COL32(255, 206, 64, 255)
                                 : actor.kind == WorldActorKind::trainer_or_pokemon
                                     ? IM_COL32(255, 100, 112, 255)
@@ -344,7 +364,8 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
             ImGui::Text("Map: %.*s", static_cast<int>(map.size()), map.data());
             ImGui::Separator();
             ImGui::TextUnformatted(
-                "Left/Right Map   Tab World/Map   WASD Pan   +/- Zoom   0 Reset   "
+                "WASD/Arrows Move   E/Z/X/Enter Talk   [] Map   Tab World/Map   "
+                "IJKL Pan   +/- Zoom   0 Reset   "
                 "F3 Annotations   B Battle Lab   F1/F2 Tools   F11 Fullscreen");
         } else {
             const std::string_view animation = battle_animation_lab_name(lab);

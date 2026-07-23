@@ -10,10 +10,13 @@
 
 namespace pokered {
 
+struct InteractionCatalog;
+
 struct MapTileset {
     std::uint8_t id{};
     std::uint16_t tile_count{};
     std::uint8_t animation_mode{};
+    std::vector<std::uint8_t> passable_tiles;
     std::vector<std::uint8_t> pixels;
     std::vector<std::uint8_t> animation_pixels;
 };
@@ -84,11 +87,68 @@ enum class WorldView {
     world,
 };
 
+enum class WorldDirection : std::uint8_t {
+    down,
+    up,
+    left,
+    right,
+};
+
+struct WorldActorState {
+    std::size_t map_index{};
+    std::size_t spawn_index{};
+    std::int32_t x{};
+    std::int32_t y{};
+    float visual_global_x{};
+    float visual_global_y{};
+    WorldDirection facing{WorldDirection::down};
+};
+
+struct WorldPlayerState {
+    std::size_t map_index{};
+    std::int32_t x{};
+    std::int32_t y{};
+    float visual_global_x{};
+    float visual_global_y{};
+    WorldDirection facing{WorldDirection::down};
+    std::uint8_t move_cooldown{};
+    bool initialized{};
+};
+
+struct WorldMapCellIndex {
+    std::uint8_t map_id{};
+    std::uint16_t width{};
+    std::uint16_t height{};
+    // -1 means empty. Values are indexes into WorldState::actors.
+    std::vector<std::int32_t> actor_by_cell;
+    // Zero means no trigger; nonzero values are map-local interaction program IDs.
+    std::vector<std::uint8_t> background_program_by_cell;
+};
+
+struct DialogueState {
+    std::vector<std::string> pages;
+    std::size_t page{};
+    bool open{};
+};
+
+struct WorldStepInput {
+    bool left{};
+    bool right{};
+    bool up{};
+    bool down{};
+    bool activate{};
+};
+
 struct WorldState {
     std::filesystem::path source;
     std::vector<MapTileset> tilesets;
     std::vector<WorldSprite> sprites;
     std::vector<WorldMap> maps;
+    std::vector<WorldActorState> actors;
+    std::vector<WorldMapCellIndex> spatial;
+    std::vector<std::vector<std::size_t>> roam_schedule;
+    WorldPlayerState player;
+    DialogueState dialogue;
     std::size_t current{};
     WorldView view{WorldView::world};
     float zoom{1.0F};
@@ -98,12 +158,19 @@ struct WorldState {
     float target_camera_x{};
     float target_camera_y{};
     std::uint64_t animation_tick{};
+    std::uint64_t simulation_tick{};
+    std::uint32_t random_state{0xC001D00DU};
     bool show_annotations{};
+    bool follow_player{true};
     bool camera_initialized{};
     bool loaded{};
 };
 
 bool load_world(const std::filesystem::path& path, WorldState& result, std::string& error);
+bool initialize_world_runtime(WorldState& world, const InteractionCatalog& interactions,
+                              std::string& error);
+void step_world(WorldState& world, const InteractionCatalog& interactions,
+                const WorldStepInput& input);
 void select_next_map(WorldState& world);
 void select_previous_map(WorldState& world);
 void toggle_world_view(WorldState& world);
@@ -115,6 +182,7 @@ void step_world_animation(WorldState& world);
 const WorldMap* selected_map(const WorldState& world);
 const MapTileset* find_tileset(const WorldState& world, std::uint8_t id);
 const WorldSprite* find_world_sprite(const WorldState& world, std::uint8_t id);
+const WorldMapCellIndex* find_spatial_index(const WorldState& world, std::uint8_t map_id);
 bool actor_can_roam_to(const WorldActorSpawn& actor, std::int32_t global_x, std::int32_t global_y);
 std::string_view selected_map_name(const WorldState& world);
 std::string_view label(WorldView view);

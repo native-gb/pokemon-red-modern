@@ -456,6 +456,43 @@ void emit_compiled_index(const std::vector<MapProgramInventory>& maps, ScriptImp
         write_u16(bytes, map.actors.size());
     }
     result.files.push_back({"compiled/map_program_index.bin", std::move(bytes)});
+
+    // Runtime interaction data is a compact typed cache. The engine never reparses
+    // the readable generated sources or reaches back into the cartridge.
+    std::vector<std::uint8_t> interactions{'P', 'W', 'I', '1'};
+    write_u16(interactions, maps.size());
+    for (const MapProgramInventory& map : maps) {
+        interactions.push_back(map.map_id);
+        interactions.push_back(map.decoded ? 1U : 0U);
+        write_u16(interactions, map.backgrounds.size());
+        for (const InteractionOwner& owner : map.backgrounds) {
+            interactions.push_back(owner.index);
+            interactions.push_back(owner.x);
+            interactions.push_back(owner.y);
+            interactions.push_back(owner.text_id);
+        }
+        write_u16(interactions, map.actors.size());
+        for (const InteractionOwner& owner : map.actors) {
+            interactions.push_back(owner.index);
+            interactions.push_back(owner.x);
+            interactions.push_back(owner.y);
+            interactions.push_back(owner.text_id);
+        }
+        write_u16(interactions, map.owned_entries.size());
+        for (const DecodedTextProgram& program : map.owned_entries) {
+            const std::uint8_t status = !program.complete ? 0U
+                                        : program.dynamic ? 3U
+                                        : program.interaction ? 2U
+                                                              : 1U;
+            interactions.push_back(status);
+            write_u16(interactions, program.pages.size());
+            for (const std::string& page : program.pages) {
+                write_u16(interactions, page.size());
+                interactions.insert(interactions.end(), page.begin(), page.end());
+            }
+        }
+    }
+    result.files.push_back({"compiled/world_interactions.bin", std::move(interactions)});
 }
 
 } // namespace

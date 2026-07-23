@@ -82,11 +82,10 @@ baked into the terrain cache. A future renderer backend may replace the cache
 implementation with instanced tile draws without changing campaign data,
 simulation coordinates, or layer semantics.
 
-The actor atlas is uploaded once. Authored outdoor spawns are transformed from
-map-local 16×16 cells into global coordinates and drawn above terrain at every
-camera scale. These are authored spawn records, not yet campaign-resolved
-actor instances: toggle conditions and scripts will later decide which spawns
-are active.
+The actor atlas is uploaded once. Authored outdoor spawns become mutable actor
+instances, are transformed from map-local 16×16 cells into global coordinates,
+and are drawn above terrain at every camera scale. Campaign predicates will
+later decide which instances are active.
 
 Red does not store a rectangular roam radius per NPC. Object records contain
 `WALK` or `STAY` and an any-direction, vertical, horizontal, or fixed-facing
@@ -101,6 +100,27 @@ actor's region before collision resolution. Regions use global cells rather
 than map-local coordinates, so custom content can define multi-map regions or
 scripts can explicitly transfer an actor without making map ownership a
 universal engine restriction.
+
+## Runtime spatial index
+
+The overworld does not scan every trigger or actor when the player moves or
+interacts. Each authored map owns a dense cell index:
+
+- terrain collision is a direct tile lookup followed by a tileset passability
+  lookup;
+- background interactions are compiled into the cell they occupy;
+- each occupied actor cell stores one mutable actor index;
+- movement updates only the old and new actor cells;
+- faced-cell interaction and destination collision each inspect one cell.
+
+Roaming actors are scheduled through a 256-slot timing wheel. A fixed step
+updates only the actors due in that slot, then schedules each actor's next
+decision. This keeps cost proportional to active work even when every outdoor
+actor remains resident.
+
+Logical positions are integer world cells. Presentation positions converge
+toward them independently, providing smooth movement without weakening
+deterministic collision or script activation.
 
 ## Presentation cadence
 
@@ -119,11 +139,14 @@ simulation step count or environmental animation timing.
 
 ## Controls
 
-The connected world is the initial view when its local cache exists.
+The selected player map is the initial view when its local cache exists.
 
-- Left/Right selects the previous or next imported map.
+- `WASD` or arrow keys move and face the player.
+- `E`, `Z`, `X`, or Enter activates the faced actor/background interaction and
+  advances dialogue.
+- `[` and `]` select imported maps for inspection.
 - `Tab` switches between the connected world and selected-map inspection.
-- `W/A/S/D` pans the camera.
+- `I/J/K/L` pans the camera.
 - `+` and `-` zoom without changing source resolution.
 - `0` resets pan and zoom to the fitted view.
 - `F3` toggles map, warp, and actor annotations.
@@ -154,8 +177,8 @@ does not mutate or participate in world simulation.
 ## Remaining world domains
 
 This slice displays resident outdoor geometry, environmental tile animation,
-and authored outdoor actors. Interior/cave/dungeon maps, collision cells,
-background events, visibility predicates, mutable blocks, scripted actor
-movement, and walking clips remain independent work. Persistent whole-zone NPC
-simulation will use this same coordinate system and camera rather than
-cartridge-style screen streaming.
+mutable outdoor actors, imported collision, background triggers, faced-cell
+dialogue, and ambient roaming. Interior/cave/dungeon geometry, campaign
+visibility predicates, mutable blocks, warps, and authored cutscene movement
+remain independent work. Persistent whole-zone NPC simulation uses this same
+coordinate system and camera rather than cartridge-style screen streaming.

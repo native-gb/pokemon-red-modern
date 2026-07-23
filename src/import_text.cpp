@@ -18,6 +18,7 @@ constexpr unsigned kMaximumFarDepth = 4;
 struct DecodeState {
     std::span<const std::uint8_t> rom;
     std::ostringstream operations;
+    std::vector<std::string> pages{1};
     std::size_t bytes{};
     bool dynamic{};
     std::string reason;
@@ -155,6 +156,9 @@ void emit_write(DecodeState& state, std::string_view operation, const std::strin
     state.operations << "    " << operation << " \"";
     append_escaped(state.operations, text);
     state.operations << "\"\n";
+    if ((operation == "line" || operation == "continue") && !state.pages.back().empty())
+        state.pages.back().push_back('\n');
+    state.pages.back() += text;
 }
 
 enum class StringEnd {
@@ -177,6 +181,7 @@ StringEnd decode_string(DecodeState& state, std::size_t& cursor) {
             emit_write(state, next_operation, text);
             text.clear();
             state.operations << "    page\n";
+            if (!state.pages.back().empty()) state.pages.emplace_back();
             next_operation = "write";
             break;
         case 0x4A:
@@ -211,6 +216,7 @@ StringEnd decode_string(DecodeState& state, std::size_t& cursor) {
             emit_write(state, next_operation, text);
             text.clear();
             state.operations << "    paragraph\n";
+            if (!state.pages.back().empty()) state.pages.emplace_back();
             next_operation = "write";
             break;
         case 0x52:
@@ -407,6 +413,7 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
     DecodeState state{
         .rom = rom,
         .operations = {},
+        .pages = std::vector<std::string>(1),
         .bytes = 0,
         .dynamic = false,
         .reason = {},
@@ -446,6 +453,8 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
     }
 
     result.operations = state.operations.str();
+    result.pages = std::move(state.pages);
+    if (result.pages.size() == 1U && result.pages.front().empty()) result.pages.clear();
     result.source_bytes = state.bytes;
     result.complete = true;
     result.dynamic = state.dynamic;

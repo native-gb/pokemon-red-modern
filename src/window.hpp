@@ -34,6 +34,11 @@ struct WindowInput {
     bool zoom_world_in{};
     bool zoom_world_out{};
     bool reset_world_view{};
+    bool move_player_left{};
+    bool move_player_right{};
+    bool move_player_up{};
+    bool move_player_down{};
+    bool activate_world{};
     bool pan_world_left{};
     bool pan_world_right{};
     bool pan_world_up{};

@@ -529,42 +529,76 @@ std::size_t actor_facing(std::uint8_t direction_or_axis) {
     return 0U;
 }
 
+std::size_t actor_facing(WorldDirection direction) {
+    if (direction == WorldDirection::up) return 1U;
+    if (direction == WorldDirection::left) return 2U;
+    if (direction == WorldDirection::right) return 3U;
+    return 0U;
+}
+
 bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_height,
                        const WorldState& world, const WorldRenderResources& resources,
                        const WorldProjection& projection) {
     if (resources.actor_atlas == nullptr || resources.actor_atlas_columns <= 0) return false;
     const WorldMap* selected = selected_map(world);
-    for (const WorldMap& map : world.maps) {
-        if (world.view == WorldView::selected && &map != selected) continue;
-        for (const WorldActorSpawn& actor : map.actors) {
-            const std::size_t frame = (static_cast<std::size_t>(actor.sprite_id) - 1U) * 4U +
-                                      actor_facing(actor.direction_or_axis);
-            const SDL_FRect source{
-                .x = static_cast<float>(
-                    frame % static_cast<std::size_t>(resources.actor_atlas_columns) * 16U),
-                .y = static_cast<float>(
-                    frame / static_cast<std::size_t>(resources.actor_atlas_columns) * 16U),
-                .w = 16.0F,
-                .h = 16.0F,
-            };
-            const float world_x = static_cast<float>(map.global_x_tiles * kTileSize) +
-                                  static_cast<float>(actor.x) * 16.0F;
-            const float world_y = static_cast<float>(map.global_y_tiles * kTileSize) +
-                                  static_cast<float>(actor.y) * 16.0F;
-            const SDL_FRect destination{
-                .x = projection.center_x + (world_x - world.camera_x) * projection.scale,
-                .y = projection.center_y + (world_y - world.camera_y) * projection.scale,
-                .w = 16.0F * projection.scale,
-                .h = 16.0F * projection.scale,
-            };
-            if (destination.x >= static_cast<float>(output_width) ||
-                destination.y >= static_cast<float>(output_height) ||
-                destination.x + destination.w <= 0.0F || destination.y + destination.h <= 0.0F)
+    const auto draw_actor = [&](std::uint8_t sprite_id, WorldDirection facing, float global_x,
+                                float global_y) {
+        const std::size_t frame =
+            (static_cast<std::size_t>(sprite_id) - 1U) * 4U + actor_facing(facing);
+        const SDL_FRect source{
+            .x = static_cast<float>(
+                frame % static_cast<std::size_t>(resources.actor_atlas_columns) * 16U),
+            .y = static_cast<float>(
+                frame / static_cast<std::size_t>(resources.actor_atlas_columns) * 16U),
+            .w = 16.0F,
+            .h = 16.0F,
+        };
+        const SDL_FRect destination{
+            .x = projection.center_x + (global_x * 16.0F - world.camera_x) * projection.scale,
+            .y = projection.center_y + (global_y * 16.0F - world.camera_y) * projection.scale,
+            .w = 16.0F * projection.scale,
+            .h = 16.0F * projection.scale,
+        };
+        if (destination.x >= static_cast<float>(output_width) ||
+            destination.y >= static_cast<float>(output_height) ||
+            destination.x + destination.w <= 0.0F || destination.y + destination.h <= 0.0F)
+            return true;
+        return SDL_RenderTexture(renderer, resources.actor_atlas, &source, &destination);
+    };
+
+    if (world.actors.empty()) {
+        for (const WorldMap& map : world.maps) {
+            if (world.view == WorldView::selected && &map != selected) continue;
+            for (const WorldActorSpawn& actor : map.actors) {
+                const float global_x =
+                    static_cast<float>(map.global_x_tiles / 2 + static_cast<int>(actor.x));
+                const float global_y =
+                    static_cast<float>(map.global_y_tiles / 2 + static_cast<int>(actor.y));
+                if (!draw_actor(actor.sprite_id, static_cast<WorldDirection>(
+                                                     actor_facing(actor.direction_or_axis)),
+                                global_x, global_y))
+                    return false;
+            }
+        }
+    } else {
+        for (const WorldActorState& actor : world.actors) {
+            if (actor.map_index >= world.maps.size()) continue;
+            if (world.view == WorldView::selected && &world.maps[actor.map_index] != selected)
                 continue;
-            if (!SDL_RenderTexture(renderer, resources.actor_atlas, &source, &destination))
+            const WorldActorSpawn& spawn =
+                world.maps[actor.map_index].actors[actor.spawn_index];
+            if (!draw_actor(spawn.sprite_id, actor.facing, actor.visual_global_x,
+                            actor.visual_global_y))
                 return false;
         }
     }
+    if (world.player.initialized &&
+        (world.view == WorldView::world ||
+         (world.player.map_index < world.maps.size() &&
+          &world.maps[world.player.map_index] == selected)) &&
+        !draw_actor(1U, world.player.facing, world.player.visual_global_x,
+                    world.player.visual_global_y))
+        return false;
     return true;
 }
 

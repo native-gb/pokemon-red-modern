@@ -1,4 +1,5 @@
 #include "maps.hpp"
+#include "interactions.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +9,7 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -72,8 +74,11 @@ bool read_tilesets(std::istream& input, WorldState& world, std::string& error) {
         MapTileset tileset;
         std::uint32_t pixel_count = 0;
         std::uint32_t animation_pixel_count = 0;
+        std::uint8_t passable_count = 0;
         if (!read_u8(input, tileset.id) || !read_u16(input, tileset.tile_count) ||
             !read_u8(input, tileset.animation_mode) || tileset.animation_mode > 2 ||
+            !read_u8(input, passable_count) || passable_count == 0 ||
+            !read_bytes(input, passable_count, tileset.passable_tiles) ||
             !read_u32(input, pixel_count) || tileset.tile_count == 0 ||
             pixel_count != static_cast<std::uint32_t>(tileset.tile_count) * 64U ||
             !read_bytes(input, pixel_count, tileset.pixels) ||
@@ -279,13 +284,109 @@ void world_view_bounds(const WorldState& world, float& left, float& top, float& 
     }
 }
 
+std::size_t cell_offset(const WorldMapCellIndex& index, std::int32_t x, std::int32_t y) {
+    return static_cast<std::size_t>(y) * index.width + static_cast<std::size_t>(x);
+}
+
+bool inside(const WorldMapCellIndex& index, std::int32_t x, std::int32_t y) {
+    return x >= 0 && y >= 0 && x < index.width && y < index.height;
+}
+
+WorldDirection imported_facing(std::uint8_t direction) {
+    if (direction == 0xD1U) return WorldDirection::up;
+    if (direction == 0xD2U) return WorldDirection::left;
+    if (direction == 0xD3U) return WorldDirection::right;
+    return WorldDirection::down;
+}
+
+WorldDirection opposite(WorldDirection direction) {
+    if (direction == WorldDirection::up) return WorldDirection::down;
+    if (direction == WorldDirection::down) return WorldDirection::up;
+    if (direction == WorldDirection::left) return WorldDirection::right;
+    return WorldDirection::left;
+}
+
+void direction_delta(WorldDirection direction, std::int32_t& x, std::int32_t& y) {
+    x = direction == WorldDirection::left ? -1 : direction == WorldDirection::right ? 1 : 0;
+    y = direction == WorldDirection::up ? -1 : direction == WorldDirection::down ? 1 : 0;
+}
+
+bool map_contains_global_cell(const WorldMap& map, std::int32_t x, std::int32_t y) {
+    const std::int32_t left = map.global_x_tiles / 2;
+    const std::int32_t top = map.global_y_tiles / 2;
+    return x >= left && y >= top && x < left + map.width_blocks * 2 &&
+           y < top + map.height_blocks * 2;
+}
+
+std::size_t find_map_for_global_cell(const WorldState& world, std::size_t preferred,
+                                     std::int32_t x, std::int32_t y) {
+    if (preferred < world.maps.size() && map_contains_global_cell(world.maps[preferred], x, y))
+        return preferred;
+    for (std::size_t index = 0; index < world.maps.size(); ++index) {
+        if (map_contains_global_cell(world.maps[index], x, y)) return index;
+    }
+    return world.maps.size();
+}
+
+bool is_passable(const WorldState& world, std::size_t map_index, std::int32_t global_x,
+                 std::int32_t global_y) {
+    if (map_index >= world.maps.size()) return false;
+    const WorldMap& map = world.maps[map_index];
+    const std::int32_t local_x = global_x - map.global_x_tiles / 2;
+    const std::int32_t local_y = global_y - map.global_y_tiles / 2;
+    if (local_x < 0 || local_y < 0 || local_x >= map.width_blocks * 2 ||
+        local_y >= map.height_blocks * 2)
+        return false;
+    const std::size_t tile_x = static_cast<std::size_t>(local_x) * 2U;
+    const std::size_t tile_y = static_cast<std::size_t>(local_y) * 2U + 1U;
+    const std::size_t offset = tile_y * map.width_tiles + tile_x;
+    if (offset >= map.tiles.size()) return false;
+    const MapTileset* tileset = find_tileset(world, map.tileset_id);
+    return tileset != nullptr &&
+           std::find(tileset->passable_tiles.begin(), tileset->passable_tiles.end(),
+                     map.tiles[offset]) != tileset->passable_tiles.end();
+}
+
+std::string substitute_names(std::string text) {
+    const auto replace_all = [&](std::string_view token, std::string_view replacement) {
+        std::size_t position = 0;
+        while ((position = text.find(token, position)) != std::string::npos) {
+            text.replace(position, token.size(), replacement);
+            position += replacement.size();
+        }
+    };
+    replace_all("{player_name}", "RED");
+    replace_all("{rival_name}", "GREEN");
+    return text;
+}
+
+void open_interaction(WorldState& world, const InteractionProgram* program) {
+    world.dialogue = {};
+    if (program != nullptr && program->status == InteractionProgramStatus::dialogue &&
+        !program->pages.empty()) {
+        for (const std::string& page : program->pages)
+            world.dialogue.pages.push_back(substitute_names(page));
+    } else if (program != nullptr &&
+               program->status == InteractionProgramStatus::decoded_native) {
+        world.dialogue.pages.push_back("[Decoded interaction executor pending]");
+    } else {
+        world.dialogue.pages.push_back("[Interaction needs semantic translation]");
+    }
+    world.dialogue.open = true;
+}
+
+std::uint32_t next_random(WorldState& world) {
+    world.random_state = world.random_state * 1664525U + 1013904223U;
+    return world.random_state;
+}
+
 } // namespace
 
 bool load_world(const std::filesystem::path& path, WorldState& result, std::string& error) {
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', '7'}) {
+        magic != std::array{'P', 'M', 'V', '8'}) {
         error = "world map cache is missing or has an invalid header";
         return false;
     }
@@ -322,14 +423,245 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     return true;
 }
 
+bool initialize_world_runtime(WorldState& world, const InteractionCatalog& interactions,
+                              std::string& error) {
+    if (!world.loaded || !interactions.loaded || world.maps.empty()) {
+        error = "world runtime requires loaded maps and interactions";
+        return false;
+    }
+
+    world.actors.clear();
+    world.spatial.clear();
+    world.roam_schedule.assign(256U, {});
+    world.spatial.reserve(world.maps.size());
+    for (const WorldMap& map : world.maps) {
+        WorldMapCellIndex index;
+        index.map_id = map.id;
+        index.width = static_cast<std::uint16_t>(map.width_blocks * 2U);
+        index.height = static_cast<std::uint16_t>(map.height_blocks * 2U);
+        const std::size_t cells = static_cast<std::size_t>(index.width) * index.height;
+        index.actor_by_cell.assign(cells, -1);
+        index.background_program_by_cell.assign(cells, 0U);
+        if (const MapInteractions* bindings = find_map_interactions(interactions, map.id);
+            bindings != nullptr) {
+            for (const InteractionOwner& owner : bindings->backgrounds) {
+                if (inside(index, owner.x, owner.y))
+                    index.background_program_by_cell[cell_offset(index, owner.x, owner.y)] =
+                        owner.program_id;
+            }
+        }
+        world.spatial.push_back(std::move(index));
+    }
+
+    for (std::size_t map_index = 0; map_index < world.maps.size(); ++map_index) {
+        const WorldMap& map = world.maps[map_index];
+        WorldMapCellIndex& cells = world.spatial[map_index];
+        for (std::size_t spawn_index = 0; spawn_index < map.actors.size(); ++spawn_index) {
+            const WorldActorSpawn& spawn = map.actors[spawn_index];
+            WorldActorState actor{
+                .map_index = map_index,
+                .spawn_index = spawn_index,
+                .x = spawn.x,
+                .y = spawn.y,
+                .visual_global_x =
+                    static_cast<float>(map.global_x_tiles / 2 + static_cast<int>(spawn.x)),
+                .visual_global_y =
+                    static_cast<float>(map.global_y_tiles / 2 + static_cast<int>(spawn.y)),
+                .facing = imported_facing(spawn.direction_or_axis),
+            };
+            const std::size_t actor_index = world.actors.size();
+            if (inside(cells, actor.x, actor.y))
+                cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] =
+                    static_cast<std::int32_t>(actor_index);
+            world.actors.push_back(actor);
+            if (spawn.movement == 0xFEU) {
+                const std::size_t slot = (30U + actor_index * 17U) % world.roam_schedule.size();
+                world.roam_schedule[slot].push_back(actor_index);
+            }
+        }
+    }
+
+    world.player = {};
+    world.player.map_index = 0;
+    world.player.x = 5;
+    world.player.y = 6;
+    const WorldMap& start = world.maps.front();
+    if (!is_passable(world, 0, start.global_x_tiles / 2 + world.player.x,
+                     start.global_y_tiles / 2 + world.player.y)) {
+        bool found = false;
+        for (std::int32_t y = 0; y < start.height_blocks * 2 && !found; ++y) {
+            for (std::int32_t x = 0; x < start.width_blocks * 2; ++x) {
+                const WorldMapCellIndex& cells = world.spatial.front();
+                if (is_passable(world, 0, start.global_x_tiles / 2 + x,
+                                start.global_y_tiles / 2 + y) &&
+                    cells.actor_by_cell[cell_offset(cells, x, y)] < 0) {
+                    world.player.x = x;
+                    world.player.y = y;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            error = "starting map has no unoccupied passable player cell";
+            return false;
+        }
+    }
+    world.player.visual_global_x =
+        static_cast<float>(start.global_x_tiles / 2 + world.player.x);
+    world.player.visual_global_y =
+        static_cast<float>(start.global_y_tiles / 2 + world.player.y);
+    world.player.initialized = true;
+    world.current = 0;
+    world.view = WorldView::selected;
+    world.follow_player = true;
+    world.target_zoom = 2.0F;
+    world.zoom = 2.0F;
+    world.camera_initialized = true;
+    world.camera_x = world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
+    world.camera_y = world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
+    error.clear();
+    return true;
+}
+
+void step_world(WorldState& world, const InteractionCatalog& interactions,
+                const WorldStepInput& input) {
+    if (!world.player.initialized || world.spatial.size() != world.maps.size()) return;
+    ++world.simulation_tick;
+
+    if (world.dialogue.open) {
+        if (input.activate) {
+            if (world.dialogue.page + 1U < world.dialogue.pages.size())
+                ++world.dialogue.page;
+            else
+                world.dialogue = {};
+        }
+        return;
+    }
+
+    if (input.activate) {
+        std::int32_t dx = 0;
+        std::int32_t dy = 0;
+        direction_delta(world.player.facing, dx, dy);
+        const WorldMap& map = world.maps[world.player.map_index];
+        const std::int32_t global_x = map.global_x_tiles / 2 + world.player.x + dx;
+        const std::int32_t global_y = map.global_y_tiles / 2 + world.player.y + dy;
+        const std::size_t target_map =
+            find_map_for_global_cell(world, world.player.map_index, global_x, global_y);
+        if (target_map < world.maps.size()) {
+            const WorldMap& target = world.maps[target_map];
+            const std::int32_t local_x = global_x - target.global_x_tiles / 2;
+            const std::int32_t local_y = global_y - target.global_y_tiles / 2;
+            WorldMapCellIndex& cells = world.spatial[target_map];
+            const std::size_t cell = cell_offset(cells, local_x, local_y);
+            const std::int32_t actor_index = cells.actor_by_cell[cell];
+            if (actor_index >= 0 &&
+                static_cast<std::size_t>(actor_index) < world.actors.size()) {
+                WorldActorState& actor = world.actors[static_cast<std::size_t>(actor_index)];
+                actor.facing = opposite(world.player.facing);
+                const WorldActorSpawn& spawn =
+                    world.maps[actor.map_index].actors[actor.spawn_index];
+                open_interaction(
+                    world, find_interaction(interactions, target.id, spawn.text_id));
+            } else if (cells.background_program_by_cell[cell] != 0U) {
+                open_interaction(world,
+                                 find_interaction(interactions, target.id,
+                                                  cells.background_program_by_cell[cell]));
+            }
+        }
+    }
+
+    if (world.player.move_cooldown > 0U) {
+        --world.player.move_cooldown;
+    } else {
+        std::optional<WorldDirection> direction;
+        if (input.left)
+            direction = WorldDirection::left;
+        else if (input.right)
+            direction = WorldDirection::right;
+        else if (input.up)
+            direction = WorldDirection::up;
+        else if (input.down)
+            direction = WorldDirection::down;
+        if (direction.has_value()) {
+            world.player.facing = *direction;
+            std::int32_t dx = 0;
+            std::int32_t dy = 0;
+            direction_delta(*direction, dx, dy);
+            const WorldMap& map = world.maps[world.player.map_index];
+            const std::int32_t global_x = map.global_x_tiles / 2 + world.player.x + dx;
+            const std::int32_t global_y = map.global_y_tiles / 2 + world.player.y + dy;
+            const std::size_t target_map =
+                find_map_for_global_cell(world, world.player.map_index, global_x, global_y);
+            if (target_map < world.maps.size() && is_passable(world, target_map, global_x, global_y)) {
+                const WorldMap& target = world.maps[target_map];
+                const std::int32_t local_x = global_x - target.global_x_tiles / 2;
+                const std::int32_t local_y = global_y - target.global_y_tiles / 2;
+                const WorldMapCellIndex& cells = world.spatial[target_map];
+                if (cells.actor_by_cell[cell_offset(cells, local_x, local_y)] < 0) {
+                    world.player.map_index = target_map;
+                    world.player.x = local_x;
+                    world.player.y = local_y;
+                    world.current = target_map;
+                    world.follow_player = true;
+                    world.player.move_cooldown = 7U;
+                }
+            }
+        }
+    }
+
+    const std::size_t schedule_slot =
+        static_cast<std::size_t>(world.simulation_tick % world.roam_schedule.size());
+    std::vector<std::size_t> scheduled = std::move(world.roam_schedule[schedule_slot]);
+    world.roam_schedule[schedule_slot].clear();
+    for (const std::size_t actor_index : scheduled) {
+        if (actor_index >= world.actors.size()) continue;
+        WorldActorState& actor = world.actors[actor_index];
+        const WorldMap& map = world.maps[actor.map_index];
+        const WorldActorSpawn& spawn = map.actors[actor.spawn_index];
+        const std::uint32_t random = next_random(world);
+        std::uint32_t choice = random % 4U;
+        if (spawn.direction_or_axis == 1U) choice = random % 2U;
+        if (spawn.direction_or_axis == 2U) choice = 2U + random % 2U;
+        const WorldDirection direction = static_cast<WorldDirection>(choice);
+        actor.facing = direction;
+        std::int32_t dx = 0;
+        std::int32_t dy = 0;
+        direction_delta(direction, dx, dy);
+        const std::int32_t global_x = map.global_x_tiles / 2 + actor.x + dx;
+        const std::int32_t global_y = map.global_y_tiles / 2 + actor.y + dy;
+        WorldMapCellIndex& cells = world.spatial[actor.map_index];
+        const std::int32_t target_x = actor.x + dx;
+        const std::int32_t target_y = actor.y + dy;
+        const bool player_blocks =
+            world.player.map_index == actor.map_index && world.player.x == target_x &&
+            world.player.y == target_y;
+        if (inside(cells, target_x, target_y) && !player_blocks &&
+            actor_can_roam_to(spawn, global_x, global_y) &&
+            is_passable(world, actor.map_index, global_x, global_y) &&
+            cells.actor_by_cell[cell_offset(cells, target_x, target_y)] < 0) {
+            cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] = -1;
+            actor.x = target_x;
+            actor.y = target_y;
+            cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] =
+                static_cast<std::int32_t>(actor_index);
+        }
+        const std::size_t delay = 75U + static_cast<std::size_t>(next_random(world) % 106U);
+        world.roam_schedule[(schedule_slot + delay) % world.roam_schedule.size()].push_back(
+            actor_index);
+    }
+}
+
 void select_next_map(WorldState& world) {
     if (!world.maps.empty()) world.current = (world.current + 1U) % world.maps.size();
+    world.follow_player = false;
     if (world.view == WorldView::selected) reset_world_view(world);
 }
 
 void select_previous_map(WorldState& world) {
     if (world.maps.empty()) return;
     world.current = world.current == 0 ? world.maps.size() - 1U : world.current - 1U;
+    world.follow_player = false;
     if (world.view == WorldView::selected) reset_world_view(world);
 }
 
@@ -343,6 +675,7 @@ void zoom_world_view(WorldState& world, float factor) {
 }
 
 void pan_world_view(WorldState& world, float x, float y) {
+    world.follow_player = false;
     const float scale = std::max(world.target_zoom, 0.05F);
     world.target_camera_x += x / scale;
     world.target_camera_y += y / scale;
@@ -371,6 +704,32 @@ void reset_world_view(WorldState& world) {
 void update_world_view(WorldState& world, double elapsed_seconds) {
     const double bounded = std::clamp(elapsed_seconds, 0.0, 0.1);
     const float response = 1.0F - std::exp(static_cast<float>(-12.0 * bounded));
+    if (world.player.initialized) {
+        const WorldMap& map = world.maps[world.player.map_index];
+        const float target_x =
+            static_cast<float>(map.global_x_tiles / 2 + world.player.x);
+        const float target_y =
+            static_cast<float>(map.global_y_tiles / 2 + world.player.y);
+        const float movement_response =
+            1.0F - std::exp(static_cast<float>(-20.0 * bounded));
+        world.player.visual_global_x +=
+            (target_x - world.player.visual_global_x) * movement_response;
+        world.player.visual_global_y +=
+            (target_y - world.player.visual_global_y) * movement_response;
+        if (world.follow_player && world.view == WorldView::selected) {
+            world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
+            world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
+        }
+    }
+    for (WorldActorState& actor : world.actors) {
+        const WorldMap& map = world.maps[actor.map_index];
+        const float target_x = static_cast<float>(map.global_x_tiles / 2 + actor.x);
+        const float target_y = static_cast<float>(map.global_y_tiles / 2 + actor.y);
+        const float movement_response =
+            1.0F - std::exp(static_cast<float>(-16.0 * bounded));
+        actor.visual_global_x += (target_x - actor.visual_global_x) * movement_response;
+        actor.visual_global_y += (target_y - actor.visual_global_y) * movement_response;
+    }
     world.camera_x += (world.target_camera_x - world.camera_x) * response;
     world.camera_y += (world.target_camera_y - world.camera_y) * response;
     const float ratio = world.target_zoom / std::max(world.zoom, 0.0001F);
@@ -396,6 +755,13 @@ const WorldSprite* find_world_sprite(const WorldState& world, std::uint8_t id) {
     const auto found = std::find_if(world.sprites.begin(), world.sprites.end(),
                                     [id](const WorldSprite& sprite) { return sprite.id == id; });
     return found == world.sprites.end() ? nullptr : &*found;
+}
+
+const WorldMapCellIndex* find_spatial_index(const WorldState& world, std::uint8_t map_id) {
+    const auto found = std::find_if(
+        world.spatial.begin(), world.spatial.end(),
+        [map_id](const WorldMapCellIndex& index) { return index.map_id == map_id; });
+    return found == world.spatial.end() ? nullptr : &*found;
 }
 
 bool actor_can_roam_to(const WorldActorSpawn& actor, std::int32_t global_x, std::int32_t global_y) {

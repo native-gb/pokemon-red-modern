@@ -69,15 +69,7 @@ WindowInput poll_window_events(HostWindow& window) {
         gubsy_process_sdl_event(window.runtime, event);
         if (event.type == SDL_EVENT_QUIT) input.quit = true;
         if (event.type != SDL_EVENT_KEY_DOWN) continue;
-        if (event.key.key == SDLK_A)
-            input.pan_world_left = true;
-        else if (event.key.key == SDLK_D)
-            input.pan_world_right = true;
-        else if (event.key.key == SDLK_W)
-            input.pan_world_up = true;
-        else if (event.key.key == SDLK_S)
-            input.pan_world_down = true;
-        else if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
+        if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
                  event.key.key == SDLK_KP_PLUS)
             input.zoom_world_in = true;
         else if (event.key.key == SDLK_MINUS || event.key.key == SDLK_KP_MINUS)
@@ -91,9 +83,9 @@ WindowInput poll_window_events(HostWindow& window) {
             input.toggle_world_annotations = true;
         else if (event.key.key == SDLK_B)
             input.toggle_lab_view = true;
-        else if (event.key.key == SDLK_LEFT)
+        else if (event.key.key == SDLK_LEFTBRACKET)
             input.previous_animation = true;
-        else if (event.key.key == SDLK_RIGHT)
+        else if (event.key.key == SDLK_RIGHTBRACKET)
             input.next_animation = true;
         else if (event.key.key == SDLK_UP)
             input.previous_species = true;
@@ -113,6 +105,9 @@ WindowInput poll_window_events(HostWindow& window) {
             input.reload_animation_sources = true;
         else if (event.key.key == SDLK_SPACE)
             input.toggle_animation_auto_advance = true;
+        else if (event.key.key == SDLK_E || event.key.key == SDLK_Z ||
+                 event.key.key == SDLK_X || event.key.key == SDLK_RETURN)
+            input.activate_world = true;
         else if (event.key.key == SDLK_TAB)
             input.toggle_world_view = true;
         else if (event.key.key == SDLK_0 || event.key.key == SDLK_KP_0)
@@ -124,10 +119,14 @@ WindowInput poll_window_events(HostWindow& window) {
         }
     }
     const bool* keyboard = SDL_GetKeyboardState(nullptr);
-    input.pan_world_left = keyboard[SDL_SCANCODE_A];
-    input.pan_world_right = keyboard[SDL_SCANCODE_D];
-    input.pan_world_up = keyboard[SDL_SCANCODE_W];
-    input.pan_world_down = keyboard[SDL_SCANCODE_S];
+    input.move_player_left = keyboard[SDL_SCANCODE_A] || keyboard[SDL_SCANCODE_LEFT];
+    input.move_player_right = keyboard[SDL_SCANCODE_D] || keyboard[SDL_SCANCODE_RIGHT];
+    input.move_player_up = keyboard[SDL_SCANCODE_W] || keyboard[SDL_SCANCODE_UP];
+    input.move_player_down = keyboard[SDL_SCANCODE_S] || keyboard[SDL_SCANCODE_DOWN];
+    input.pan_world_left = keyboard[SDL_SCANCODE_J];
+    input.pan_world_right = keyboard[SDL_SCANCODE_L];
+    input.pan_world_up = keyboard[SDL_SCANCODE_I];
+    input.pan_world_down = keyboard[SDL_SCANCODE_K];
     input.zoom_world_in = keyboard[SDL_SCANCODE_EQUALS] || keyboard[SDL_SCANCODE_KP_PLUS];
     input.zoom_world_out = keyboard[SDL_SCANCODE_MINUS] || keyboard[SDL_SCANCODE_KP_MINUS];
     return input;

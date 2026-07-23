@@ -166,11 +166,14 @@ struct ImportedTileset {
     std::uint8_t bank{};
     std::uint16_t blocks_pointer{};
     std::uint16_t graphics_pointer{};
+    std::uint16_t collision_pointer{};
     std::size_t header_offset{};
     std::size_t blocks_offset{};
     std::size_t graphics_offset{};
+    std::size_t collision_offset{};
     std::size_t block_count{};
     std::uint8_t animation_mode{};
+    std::vector<std::uint8_t> passable_tiles;
     std::vector<std::uint8_t> block_tiles;
     std::vector<std::uint8_t> pixels;
     std::vector<std::uint8_t> animation_pixels;
@@ -206,6 +209,15 @@ bool bank_pointer_to_offset(std::span<const std::uint8_t> rom, std::uint8_t bank
                  static_cast<std::size_t>(pointer - 0x4000U);
     }
     return result < rom.size();
+}
+
+bool visible_pointer_to_offset(std::span<const std::uint8_t> rom, std::uint8_t bank,
+                               std::uint16_t pointer, std::size_t& result) {
+    if (pointer < 0x4000U) {
+        result = pointer;
+        return result < rom.size();
+    }
+    return bank_pointer_to_offset(rom, bank, pointer, result);
 }
 
 void write_u16(std::vector<std::uint8_t>& bytes, std::size_t value) {
@@ -653,6 +665,7 @@ bool decode_tileset(std::span<const std::uint8_t> rom, const std::vector<Importe
     tileset.bank = rom[tileset.header_offset];
     tileset.blocks_pointer = read_u16(rom, tileset.header_offset + 1U);
     tileset.graphics_pointer = read_u16(rom, tileset.header_offset + 3U);
+    tileset.collision_pointer = read_u16(rom, tileset.header_offset + 5U);
     tileset.animation_mode = rom[tileset.header_offset + 11U];
     if (tileset.animation_mode > 2) {
         error = "tileset has an invalid background-animation mode";
@@ -661,8 +674,22 @@ bool decode_tileset(std::span<const std::uint8_t> rom, const std::vector<Importe
     if (!bank_pointer_to_offset(rom, tileset.bank, tileset.blocks_pointer, tileset.blocks_offset) ||
         !bank_pointer_to_offset(rom, tileset.bank, tileset.graphics_pointer,
                                 tileset.graphics_offset) ||
+        !visible_pointer_to_offset(rom, tileset.bank, tileset.collision_pointer,
+                                   tileset.collision_offset) ||
         tileset.graphics_offset >= tileset.blocks_offset) {
-        error = "tileset graphics or block pointer is invalid";
+        error = "tileset graphics, block, or collision pointer is invalid";
+        return false;
+    }
+
+    for (std::size_t cursor = tileset.collision_offset;
+         cursor < rom.size() && tileset.passable_tiles.size() < 256U; ++cursor) {
+        if (rom[cursor] == 0xFFU) break;
+        tileset.passable_tiles.push_back(rom[cursor]);
+    }
+    if (tileset.passable_tiles.empty() ||
+        tileset.collision_offset + tileset.passable_tiles.size() >= rom.size() ||
+        rom[tileset.collision_offset + tileset.passable_tiles.size()] != 0xFFU) {
+        error = "tileset collision list is empty or unterminated";
         return false;
     }
 
@@ -827,6 +854,11 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                        << "    block_count " << tileset.block_count << '\n'
                        << "    animation_mode " << static_cast<unsigned>(tileset.animation_mode)
                        << '\n'
+                       << "    passable_tiles";
+        for (const std::uint8_t tile : tileset.passable_tiles)
+            tileset_source << ' ' << static_cast<unsigned>(tile);
+        tileset_source
+                       << '\n'
                        << "    animation_frames " << tileset.animation_pixels.size() / 64U << '\n'
                        << "    graphics_source " << tileset.graphics_offset << ' '
                        << tileset.blocks_offset - tileset.graphics_offset << '\n'
@@ -921,12 +953,14 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
 void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedSprite>& sprites,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '7'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '8'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
         write_u16(bytes, tileset.pixels.size() / 64U);
         bytes.push_back(tileset.animation_mode);
+        bytes.push_back(static_cast<std::uint8_t>(tileset.passable_tiles.size()));
+        bytes.insert(bytes.end(), tileset.passable_tiles.begin(), tileset.passable_tiles.end());
         write_u32(bytes, tileset.pixels.size());
         bytes.insert(bytes.end(), tileset.pixels.begin(), tileset.pixels.end());
         write_u32(bytes, tileset.animation_pixels.size());

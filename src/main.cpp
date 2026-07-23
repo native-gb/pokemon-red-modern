@@ -1,6 +1,8 @@
 #include "battle_animation_lab.hpp"
 #include "catalog.hpp"
+#include "interactions.hpp"
 #include "maps.hpp"
+#include "render/dialogue.hpp"
 #include "render/frame.hpp"
 #include "render/maps.hpp"
 #include "src/imgui_layer.hpp"
@@ -85,11 +87,21 @@ int main(int argc, char** argv) {
     }
 
     pokered::WorldState world;
+    pokered::InteractionCatalog interactions;
     std::string map_error;
     const std::filesystem::path map_cache =
         data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "world_maps.bin";
     if (!pokered::load_world(map_cache, world, map_error))
         std::fprintf(stderr, "%s\n", map_error.c_str());
+    const std::filesystem::path interaction_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" /
+        "world_interactions.bin";
+    std::string interaction_error;
+    if (!pokered::load_interactions(interaction_cache, interactions, interaction_error))
+        std::fprintf(stderr, "%s\n", interaction_error.c_str());
+    if (world.loaded && interactions.loaded &&
+        !pokered::initialize_world_runtime(world, interactions, interaction_error))
+        std::fprintf(stderr, "%s\n", interaction_error.c_str());
 
     pokered::HostWindow window;
     if (!pokered::initialize_window(window, data_root)) return 1;
@@ -122,6 +134,7 @@ int main(int argc, char** argv) {
     int rendered_frames = 0;
     bool running = true;
     bool render_failed = false;
+    bool pending_world_activation = false;
 
     while (running) {
         const std::uint64_t frame_started = SDL_GetTicksNS();
@@ -137,6 +150,7 @@ int main(int argc, char** argv) {
 
         const pokered::WindowInput input = pokered::poll_window_events(window);
         if (input.quit) break;
+        pending_world_activation = pending_world_activation || input.activate_world;
         pokered::apply_tool_shortcuts(tools, input);
         if (input.toggle_lab_view && world.loaded && animation_lab.loaded)
             game.mode = game.mode == pokered::Mode::overworld ? pokered::Mode::battle
@@ -194,6 +208,18 @@ int main(int argc, char** argv) {
         while (accumulator >= step_seconds) {
             pokered::step_game(game);
             pokered::step_world_animation(world);
+            if (!game.paused && game.mode == pokered::Mode::overworld) {
+                pokered::step_world(
+                    world, interactions,
+                    {
+                        .left = input.move_player_left,
+                        .right = input.move_player_right,
+                        .up = input.move_player_up,
+                        .down = input.move_player_down,
+                        .activate = pending_world_activation,
+                    });
+                pending_world_activation = false;
+            }
             if (!game.paused && game.mode == pokered::Mode::battle)
                 pokered::step_battle_animation_lab(animation_lab);
             accumulator -= step_seconds;
@@ -213,6 +239,7 @@ int main(int argc, char** argv) {
 
         pokered::draw_tools(tools, game, catalog, animation_lab, world, presentation,
                             world_resources, renderer_name != nullptr ? renderer_name : "unknown");
+        pokered::render::draw_dialogue_overlay(world);
         imgui_render_layer();
         pokered::present_window(window);
 

@@ -90,6 +90,13 @@ data/runtime/imports/pokemon_red_us_rev_0/
         source_ranges.txt
         index_summary.txt
     compiled/
+        world_maps.bin
+        world_interactions.bin
+        map_program_index.bin
+        battle_animation_frames.bin
+        battle_animation_procedural.bin
+        battle_pictures.bin
+        battle_ui_tiles.bin
         pack.bin
         pack.index
         source_map.bin
@@ -100,6 +107,10 @@ data/runtime/imports/pokemon_red_us_rev_0/
 ```
 
 The exact chunk format can change without changing the readable source syntax.
+The current vertical slice loads `world_maps.bin` and
+`world_interactions.bin` directly. The latter contains typed map-local
+interaction programs and owner bindings; normal startup does not parse the
+readable `.sexpr` files.
 
 ## Readable generated source
 
