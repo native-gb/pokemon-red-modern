@@ -1703,6 +1703,8 @@ void test_local_pallet_campaign_program(TestState& state) {
     pokered::CampaignProgramCatalog programs;
     pokered::RuleCatalog rules;
     pokered::BattleRuleCatalog battle_rules;
+    pokered::TrainerCatalog trainers;
+    pokered::BattleAnimationLab battle_view;
     pokered::CampaignState campaign;
     std::string error;
     check(state, pokered::load_world(root / "world_maps.bin", world, error),
@@ -1721,11 +1723,24 @@ void test_local_pallet_campaign_program(TestState& state) {
           pokered::load_battle_rules(root / "battle_rules.bin",
                                      battle_rules, error),
           "campaign fixture loads imported battle rules");
-    constexpr std::array<std::string_view, 4> source_names{
+    check(state,
+          pokered::load_trainers(root / "trainers.bin", trainers, error),
+          "campaign fixture loads imported trainers");
+    pokered::Diagnostics battle_diagnostics;
+    check(state,
+          pokered::load_battle_animation_lab(
+              root.parent_path() / "source" / "animations" /
+                  "battle_moves",
+              battle_view, battle_diagnostics),
+          "campaign fixture loads battle presentation");
+    constexpr std::array<std::string_view, 7> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
         "oaks_lab_choose_bulbasaur.sexpr",
+        "oaks_lab_first_rival_after_charmander.sexpr",
+        "oaks_lab_first_rival_after_squirtle.sexpr",
+        "oaks_lab_first_rival_after_bulbasaur.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -1749,7 +1764,8 @@ void test_local_pallet_campaign_program(TestState& state) {
           pokered::begin_new_campaign(campaign, "RED", "BLUE", {}, error),
           "campaign fixture owns New Game state");
     if (!world.loaded || !interactions.loaded || !programs.loaded ||
-        !rules.loaded || !battle_rules.loaded || !campaign.initialized)
+        !rules.loaded || !battle_rules.loaded || !trainers.loaded ||
+        !battle_view.loaded || !campaign.initialized)
         return;
     check(state,
           pokered::initialize_world_runtime(world, interactions, error),
@@ -1877,6 +1893,97 @@ void test_local_pallet_campaign_program(TestState& state) {
           !actor_visible(2U) && !actor_visible(3U) &&
               actor_visible(4U),
           "player and rival starter balls are removed from the lab");
+
+    // Cross the imported y=6 challenge line, let Blue approach, hand the
+    // decoded RIVAL1 party to the real battle owner, and then resume the same
+    // campaign fiber after the deterministic battle finishes.
+    check(state, pokered::enter_world_at(world, 40U, 5, 6, error),
+          "campaign fixture reaches the lab exit line");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign, error),
+          "lab exit starts the imported rival challenge");
+    for (std::size_t guard = 0U;
+         guard < 1000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world, campaign, error),
+              "lab rival challenge advances to battle");
+        if (!error.empty()) break;
+    }
+    check(state,
+          campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id == 25U &&
+              campaign.trainer_battle_request.trainer_party_index == 0U,
+          "rival starter selects the imported first RIVAL1 party");
+
+    bool battle_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign, battle_view,
+              battle_began, error),
+          "campaign request begins the owned trainer battle");
+    check(state,
+          battle_began && campaign.battle.active &&
+              campaign.battle.enemy_party.members.size() == 1U &&
+              campaign.battle.enemy_party.members.front().species_dex ==
+                  7U &&
+              campaign.battle.enemy_party.members.front().level == 5U,
+          "first rival battle materializes Blue's imported Squirtle");
+
+    for (std::size_t guard = 0U;
+         guard < 100U && campaign.battle.active; ++guard) {
+        const std::optional<std::size_t> player_move =
+            pokered::first_executable_move_slot(
+                rules, battle_rules, campaign.party.members.front());
+        const std::optional<std::size_t> enemy_move =
+            pokered::first_executable_move_slot(
+                rules, battle_rules,
+                campaign.battle.enemy_party.members.front());
+        check(state, player_move.has_value() && enemy_move.has_value(),
+              "first rival battlers have executable moves");
+        if (!player_move.has_value() || !enemy_move.has_value()) break;
+        check(state,
+              pokered::execute_battle_turn(
+                  rules, battle_rules, campaign.trainer_id,
+                  campaign.party, campaign.battle,
+                  {
+                      .player_move_slot = *player_move,
+                      .enemy_move_slot = *enemy_move,
+                  },
+                  error),
+              "first rival battle executes a turn");
+        if (!error.empty()) break;
+    }
+    check(state,
+          !campaign.battle.active &&
+              campaign.battle.outcome != pokered::BattleOutcome::ongoing,
+          "first rival battle reaches a real outcome");
+
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world, campaign, error),
+              "post-battle lab campaign advances");
+        if (!error.empty()) break;
+    }
+    check(state, error.empty(),
+          "first rival campaign sequence reports no error");
+    check(state,
+          !campaign.fiber.active && !campaign.input_locked &&
+              pokered::campaign_flag(campaign, 0x6BA5BU) &&
+              campaign.party.members.front().current_hp ==
+                  campaign.party.members.front().stats.hp &&
+              !actor_visible(1U),
+          "lab rival outcome heals the party and completes Blue's exit");
 }
 
 } // namespace

@@ -32,16 +32,25 @@ constexpr std::size_t kStarterEnergeticTextOffset = 0x01D222U;
 constexpr std::size_t kPlayerReceivedStarterTextOffset = 0x094EA0U;
 constexpr std::size_t kRivalTakesStarterTextOffset = 0x095444U;
 constexpr std::size_t kRivalReceivedStarterTextOffset = 0x095461U;
+constexpr std::size_t kRivalChallengeTextOffset = 0x095477U;
+constexpr std::size_t kRivalPlayerVictoryTextOffset = 0x0954B6U;
+constexpr std::size_t kRivalPlayerLossTextOffset = 0x0954E4U;
+constexpr std::size_t kRivalExitTextOffset = 0x095502U;
 constexpr std::array<std::size_t, 3> kStarterChoiceCodeOffsets{
     0x01D102U, 0x01D113U, 0x01D124U};
 constexpr std::array<std::size_t, 3> kRivalStarterPathOffsets{
     0x01CC9CU, 0x01CCB7U, 0x01CCEFU};
+constexpr std::size_t kRivalBattleCodeOffset = 0x01CDB9U;
+constexpr std::size_t kRivalExitPathOffset = 0x01CE66U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
+constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
 constexpr std::uint32_t kFollowedOakFlag = static_cast<std::uint32_t>(0xD747U * 8U);
 constexpr std::uint32_t kFollowedOakSecondFlag = kFollowedOakFlag + 32U;
 constexpr std::uint32_t kOakAskedToChooseFlag = kFollowedOakFlag + 33U;
 constexpr std::uint32_t kGotStarterFlag = kFollowedOakFlag + 34U;
+constexpr std::uint32_t kBattledLabRivalFlag =
+    kFollowedOakFlag + 35U;
 constexpr std::uint32_t kOakAppearedFlag = static_cast<std::uint32_t>(0xD74BU * 8U + 7U);
 constexpr std::uint8_t kPlayerStarterVariable = 0U;
 constexpr std::uint8_t kRivalStarterVariable = 1U;
@@ -66,6 +75,12 @@ enum class Opcode : std::uint8_t {
     end_if_choice_no,
     set_variable,
     give_pokemon,
+    wait_ticks,
+    actor_path_by_player_x,
+    start_trainer_battle,
+    say_if_player_won,
+    say_if_player_lost,
+    heal_party,
     unlock_input,
     end,
 };
@@ -96,6 +111,8 @@ struct Program {
     std::uint8_t trigger_value{};
     std::uint32_t required_flag{0xFFFFFFFFU};
     std::uint32_t absent_flag{0xFFFFFFFFU};
+    std::uint16_t required_variable{0xFFFFU};
+    std::uint16_t required_variable_value{};
     std::vector<std::pair<std::uint8_t, std::uint8_t>> initially_hidden;
     std::vector<Instruction> instructions;
 };
@@ -105,6 +122,12 @@ struct StarterChoice {
     std::uint8_t rival_species{};
     std::uint8_t selected_ball{};
     std::uint8_t rival_ball{};
+};
+
+struct RivalBattleChoice {
+    std::uint8_t rival_species{};
+    std::uint8_t trainer_class{};
+    std::uint16_t trainer_party{};
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -145,6 +168,15 @@ bool has_bytes(std::span<const std::uint8_t> rom, std::size_t offset,
                       rom.begin() + static_cast<std::ptrdiff_t>(offset));
 }
 
+std::uint8_t dex_for_internal_species(
+    std::span<const std::uint8_t> rom, std::uint8_t internal) {
+    if (internal == 0U || internal > kInternalSpeciesCount ||
+        kPokedexOrderOffset + internal > rom.size())
+        return 0U;
+    return rom[kPokedexOrderOffset +
+               static_cast<std::size_t>(internal - 1U)];
+}
+
 bool decode_starter_choice(std::span<const std::uint8_t> rom,
                            std::size_t offset, StarterChoice& result,
                            std::string& error) {
@@ -168,17 +200,11 @@ bool decode_starter_choice(std::span<const std::uint8_t> rom,
         return false;
     }
 
-    const auto dex_for_internal = [&](std::uint8_t internal) {
-        if (internal == 0U ||
-            internal > kInternalSpeciesCount ||
-            kPokedexOrderOffset + internal > rom.size())
-            return static_cast<std::uint8_t>(0U);
-        return rom[kPokedexOrderOffset +
-                   static_cast<std::size_t>(internal - 1U)];
-    };
     result = {
-        .player_species = dex_for_internal(rom[offset + 12U]),
-        .rival_species = dex_for_internal(rom[offset + 2U]),
+        .player_species =
+            dex_for_internal_species(rom, rom[offset + 12U]),
+        .rival_species =
+            dex_for_internal_species(rom, rom[offset + 2U]),
         .selected_ball = rom[offset + 14U],
         .rival_ball = rom[offset + 7U],
     };
@@ -187,6 +213,88 @@ bool decode_starter_choice(std::span<const std::uint8_t> rom,
         result.selected_ball == 0U || result.rival_ball == 0U) {
         error = "starter choice program resolves invalid species or actors";
         return false;
+    }
+    return true;
+}
+
+bool decode_rival_battle_choices(
+    std::span<const std::uint8_t> rom,
+    const std::array<StarterChoice, 3>& starters,
+    std::array<RivalBattleChoice, 3>& result, std::string& error) {
+    constexpr std::array<std::pair<std::size_t, std::uint8_t>, 20>
+        signature{{
+            {0U, 0xFAU},  {1U, 0x30U},  {2U, 0xD7U},
+            {3U, 0xCBU},  {4U, 0x47U},  {5U, 0xC0U},
+            {6U, 0x3EU},  {8U, 0xEAU},  {9U, 0x59U},
+            {10U, 0xD0U}, {11U, 0xFAU}, {12U, 0x15U},
+            {13U, 0xD7U}, {14U, 0xFEU}, {16U, 0x20U},
+            {18U, 0x3EU}, {22U, 0xFEU}, {24U, 0x20U},
+            {26U, 0x3EU}, {30U, 0x3EU},
+        }};
+    if (kRivalBattleCodeOffset > rom.size() ||
+        33U > rom.size() - kRivalBattleCodeOffset) {
+        error = "lab rival battle selector extends outside the verified ROM";
+        return false;
+    }
+    for (const auto& [relative, expected] : signature)
+        if (rom[kRivalBattleCodeOffset + relative] != expected) {
+            error =
+                "lab rival battle selector does not match the pinned ROM";
+            return false;
+        }
+
+    const std::uint8_t opponent =
+        rom[kRivalBattleCodeOffset + 7U];
+    if (opponent <= kTrainerOpponentOffset) {
+        error = "lab rival battle selector has an invalid opponent";
+        return false;
+    }
+    const std::uint8_t trainer_class =
+        static_cast<std::uint8_t>(opponent - kTrainerOpponentOffset);
+    const std::uint8_t first_species = dex_for_internal_species(
+        rom, rom[kRivalBattleCodeOffset + 15U]);
+    const std::uint8_t second_species = dex_for_internal_species(
+        rom, rom[kRivalBattleCodeOffset + 23U]);
+    const std::array<std::uint8_t, 3> one_based_parties{
+        rom[kRivalBattleCodeOffset + 19U],
+        rom[kRivalBattleCodeOffset + 27U],
+        rom[kRivalBattleCodeOffset + 31U],
+    };
+    if (first_species == 0U || second_species == 0U ||
+        first_species == second_species ||
+        std::ranges::any_of(one_based_parties,
+                           [](std::uint8_t party) {
+                               return party == 0U;
+                           })) {
+        error = "lab rival battle selector resolves invalid content";
+        return false;
+    }
+    const auto count_rival_species = [&](std::uint8_t species) {
+        return std::ranges::count_if(
+            starters, [species](const StarterChoice& starter) {
+                return starter.rival_species == species;
+            });
+    };
+    if (count_rival_species(first_species) != 1 ||
+        count_rival_species(second_species) != 1) {
+        error =
+            "lab rival battle selector does not cover the starter branches";
+        return false;
+    }
+
+    for (std::size_t index = 0U; index < starters.size(); ++index) {
+        const std::uint8_t rival_species =
+            starters[index].rival_species;
+        const std::size_t party =
+            rival_species == first_species
+                ? 0U
+                : rival_species == second_species ? 1U : 2U;
+        result[index] = {
+            .rival_species = rival_species,
+            .trainer_class = trainer_class,
+            .trainer_party = static_cast<std::uint16_t>(
+                one_based_parties[party] - 1U),
+        };
     }
     return true;
 }
@@ -226,6 +334,8 @@ void write_program(std::vector<std::uint8_t>& bytes,
     bytes.push_back(program.trigger_value);
     write_u32(bytes, program.required_flag);
     write_u32(bytes, program.absent_flag);
+    write_u16(bytes, program.required_variable);
+    write_u16(bytes, program.required_variable_value);
     write_u16(bytes, program.initially_hidden.size());
     for (const auto& [map_id, actor_index] : program.initially_hidden) {
         bytes.push_back(map_id);
@@ -322,6 +432,8 @@ bool decode_direct_npc_path(std::span<const std::uint8_t> rom, std::size_t offse
             result.push_back(PathCommand::left);
         else if (encoded == 0xC0U)
             result.push_back(PathCommand::right);
+        else if (encoded == 0xE0U)
+            result.push_back(PathCommand::face_down);
         else {
             error = "campaign direct NPC path contains an unknown command";
             return false;
@@ -528,6 +640,80 @@ GeneratedFile readable_starter_source(
     };
 }
 
+GeneratedFile readable_rival_battle_source(
+    std::string_view key, const RivalBattleChoice& battle,
+    const DecodedTextProgram& challenge,
+    const DecodedTextProgram& player_victory,
+    const DecodedTextProgram& player_loss,
+    const DecodedTextProgram& exit_text,
+    const std::vector<PathCommand>& exit_path) {
+    const auto path_name = [](PathCommand command) {
+        switch (command) {
+        case PathCommand::down:
+            return "down";
+        case PathCommand::up:
+            return "up";
+        case PathCommand::left:
+            return "left";
+        case PathCommand::right:
+            return "right";
+        case PathCommand::wait:
+            return "wait";
+        case PathCommand::face_down:
+            return "face_down";
+        }
+        return "invalid";
+    };
+
+    std::ostringstream source;
+    source << "; Lifted from the verified Pokemon Red US rev 0 lab-rival program.\n"
+           << "; Trainer class, party, text, flags, and movement are ROM-derived.\n\n"
+           << "campaign_program " << key << '\n'
+           << "    source bank_07 0x01cdb9\n"
+           << "    trigger map oaks_lab player_y 6\n"
+           << "    required_flag 0x" << std::hex << kGotStarterFlag << '\n'
+           << "    absent_flag 0x" << kBattledLabRivalFlag << std::dec << '\n'
+           << "    required_variable rival_starter "
+           << static_cast<unsigned>(battle.rival_species) << '\n'
+           << "    lock_input\n"
+           << "    face_actor map oaks_lab actor 1 down\n"
+           << "    face_player up\n"
+           << "    say\n"
+           << page_source(challenge.pages, "        ")
+           << "    move_actor_to_player map oaks_lab actor 1 stop_above 1\n"
+           << "    start_trainer_battle class "
+           << static_cast<unsigned>(battle.trainer_class)
+           << " party " << battle.trainer_party << '\n'
+           << "    say_if_player_won\n"
+           << page_source(player_victory.pages, "        ")
+           << "    say_if_player_lost\n"
+           << page_source(player_loss.pages, "        ")
+           << "    face_actor map oaks_lab actor 1 down\n"
+           << "    heal_party\n"
+           << "    set_flag 0x" << std::hex << kBattledLabRivalFlag << std::dec << '\n'
+           << "    wait_ticks 20\n"
+           << "    say\n"
+           << page_source(exit_text.pages, "        ")
+           << "    actor_path_by_player_x map oaks_lab actor 1 equals 4\n"
+           << "        equal";
+    for (const PathCommand command : exit_path)
+        source << ' ' << path_name(command);
+    source << " right\n"
+           << "        otherwise";
+    for (const PathCommand command : exit_path)
+        source << ' ' << path_name(command);
+    source << " left\n"
+           << "    hide_actor map oaks_lab actor 1\n"
+           << "    unlock_input\n"
+           << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/" + std::string(key) + ".sexpr",
+        .bytes = std::vector<std::uint8_t>(text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -576,6 +762,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     DecodedTextProgram player_received;
     DecodedTextProgram rival_takes;
     DecodedTextProgram rival_received;
+    DecodedTextProgram rival_challenge;
+    DecodedTextProgram rival_player_victory;
+    DecodedTextProgram rival_player_loss;
+    DecodedTextProgram rival_exit_text;
     if (!decode_text_program(rom, 0x07U, kStarterEnergeticTextOffset,
                              starter_energetic) ||
         !decode_text_program(rom, 0x25U,
@@ -586,9 +776,21 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         !decode_text_program(rom, 0x25U,
                              kRivalReceivedStarterTextOffset,
                              rival_received) ||
+        !decode_text_program(rom, 0x25U, kRivalChallengeTextOffset,
+                             rival_challenge) ||
+        !decode_text_program(rom, 0x25U,
+                             kRivalPlayerVictoryTextOffset,
+                             rival_player_victory) ||
+        !decode_text_program(rom, 0x25U,
+                             kRivalPlayerLossTextOffset,
+                             rival_player_loss) ||
+        !decode_text_program(rom, 0x25U, kRivalExitTextOffset,
+                             rival_exit_text) ||
         starter_energetic.pages.empty() ||
         player_received.pages.empty() || rival_takes.pages.empty() ||
-        rival_received.pages.empty()) {
+        rival_received.pages.empty() || rival_challenge.pages.empty() ||
+        rival_player_victory.pages.empty() ||
+        rival_player_loss.pages.empty() || rival_exit_text.pages.empty()) {
         error =
             "Oak's Lab starter result dialogue could not be decoded from the pinned ROM";
         return false;
@@ -599,6 +801,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         if (!decode_starter_choice(rom, kStarterChoiceCodeOffsets[index],
                                    starter_choices[index], error))
             return false;
+    std::array<RivalBattleChoice, 3> rival_battles;
+    if (!decode_rival_battle_choices(rom, starter_choices,
+                                     rival_battles, error))
+        return false;
 
     std::vector<PathCommand> oak_path;
     std::vector<PathCommand> player_path;
@@ -616,6 +822,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                 rom, kRivalStarterPathOffsets[index],
                 rival_starter_paths[index], error))
             return false;
+    std::vector<PathCommand> rival_exit_path;
+    if (!decode_direct_npc_path(rom, kRivalExitPathOffset,
+                                rival_exit_path, error))
+        return false;
 
     // The simulated joypad buffer is consumed from its final index toward zero.
     // Reverse its decoded command stream; MoveSprite consumes Oak's stream forward.
@@ -678,8 +888,14 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         "oaks_lab_choose_squirtle",
         "oaks_lab_choose_bulbasaur",
     };
+    constexpr std::array<std::string_view, 3> rival_battle_keys{
+        "oaks_lab_first_rival_after_charmander",
+        "oaks_lab_first_rival_after_squirtle",
+        "oaks_lab_first_rival_after_bulbasaur",
+    };
     std::vector<Program> programs;
-    programs.reserve(1U + starter_choices.size());
+    programs.reserve(1U + starter_choices.size() +
+                     rival_battles.size());
     programs.push_back(std::move(opening));
     for (std::size_t index = 0U; index < starter_choices.size(); ++index) {
         const StarterChoice& choice = starter_choices[index];
@@ -732,7 +948,61 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(starter));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '2'};
+    for (std::size_t index = 0U; index < rival_battles.size();
+         ++index) {
+        const RivalBattleChoice& battle = rival_battles[index];
+        Program rival;
+        rival.key = rival_battle_keys[index];
+        rival.trigger_map = 40U;
+        rival.trigger_value = 6U;
+        rival.required_flag = kGotStarterFlag;
+        rival.absent_flag = kBattledLabRivalFlag;
+        rival.required_variable = kRivalStarterVariable;
+        rival.required_variable_value = battle.rival_species;
+
+        rival.instructions.push_back(operation(Opcode::lock_input));
+        rival.instructions.push_back(
+            operation(Opcode::face_actor, 1U, 0U, 40U));
+        rival.instructions.push_back(
+            operation(Opcode::face_player, 1U));
+        rival.instructions.push_back(dialogue(rival_challenge.pages));
+        rival.instructions.push_back(operation(
+            Opcode::move_actor_to_player, 1U, 0xFFU, 40U));
+        rival.instructions.push_back(operation(
+            Opcode::start_trainer_battle, battle.trainer_class, 0U,
+            battle.trainer_party));
+
+        Instruction victory =
+            operation(Opcode::say_if_player_won);
+        victory.pages = rival_player_victory.pages;
+        rival.instructions.push_back(std::move(victory));
+        Instruction loss = operation(Opcode::say_if_player_lost);
+        loss.pages = rival_player_loss.pages;
+        rival.instructions.push_back(std::move(loss));
+        rival.instructions.push_back(
+            operation(Opcode::face_actor, 1U, 0U, 40U));
+        rival.instructions.push_back(operation(Opcode::heal_party));
+        rival.instructions.push_back(operation(
+            Opcode::set_flag, 0U, 0U, kBattledLabRivalFlag));
+        rival.instructions.push_back(
+            operation(Opcode::wait_ticks, 0U, 0U, 20U));
+        rival.instructions.push_back(dialogue(rival_exit_text.pages));
+
+        Instruction exit_path = operation(
+            Opcode::actor_path_by_player_x, 1U, 4U, 40U);
+        exit_path.actor_path = rival_exit_path;
+        exit_path.actor_path.push_back(PathCommand::right);
+        exit_path.player_path = rival_exit_path;
+        exit_path.player_path.push_back(PathCommand::left);
+        rival.instructions.push_back(std::move(exit_path));
+        rival.instructions.push_back(
+            operation(Opcode::hide_actor, 1U, 0U, 40U));
+        rival.instructions.push_back(operation(Opcode::unlock_input));
+        rival.instructions.push_back(operation(Opcode::end));
+        programs.push_back(std::move(rival));
+    }
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '3'};
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
 
@@ -745,6 +1015,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             starter_prompts[index], starter_energetic,
             player_received, rival_takes, rival_received,
             rival_starter_paths[index]));
+    for (std::size_t index = 0U; index < rival_battles.size(); ++index)
+        result.files.push_back(readable_rival_battle_source(
+            rival_battle_keys[index], rival_battles[index],
+            rival_challenge, rival_player_victory, rival_player_loss,
+            rival_exit_text, rival_exit_path));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
     result.programs = programs.size();
     error.clear();

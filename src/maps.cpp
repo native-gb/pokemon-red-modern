@@ -1076,7 +1076,9 @@ void append_axis_path(std::int32_t current, std::int32_t target, WorldPathComman
 }
 
 bool apply_actor_path_command(WorldState& world, std::size_t runtime_index,
-                              WorldPathCommand command, std::string& error) {
+                              WorldPathCommand command,
+                              bool may_overlap_player,
+                              std::string& error) {
     if (runtime_index >= world.actors.size()) {
         error = "campaign actor path lost its owner";
         return false;
@@ -1103,8 +1105,9 @@ bool apply_actor_path_command(WorldState& world, std::size_t runtime_index,
     if (!inside(cells, target_x, target_y) ||
         !is_passable(world, actor.map_index, global_x, global_y) ||
         cells.actor_by_cell[cell_offset(cells, target_x, target_y)] >= 0 ||
-        (world.player.map_index == actor.map_index && world.player.x == target_x &&
-         world.player.y == target_y)) {
+        (!may_overlap_player &&
+         world.player.map_index == actor.map_index &&
+         world.player.x == target_x && world.player.y == target_y)) {
         error = "campaign actor path is blocked";
         return false;
     }
@@ -1222,7 +1225,8 @@ bool start_world_pair_alignment(WorldState& world, std::uint8_t map_id, std::uin
 bool start_world_parallel_motion(WorldState& world, std::uint8_t map_id, std::uint8_t actor_index,
                                  const std::vector<WorldPathCommand>& actor_path,
                                  const std::vector<WorldPathCommand>& player_path,
-                                 bool hide_actor_at_end, std::string& error) {
+                                 bool hide_actor_at_end, std::string& error,
+                                 bool actor_may_overlap_player) {
     std::size_t runtime_index = 0U;
     if (!find_runtime_actor(world, map_id, actor_index, runtime_index) || actor_path.empty() ||
         player_path.empty()) {
@@ -1237,6 +1241,7 @@ bool start_world_parallel_motion(WorldState& world, std::uint8_t map_id, std::ui
         .player_cursor = 0U,
         .step_cooldown = 0U,
         .hide_actor_at_end = hide_actor_at_end,
+        .actor_may_overlap_player = actor_may_overlap_player,
         .active = true,
     };
     error.clear();
@@ -1256,7 +1261,8 @@ bool step_world_script_motion(WorldState& world, std::string& error) {
     }
     if (motion.actor_cursor < motion.actor_path.size() &&
         !apply_actor_path_command(world, motion.actor_runtime_index,
-                                  motion.actor_path[motion.actor_cursor++], error))
+                                  motion.actor_path[motion.actor_cursor++],
+                                  motion.actor_may_overlap_player, error))
         return false;
     if (motion.player_cursor < motion.player_path.size() &&
         !apply_player_path_command(world, motion.player_path[motion.player_cursor++],

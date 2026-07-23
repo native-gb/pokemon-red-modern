@@ -151,18 +151,21 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
-four programs import Pallet Town's Oak interception and all three Oak's Lab
-starter-ball branches. They include both Pallet dialogue programs, Oak/player
-movement streams, the ordinary lab warp, Oak's two lab actor placements, both
-lab entry paths, the four choose-a-Pokemon speeches, each starter prompt,
-player/rival receipt text, both selected-ball removals, rival movement, and
-their progression flags and variables. The importer decodes the starter and
-counter-starter species from the cartridge program and resolves internal
-species IDs through the imported Pokédex-order table. Readable peers live under
-`source/scripts/campaign/`. Map IDs, actor IDs, flags, source addresses, paths,
-text, species, and branch ownership are generated-pack content; the runtime
-implements only generic fiber, choice, owned-Pokemon creation, and world-motion
-operations.
+seven programs import Pallet Town's Oak interception, all three Oak's Lab
+starter-ball branches, and all three first-rival battle branches. They include
+both Pallet dialogue programs, Oak/player movement streams, the ordinary lab
+warp, Oak's two lab actor placements, both lab entry paths, the four
+choose-a-Pokemon speeches, each starter prompt, player/rival receipt text, both
+selected-ball removals, rival movement, lab-exit challenge, battle result text,
+party restoration, rival exit, and their progression flags and variables. The
+importer decodes the starter and counter-starter species from the cartridge
+program, resolves internal species IDs through the imported Pokédex-order
+table, and decodes the corresponding RIVAL1 class/party selection. Readable
+peers live under `source/scripts/campaign/`. Map IDs, actor IDs, flags, source
+addresses, paths, text, species, opponent party, and branch ownership are
+generated-pack content; the runtime implements only generic fiber, choice,
+owned-Pokemon creation, trainer-battle handoff, conditional dialogue, and
+world-motion operations.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Its imported trainer-header index covers all 322 ordinary and
 static trainer interactions, including sight range, defeated flag, and

@@ -209,6 +209,48 @@ bool service_world_actor_battle(
     return true;
 }
 
+bool begin_campaign_trainer_battle(
+    const TrainerCatalog& trainers, WorldState& world,
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules,
+    CampaignState& campaign, BattleAnimationLab& view, bool& began,
+    std::string& error) {
+    began = false;
+    if (!campaign.trainer_battle_request.pending) {
+        error.clear();
+        return true;
+    }
+    if (campaign.battle.active) {
+        error = "campaign trainer battle overlaps an active battle";
+        return false;
+    }
+    const TrainerPartyRule* party = find_trainer_party(
+        trainers, campaign.trainer_battle_request.trainer_class_id,
+        campaign.trainer_battle_request.trainer_party_index);
+    if (party == nullptr) {
+        error =
+            "campaign trainer battle references an unavailable party";
+        return false;
+    }
+    if (!begin_trainer_battle(
+            rules, battle_rules, campaign.party, *party,
+            world.random_state, campaign.battle, error))
+        return false;
+
+    view.ui.mode = BattleUiMode::command;
+    prepare_battle_view(view);
+    if (!sync_battle_view(rules, battle_rules, campaign.party,
+                          campaign.battle, view, error)) {
+        campaign.battle = {};
+        return false;
+    }
+    campaign.trainer_battle_request = {};
+    campaign.battle_owner = {};
+    began = true;
+    error.clear();
+    return true;
+}
+
 void finish_world_actor_battle(
     const InteractionCatalog& interactions, WorldState& world,
     CampaignState& campaign) {

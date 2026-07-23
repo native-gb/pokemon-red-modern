@@ -100,13 +100,20 @@ bool valid_instruction(const CampaignInstruction& instruction) {
         return !instruction.pages.empty();
     case CampaignOpcode::ask_yes_no:
         return !instruction.pages.empty();
+    case CampaignOpcode::say_if_player_won:
+    case CampaignOpcode::say_if_player_lost:
+        return !instruction.pages.empty();
     case CampaignOpcode::parallel_path:
         return owns_actor() && instruction.b <= 1U &&
                !instruction.actor_path.empty() &&
                !instruction.player_path.empty();
+    case CampaignOpcode::actor_path_by_player_x:
+        return owns_actor() && !instruction.actor_path.empty() &&
+               !instruction.player_path.empty();
     case CampaignOpcode::lock_input:
     case CampaignOpcode::set_flag:
     case CampaignOpcode::end_if_choice_no:
+    case CampaignOpcode::heal_party:
     case CampaignOpcode::unlock_input:
     case CampaignOpcode::end:
         return true;
@@ -115,6 +122,11 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::give_pokemon:
         return instruction.a != 0U && instruction.a <= 100U &&
                instruction.value != 0U && instruction.value <= 0xFFU;
+    case CampaignOpcode::wait_ticks:
+        return instruction.value != 0U;
+    case CampaignOpcode::start_trainer_battle:
+        return instruction.a != 0U && instruction.b == 0U &&
+               instruction.value <= 0xFFFFU;
     }
     return false;
 }
@@ -125,7 +137,10 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
         (program.required_flag != 0xFFFFFFFFU &&
          !campaign_flag(campaign, program.required_flag)) ||
         (program.absent_flag != 0xFFFFFFFFU &&
-         campaign_flag(campaign, program.absent_flag)))
+         campaign_flag(campaign, program.absent_flag)) ||
+        (program.required_variable != 0xFFFFU &&
+         campaign_variable(campaign, program.required_variable) !=
+             program.required_variable_value))
         return false;
     if (program.trigger_kind == CampaignTriggerKind::actor_activation)
         return world.last_actor_activation.occurred &&
@@ -174,7 +189,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::array<char, 4> magic{};
     std::uint16_t program_count = 0U;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '2'} || !read_u16(input, program_count) ||
+        magic != std::array{'P', 'C', 'P', '3'} || !read_u16(input, program_count) ||
         program_count == 0U || program_count > 4096U) {
         error = "campaign program cache has an invalid header";
         return false;
@@ -197,8 +212,16 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
             !read_u8(input, program.trigger_value) ||
             !read_u32(input, program.required_flag) ||
             !read_u32(input, program.absent_flag) ||
+            !read_u16(input, program.required_variable) ||
+            !read_u16(input, program.required_variable_value) ||
             !read_u16(input, hidden_count) || hidden_count > 64U)
             return false;
+        if (program.required_variable != 0xFFFFU &&
+            program.required_variable >= 64U) {
+            error =
+                "campaign program has an invalid required variable";
+            return false;
+        }
         program.trigger_kind =
             static_cast<CampaignTriggerKind>(trigger_kind);
         program.initially_hidden.reserve(hidden_count);
@@ -281,9 +304,11 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             fiber = {
                 .program_index = index,
                 .instruction_index = 0U,
+                .waiting_ticks = 0U,
                 .waiting_dialogue = false,
                 .waiting_motion = false,
                 .waiting_choice = false,
+                .waiting_battle = false,
                 .last_choice = 0U,
                 .active = true,
             };
@@ -300,6 +325,13 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
     }
     const CampaignProgram& program = programs.programs[fiber.program_index];
 
+    if (fiber.waiting_ticks > 0U) {
+        --fiber.waiting_ticks;
+        if (fiber.waiting_ticks > 0U) {
+            error.clear();
+            return true;
+        }
+    }
     if (fiber.waiting_dialogue) {
         if (world.dialogue.open) {
             error.clear();
@@ -328,6 +360,19 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             static_cast<std::uint8_t>(world.choice.selected);
         world.choice = {};
         fiber.waiting_choice = false;
+    }
+    if (fiber.waiting_battle) {
+        if (campaign.trainer_battle_request.pending ||
+            campaign.battle.active) {
+            error.clear();
+            return true;
+        }
+        if (campaign.battle.outcome == BattleOutcome::ongoing) {
+            error =
+                "campaign trainer battle closed without an outcome";
+            return false;
+        }
+        fiber.waiting_battle = false;
     }
 
     for (std::size_t operations = 0U; operations < 64U; ++operations) {
@@ -444,6 +489,62 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             campaign.party.members.push_back(std::move(pokemon));
             break;
         }
+        case CampaignOpcode::wait_ticks:
+            fiber.waiting_ticks = instruction.value;
+            error.clear();
+            return true;
+        case CampaignOpcode::actor_path_by_player_x: {
+            const std::vector<WorldPathCommand>& selected =
+                world.player.x == static_cast<std::int32_t>(instruction.b)
+                    ? instruction.actor_path
+                    : instruction.player_path;
+            const std::vector<WorldPathCommand> player_waits(
+                selected.size(), WorldPathCommand::wait);
+            if (!start_world_parallel_motion(
+                    world,
+                    static_cast<std::uint8_t>(instruction.value),
+                    instruction.a, selected, player_waits, false, error,
+                    true))
+                return false;
+            fiber.waiting_motion = true;
+            error.clear();
+            return true;
+        }
+        case CampaignOpcode::start_trainer_battle:
+            if (campaign.trainer_battle_request.pending ||
+                campaign.battle.active) {
+                error =
+                    "campaign attempted to overlap trainer battles";
+                return false;
+            }
+            campaign.trainer_battle_request = {
+                .trainer_class_id = instruction.a,
+                .trainer_party_index =
+                    static_cast<std::uint16_t>(instruction.value),
+                .pending = true,
+            };
+            fiber.waiting_battle = true;
+            error.clear();
+            return true;
+        case CampaignOpcode::say_if_player_won:
+            if (campaign.battle.outcome !=
+                BattleOutcome::player_victory)
+                break;
+            open_program_dialogue(world, campaign, rules, instruction);
+            fiber.waiting_dialogue = world.dialogue.open;
+            error.clear();
+            return true;
+        case CampaignOpcode::say_if_player_lost:
+            if (campaign.battle.outcome !=
+                BattleOutcome::player_defeat)
+                break;
+            open_program_dialogue(world, campaign, rules, instruction);
+            fiber.waiting_dialogue = world.dialogue.open;
+            error.clear();
+            return true;
+        case CampaignOpcode::heal_party:
+            heal_party(campaign.party);
+            break;
         case CampaignOpcode::unlock_input:
             campaign.input_locked = false;
             break;

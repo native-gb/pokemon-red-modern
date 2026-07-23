@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first four imported story fibers are executable from the ordinary
+The first seven imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -666,18 +666,34 @@ Each of the three starter-ball fibers then:
   ROM-derived route, removes his selected ball, and records the got-starter
   flag.
 
+Each counter-starter has a corresponding imported lab-exit fiber. Crossing the
+cartridge's y=6 challenge line:
+
+- presents Blue's imported challenge and moves his actor to the player;
+- selects the cartridge-derived RIVAL1 party through the imported
+  rival-starter variable;
+- pauses the campaign fiber while the ordinary owned trainer-battle executor
+  runs to a real player-victory or player-defeat outcome;
+- resumes with the matching imported result text, restores the party, and
+  records the battled-in-Oak's-Lab flag;
+- waits the imported delay, presents Blue's exit speech, executes the
+  cartridge exit route including its player-x-dependent final step, and hides
+  the rival actor.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files, then compiles the same records into
 `campaign_programs.bin`. A focused headless check drives the slice through its
-real warp, declines once, accepts Charmander, and verifies party construction,
-rival selection, ball visibility, final map, and progression state.
+real warp, declines once, accepts Charmander, executes the Squirtle rival
+battle through the real battle engine, and verifies party construction, rival
+selection, ball visibility, battle outcome, healing, rival exit, final map,
+and progression state.
 
 This is not full-campaign completion. The next campaign blocker begins with
-starter nickname handling, the lab-exit challenge trigger, the first rival
-battle, party restoration, and the rival exit sequence. Every later map
-program still requires semantic lifting and the remaining acceptance gates
-above stay open.
+starter nickname handling, the Viridian Mart parcel handoff, the return to Oak,
+Pokédex/Poké Ball delivery, and the remaining Pallet actors and gates. Every
+later map program still requires semantic lifting and the remaining acceptance
+gates above stay open.
 
 ## Playable acceptance
 

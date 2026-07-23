@@ -34,11 +34,19 @@ struct CampaignBattleOwner {
 struct CampaignFiberState {
     std::size_t program_index{};
     std::size_t instruction_index{};
+    std::uint32_t waiting_ticks{};
     bool waiting_dialogue{};
     bool waiting_motion{};
     bool waiting_choice{};
+    bool waiting_battle{};
     std::uint8_t last_choice{};
     bool active{};
+};
+
+struct CampaignTrainerBattleRequest {
+    std::uint8_t trainer_class_id{};
+    std::uint16_t trainer_party_index{};
+    bool pending{};
 };
 
 // Campaign-owned state is separate from host presentation settings and from
@@ -52,6 +60,7 @@ struct CampaignState {
     PartyState party;
     BattleState battle;
     CampaignBattleOwner battle_owner;
+    CampaignTrainerBattleRequest trainer_battle_request;
     CampaignFiberState fiber;
     std::vector<std::uint8_t> flags;
     std::vector<std::uint16_t> variables;

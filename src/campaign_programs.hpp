@@ -34,6 +34,12 @@ enum class CampaignOpcode : std::uint8_t {
     end_if_choice_no,
     set_variable,
     give_pokemon,
+    wait_ticks,
+    actor_path_by_player_x,
+    start_trainer_battle,
+    say_if_player_won,
+    say_if_player_lost,
+    heal_party,
     unlock_input,
     end,
 };
@@ -60,6 +66,8 @@ struct CampaignProgram {
     std::uint8_t trigger_value{};
     std::uint32_t required_flag{0xFFFFFFFFU};
     std::uint32_t absent_flag{0xFFFFFFFFU};
+    std::uint16_t required_variable{0xFFFFU};
+    std::uint16_t required_variable_value{};
     std::vector<CampaignActorRef> initially_hidden;
     std::vector<CampaignInstruction> instructions;
 };

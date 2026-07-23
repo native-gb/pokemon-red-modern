@@ -36,6 +36,12 @@ bool service_world_actor_battle(
     const BattleRuleCatalog& battle_rules,
     CampaignState& campaign, BattleAnimationLab& view, bool& began,
     std::string& error);
+bool begin_campaign_trainer_battle(
+    const TrainerCatalog& trainers, WorldState& world,
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules,
+    CampaignState& campaign, BattleAnimationLab& view, bool& began,
+    std::string& error);
 void finish_world_actor_battle(
     const InteractionCatalog& interactions, WorldState& world,
     CampaignState& campaign);

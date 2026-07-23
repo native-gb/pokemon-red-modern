@@ -453,9 +453,19 @@ int main(int argc, char** argv) {
                     std::fprintf(stderr, "%s\n",
                                  campaign_step_error.c_str());
                 }
+                bool campaign_battle_began = false;
+                std::string campaign_battle_error;
+                if (trainers.loaded &&
+                    !pokered::begin_campaign_trainer_battle(
+                        trainers, world, rules, battle_rules, campaign,
+                        animation_lab, campaign_battle_began,
+                        campaign_battle_error)) {
+                    std::fprintf(stderr, "%s\n",
+                                 campaign_battle_error.c_str());
+                }
                 bool actor_battle_began = false;
                 std::string actor_battle_error;
-                if (trainers.loaded &&
+                if (!campaign_battle_began && trainers.loaded &&
                     !pokered::service_world_actor_battle(
                         interactions, trainers, world, rules,
                         battle_rules, campaign, animation_lab,
@@ -465,13 +475,15 @@ int main(int argc, char** argv) {
                 }
                 bool battle_began = false;
                 std::string wild_error;
-                if (!actor_battle_began && encounters.loaded &&
+                if (!campaign_battle_began && !actor_battle_began &&
+                    encounters.loaded &&
                     !pokered::begin_world_wild_battle(
                         encounters, world, rules, battle_rules, campaign,
                         animation_lab, battle_began, wild_error)) {
                     std::fprintf(stderr, "%s\n", wild_error.c_str());
                 }
-                if (actor_battle_began || battle_began)
+                if (campaign_battle_began || actor_battle_began ||
+                    battle_began)
                     game.mode = pokered::Mode::battle;
             }
             if (!game.paused && game.mode == pokered::Mode::battle_lab)
