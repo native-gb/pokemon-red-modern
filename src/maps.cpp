@@ -106,17 +106,31 @@ bool read_sprites(std::istream& input, WorldState& world, std::string& error) {
     world.sprites.reserve(count);
     for (std::uint16_t index = 0; index < count; ++index) {
         WorldSprite sprite;
+        std::uint8_t key_size = 0;
         std::uint8_t still = 0;
         std::uint32_t pixel_count = 0;
-        if (!read_u8(input, sprite.id) || sprite.id == 0 || !read_u8(input, still) || still > 1 ||
-            !read_u32(input, pixel_count) || pixel_count != 4U * 16U * 16U ||
-            !read_bytes(input, pixel_count, sprite.pixels)) {
+        if (!read_u8(input, sprite.id) || sprite.id == 0 || !read_u8(input, key_size) ||
+            key_size == 0 || key_size > 63) {
+            error = "world map cache has an invalid overworld sprite key";
+            return false;
+        }
+        sprite.key.resize(key_size);
+        if (!input.read(sprite.key.data(), static_cast<std::streamsize>(sprite.key.size())) ||
+            !read_u8(input, still) || still > 1 || !read_u32(input, pixel_count) ||
+            pixel_count != 4U * 16U * 16U || !read_bytes(input, pixel_count, sprite.pixels)) {
             error = "world map cache has an invalid overworld sprite record";
             return false;
         }
         sprite.still = still != 0;
         if (find_world_sprite(world, sprite.id) != nullptr) {
             error = "world map cache repeats an overworld sprite ID";
+            return false;
+        }
+        const auto duplicate_key =
+            std::find_if(world.sprites.begin(), world.sprites.end(),
+                         [&](const WorldSprite& value) { return value.key == sprite.key; });
+        if (duplicate_key != world.sprites.end()) {
+            error = "world map cache repeats an overworld sprite key";
             return false;
         }
         world.sprites.push_back(std::move(sprite));
@@ -271,7 +285,7 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', '6'}) {
+        magic != std::array{'P', 'M', 'V', '7'}) {
         error = "world map cache is missing or has an invalid header";
         return false;
     }

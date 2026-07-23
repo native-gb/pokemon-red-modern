@@ -301,10 +301,14 @@ void draw_world_annotations(const WorldState& world,
             draw->AddLine({center.x - 7.0F, center.y}, {center.x + 7.0F, center.y}, color, 1.0F);
             draw->AddLine({center.x, center.y - 7.0F}, {center.x, center.y + 7.0F}, color, 1.0F);
             if (projection.scale >= 0.75F) {
-                std::array<char, 96> actor_text{};
+                std::array<char, 128> actor_text{};
                 const std::string_view movement = movement_label(actor);
-                std::snprintf(actor_text.data(), actor_text.size(), "A%u S%u %.*s%s",
+                const WorldSprite* sprite = find_world_sprite(world, actor.sprite_id);
+                const std::string_view sprite_key =
+                    sprite == nullptr ? std::string_view{"unknown"} : std::string_view{sprite->key};
+                std::snprintf(actor_text.data(), actor_text.size(), "A%u %.*s [S%u] %.*s%s",
                               static_cast<unsigned>(actor.index),
+                              static_cast<int>(sprite_key.size()), sprite_key.data(),
                               static_cast<unsigned>(actor.sprite_id),
                               static_cast<int>(movement.size()), movement.data(),
                               actor.movement_bounds.has_value() ? " map_bound" : "");

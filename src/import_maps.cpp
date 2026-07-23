@@ -31,6 +31,80 @@ constexpr std::size_t kFlowerAnimationFrameCount = 3;
 constexpr std::size_t kOverworldSpriteTableOffset = 0x17B27;
 constexpr std::size_t kOverworldSpriteCount = 72;
 constexpr std::size_t kOverworldSpriteEntrySize = 4;
+constexpr std::array<std::string_view, kOverworldSpriteCount> kOverworldSpriteKeys{{
+    "red",
+    "blue",
+    "oak",
+    "youngster",
+    "monster",
+    "cooltrainer_f",
+    "cooltrainer_m",
+    "little_girl",
+    "bird",
+    "middle_aged_man",
+    "gambler",
+    "super_nerd",
+    "girl",
+    "hiker",
+    "beauty",
+    "gentleman",
+    "daisy",
+    "biker",
+    "sailor",
+    "cook",
+    "bike_shop_clerk",
+    "mr_fuji",
+    "giovanni",
+    "rocket",
+    "channeler",
+    "waiter",
+    "silph_worker_f",
+    "middle_aged_woman",
+    "brunette_girl",
+    "lance",
+    "unused_scientist",
+    "scientist",
+    "rocker",
+    "swimmer",
+    "safari_zone_worker",
+    "gym_guide",
+    "gramps",
+    "clerk",
+    "fishing_guru",
+    "granny",
+    "nurse",
+    "link_receptionist",
+    "silph_president",
+    "silph_worker_m",
+    "warden",
+    "captain",
+    "fisher",
+    "koga",
+    "guard",
+    "unused_guard",
+    "mom",
+    "balding_guy",
+    "little_boy",
+    "unused_gameboy_kid",
+    "gameboy_kid",
+    "fairy",
+    "agatha",
+    "bruno",
+    "lorelei",
+    "seel",
+    "poke_ball",
+    "fossil",
+    "boulder",
+    "paper",
+    "pokedex",
+    "clipboard",
+    "snorlax",
+    "unused_old_amber",
+    "old_amber",
+    "unused_gambler_asleep_1",
+    "unused_gambler_asleep_2",
+    "gambler_asleep",
+}};
 
 struct MapIdentity {
     std::uint8_t id{};
@@ -104,6 +178,7 @@ struct ImportedTileset {
 
 struct ImportedSprite {
     std::uint8_t id{};
+    std::string key;
     bool still{};
     std::size_t table_offset{};
     std::size_t graphics_offset{};
@@ -477,6 +552,7 @@ bool decode_overworld_sprites(std::span<const std::uint8_t> rom,
 
         ImportedSprite sprite{
             .id = static_cast<std::uint8_t>(index + 1U),
+            .key = std::string(kOverworldSpriteKeys[index]),
             .still = tile_count == 4U,
             .table_offset = entry,
             .graphics_offset = graphics,
@@ -765,7 +841,7 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
     std::ostringstream sprite_source;
     sprite_source << "; ROM-decoded overworld sprite sheets normalized to four standing views.\n";
     for (const ImportedSprite& sprite : sprites) {
-        sprite_source << "sprite overworld_" << static_cast<unsigned>(sprite.id) << '\n'
+        sprite_source << "sprite " << sprite.key << '\n'
                       << "    rom_id " << static_cast<unsigned>(sprite.id) << '\n'
                       << "    kind " << (sprite.still ? "still" : "directional") << '\n'
                       << "    table_source " << sprite.table_offset << ' '
@@ -810,12 +886,13 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
             const char* kind = actor.kind == 1   ? "trainer_or_pokemon"
                                : actor.kind == 2 ? "item"
                                                  : "npc";
-            source << "    actor " << static_cast<unsigned>(actor.index) << " sprite overworld_"
-                   << static_cast<unsigned>(actor.sprite_id) << " at "
-                   << static_cast<unsigned>(actor.x) << ' ' << static_cast<unsigned>(actor.y)
-                   << " kind " << kind << " movement " << static_cast<unsigned>(actor.movement)
-                   << " direction_or_axis " << static_cast<unsigned>(actor.direction_or_axis)
-                   << " text " << static_cast<unsigned>(actor.text_id);
+            const ImportedSprite& sprite = sprites[static_cast<std::size_t>(actor.sprite_id) - 1U];
+            source << "    actor " << static_cast<unsigned>(actor.index) << " sprite " << sprite.key
+                   << " at " << static_cast<unsigned>(actor.x) << ' '
+                   << static_cast<unsigned>(actor.y) << " kind " << kind << " movement "
+                   << static_cast<unsigned>(actor.movement) << " direction_or_axis "
+                   << static_cast<unsigned>(actor.direction_or_axis) << " text "
+                   << static_cast<unsigned>(actor.text_id);
             if (actor.kind != 0)
                 source << " parameters " << static_cast<unsigned>(actor.parameter_a) << ' '
                        << static_cast<unsigned>(actor.parameter_b);
@@ -844,7 +921,7 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
 void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedSprite>& sprites,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '6'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '7'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
@@ -859,6 +936,8 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
     write_u16(bytes, sprites.size());
     for (const ImportedSprite& sprite : sprites) {
         bytes.push_back(sprite.id);
+        bytes.push_back(static_cast<std::uint8_t>(sprite.key.size()));
+        bytes.insert(bytes.end(), sprite.key.begin(), sprite.key.end());
         bytes.push_back(sprite.still ? 1U : 0U);
         write_u32(bytes, sprite.pixels.size());
         bytes.insert(bytes.end(), sprite.pixels.begin(), sprite.pixels.end());

@@ -13,6 +13,12 @@ It also decodes all 72 entries in Red's overworld sprite-sheet table into
 normalized directional standing frames. The engine contains no list of
 campaign map names, placements, NPCs, or warp endpoints.
 
+The ROM table contains numeric sprite IDs but no symbolic names. The
+Red-specific importer schema assigns stable readable keys such as `oak`,
+`girl`, `fisher`, `poke_ball`, and `snorlax`; the generated record retains its
+numeric `rom_id` and exact table/graphic source ranges. These aliases are
+converter metadata and are not embedded in the generic runtime engine.
+
 The importer expands every 4×4-tile block into a complete 8×8-tile layer.
 Runtime rendering does not interpret map blocks or cartridge graphics.
 

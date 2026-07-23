@@ -26,6 +26,7 @@ enum class WorldActorKind : std::uint8_t {
 
 struct WorldSprite {
     std::uint8_t id{};
+    std::string key;
     bool still{};
     // Four normalized 16 by 16 standing frames: down, up, left, right.
     std::vector<std::uint8_t> pixels;

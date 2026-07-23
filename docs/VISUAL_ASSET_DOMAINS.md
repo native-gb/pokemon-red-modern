@@ -73,6 +73,10 @@ Red has 67 distinct raw overworld sheets, with more semantic sprite IDs because
 some IDs alias the same graphics. Most moving character sheets contain twelve
 8×8 tiles:
 
+The importer gives all 72 table IDs stable snake_case keys. Numeric ROM IDs
+remain provenance, while maps and scripts refer to readable keys such as
+`oak`, `youngster`, `nurse`, and `boulder`.
+
 - standing and walking down;
 - standing and walking up;
 - standing and walking left;
