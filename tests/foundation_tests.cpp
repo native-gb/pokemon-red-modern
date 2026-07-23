@@ -205,19 +205,21 @@ void test_predicates(TestState& state) {
 }
 
 void test_animations(TestState& state) {
-    constexpr std::string_view source =
-        "animation original_title\n"
-        "    set_offset logo 0 -36 native_canvas\n"
-        "    set_palette logo darkened\n"
-        "    show logo\n"
-        "    parallel\n"
-        "        tween_offset logo 0 0 4 ease_out native_canvas\n"
-        "        sequence\n"
-        "            wait 2\n"
-        "            play_sound title_rise\n"
-        "    wait 1\n"
-        "    show version_label\n"
-        "    signal title_ready\n";
+    constexpr std::string_view source = "animation original_title\n"
+                                        "    set_offset logo 0 -36 native_canvas\n"
+                                        "    set_palette logo darkened\n"
+                                        "    show logo\n"
+                                        "    set_form logo minimized\n"
+                                        "    set_squish logo 3\n"
+                                        "    set_wave_phase logo 7\n"
+                                        "    parallel\n"
+                                        "        tween_offset logo 0 0 4 ease_out native_canvas\n"
+                                        "        sequence\n"
+                                        "            wait 2\n"
+                                        "            play_sound title_rise\n"
+                                        "    wait 1\n"
+                                        "    show version_label\n"
+                                        "    signal title_ready\n";
 
     // Resolve the sound cue while the title view retains ownership of persistent targets.
     pokered::content::Catalog catalog;
@@ -249,9 +251,13 @@ void test_animations(TestState& state) {
     check(state, target != nullptr && target->visible, "title logo becomes visible");
     check(state, target != nullptr && target->y == 16.0F && target->offset_y == -36.0F,
           "title logo starts above its renderer-owned anchor");
-    check(state, target != nullptr &&
-                     target->palette == pokered::content::AnimationPalette::darkened,
+    check(state,
+          target != nullptr && target->palette == pokered::content::AnimationPalette::darkened,
           "animation palette applies to a persistent target");
+    check(state,
+          target != nullptr && target->form == pokered::content::AnimationForm::minimized &&
+              target->squish_half_steps == 3 && target->wave_phase == 7,
+          "animation picture and wave transforms apply to persistent targets");
     pokered::step_animation(animation);
     pokered::step_animation(animation);
     check(state,

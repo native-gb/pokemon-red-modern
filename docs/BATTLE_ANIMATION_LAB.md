@@ -69,7 +69,9 @@ data/runtime/imports/pokemon_red_us_rev_0/
         001_pound.sexpr
         033_tackle.sexpr
         165_struggle.sexpr
+    source/animations/procedural_profile.sexpr
     compiled/battle_animation_frames.bin
+    compiled/battle_animation_procedural.bin
 ```
 
 The decoder is a shared, byte-in/byte-buffers-out C++ module linked into the
@@ -80,22 +82,27 @@ access.
 
 Normal runs prefer these imported programs when the directory exists and
 otherwise use the committed fixtures. Every ROM special-effect command is
-retained by name in generated source. Common battler movement, visibility, and
-delay effects are normalized now; the other named signals remain explicit
-implementation work rather than silently disappearing.
+retained by name in generated source and all 39 used special-effect routines
+lower without a generic fallback.
 
-The generated report `reports/battle_animation_summary.txt` lists every
-procedural effect type which still lowers to a visible named signal. Palette
-changes, short and long flashes, and the X-stat spiral-ball sequence are
-compiled into normal animation operations and imported frame visuals.
+The importer reads Red's timing operands, coordinate tables, palette sequences,
+particle paths, special-picture data, and animation tiles from the verified
+ROM. It expands procedural particles into local frame visuals and writes the
+remaining wave, palette, Minimize, and Substitute material to
+`battle_animation_procedural.bin`. The readable
+`procedural_profile.sexpr` exposes the small tables for inspection without
+placing them in the repository.
 
-The remaining first-pass signals are grouped work rather than unknown data:
+The generated report `reports/battle_animation_summary.txt` lists any
+procedural effect which could not be lowered. The supported Red profile
+currently reports zero.
 
-- particles: water droplets, falling leaves/petals, and upward balls;
-- screen transforms: whole-screen shake and scanline waves;
-- picture transforms: minimize, substitute, transform, squish, and rapid
-  back-and-forth movement;
-- UI presentation: enemy HUD shake.
+The executor has Pokémon-specific operations for picture form, horizontal
+squish, and wave phase in addition to ordinary movement, visibility, palette,
+sound, and temporary sprites. The lab previews the imported Minimize and
+Substitute graphics and ROM-driven screen offsets. Its wave preview applies
+the current imported horizontal phase to the composition; the final battle
+renderer will apply the same table per scanline.
 
 The two internal animations named `enemy_flash` and `player_flash` are
 misleading in isolation. Their ROM routines restore or reload an existing

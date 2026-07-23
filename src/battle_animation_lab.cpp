@@ -43,8 +43,7 @@ bool read_u16(std::istream& input, std::uint16_t& result) {
 bool read_u32(std::istream& input, std::uint32_t& result) {
     std::array<unsigned char, 4> bytes{};
     if (!input.read(reinterpret_cast<char*>(bytes.data()), bytes.size())) return false;
-    result = static_cast<std::uint32_t>(bytes[0]) |
-             static_cast<std::uint32_t>(bytes[1]) << 8U |
+    result = static_cast<std::uint32_t>(bytes[0]) | static_cast<std::uint32_t>(bytes[1]) << 8U |
              static_cast<std::uint32_t>(bytes[2]) << 16U |
              static_cast<std::uint32_t>(bytes[3]) << 24U;
     return true;
@@ -140,6 +139,47 @@ bool load_imported_assets(const std::filesystem::path& path, ImportedAnimationAs
     return true;
 }
 
+bool load_procedural_assets(const std::filesystem::path& path, ImportedAnimationAssets& result,
+                            Diagnostics& diagnostics) {
+    if (!std::filesystem::exists(path)) return true;
+    std::ifstream input(path, std::ios::binary);
+    std::array<char, 4> magic{};
+    std::uint16_t wave_count = 0;
+    std::uint16_t minimized_row_count = 0;
+    std::uint16_t substitute_tile_count = 0;
+    std::uint16_t palette_count = 0;
+    if (!input.read(magic.data(), magic.size()) || magic != std::array{'P', 'R', 'P', '1'} ||
+        !read_u16(input, wave_count) || !read_u16(input, minimized_row_count) ||
+        !read_u16(input, substitute_tile_count) || !read_u16(input, palette_count) ||
+        wave_count > 256 || minimized_row_count > 8 || substitute_tile_count > 16 ||
+        palette_count > 32) {
+        add_error(diagnostics, {path.string(), 1, 1}, "invalid_animation_procedural_header",
+                  "imported procedural animation cache has an invalid header");
+        return false;
+    }
+
+    result.wave_offsets.resize(wave_count);
+    result.minimized_mon_rows.resize(minimized_row_count);
+    result.substitute_mon_tiles.resize(static_cast<std::size_t>(substitute_tile_count) * 16U);
+    result.long_flash_dmg_palettes.resize(palette_count);
+    result.long_flash_sgb_palettes.resize(palette_count);
+    if (!input.read(reinterpret_cast<char*>(result.wave_offsets.data()),
+                    static_cast<std::streamsize>(result.wave_offsets.size())) ||
+        !input.read(reinterpret_cast<char*>(result.minimized_mon_rows.data()),
+                    static_cast<std::streamsize>(result.minimized_mon_rows.size())) ||
+        !input.read(reinterpret_cast<char*>(result.substitute_mon_tiles.data()),
+                    static_cast<std::streamsize>(result.substitute_mon_tiles.size())) ||
+        !input.read(reinterpret_cast<char*>(result.long_flash_dmg_palettes.data()),
+                    static_cast<std::streamsize>(result.long_flash_dmg_palettes.size())) ||
+        !input.read(reinterpret_cast<char*>(result.long_flash_sgb_palettes.data()),
+                    static_cast<std::streamsize>(result.long_flash_sgb_palettes.size()))) {
+        add_error(diagnostics, {path.string(), 1, 1}, "truncated_animation_procedural_data",
+                  "imported procedural animation cache is truncated");
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool load_battle_animation_lab(const std::filesystem::path& source_root, BattleAnimationLab& result,
@@ -154,6 +194,10 @@ bool load_battle_animation_lab(const std::filesystem::path& source_root, BattleA
         source_root.parent_path().parent_path().parent_path() / "compiled" /
         "battle_animation_frames.bin";
     if (!load_imported_assets(imported_assets, loaded.imported_assets, diagnostics)) return false;
+    const std::filesystem::path procedural_assets =
+        imported_assets.parent_path() / "battle_animation_procedural.bin";
+    if (!load_procedural_assets(procedural_assets, loaded.imported_assets, diagnostics))
+        return false;
     for (const SourceDocument& source : sources) {
         for (const sexpr::Form& form : source.document.forms) {
             if (!sexpr::is_head(form, "animation") || form.arguments.size() != 1 ||
@@ -225,11 +269,11 @@ std::string_view battle_animation_lab_name(const BattleAnimationLab& lab) {
     return lab.entries[lab.current].name.text;
 }
 
-const ImportedAnimationVisual* find_imported_animation_visual(
-    const ImportedAnimationAssets& assets, const Symbol& name) {
-    const auto found =
-        std::find_if(assets.visuals.begin(), assets.visuals.end(),
-                     [&name](const ImportedAnimationVisual& visual) { return visual.name == name; });
+const ImportedAnimationVisual* find_imported_animation_visual(const ImportedAnimationAssets& assets,
+                                                              const Symbol& name) {
+    const auto found = std::find_if(
+        assets.visuals.begin(), assets.visuals.end(),
+        [&name](const ImportedAnimationVisual& visual) { return visual.name == name; });
     return found == assets.visuals.end() ? nullptr : &*found;
 }
 

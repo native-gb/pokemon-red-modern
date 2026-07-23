@@ -19,6 +19,9 @@ struct AnimationTarget {
     bool visible{};
     content::CoordinateSpace space{content::CoordinateSpace::native_canvas};
     content::AnimationPalette palette{content::AnimationPalette::normal};
+    content::AnimationForm form{content::AnimationForm::normal};
+    std::uint8_t squish_half_steps{};
+    std::int16_t wave_phase{-1};
 };
 
 struct AnimationTween {

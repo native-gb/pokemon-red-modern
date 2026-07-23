@@ -42,6 +42,13 @@ effect are import data whenever the cartridge provides them. When a value is
 inseparable from executable control flow, prefer a small semantic decoder or
 validated routine translator over copying a disassembly into engine source.
 
+The battle-animation importer follows that rule concretely. Public code knows
+the supported ROM profile's locations and independently implements semantic
+decoders. A local import supplies all 203 programs, frame compositions,
+graphics, palette sequences, particle coordinate paths, scanline-wave table,
+and procedural timing operands. The repository does not carry replacement
+copies of those extracted tables or a hand-authored approximation of them.
+
 This boundary reduces what the project redistributes. It is not a guarantee
 that every importer, compatibility behavior, name, or use of a third-party
 property is legally risk-free. Public releases require jurisdiction-appropriate

@@ -58,32 +58,113 @@ void set_draw_color(SDL_Renderer* renderer, content::AnimationPalette palette, s
     (void)SDL_SetRenderDrawColor(renderer, color[0], color[1], color[2], 255);
 }
 
+void draw_mon_pixel(SDL_Renderer* renderer, const ViewLayout& view,
+                    content::AnimationPalette palette, std::uint8_t pixel, float x, float y) {
+    constexpr std::array<std::array<std::uint8_t, 3>, 4> colors{{
+        {246, 238, 230},
+        {190, 172, 176},
+        {116, 100, 124},
+        {54, 47, 58},
+    }};
+    const auto& color = colors[pixel & 0x03U];
+    set_draw_color(renderer, palette, color[0], color[1], color[2]);
+    fill_native_rect(renderer, view, x, y, 1.0F, 1.0F);
+}
+
+void draw_substitute_mon(SDL_Renderer* renderer, const ViewLayout& view,
+                         const AnimationTarget& target, bool player,
+                         content::AnimationPalette palette, const ImportedAnimationAssets& assets) {
+    if (assets.substitute_mon_tiles.size() < 8U * 16U) return;
+    const std::size_t first_tile = player ? 4U : 0U;
+    for (std::size_t tile = 0; tile < 4; ++tile) {
+        const std::size_t tile_begin = (first_tile + tile) * 16U;
+        const float tile_x =
+            target.x + target.offset_x - 8.0F + static_cast<float>(tile % 2U) * 8.0F;
+        const float tile_y =
+            target.y + target.offset_y - 8.0F + static_cast<float>(tile / 2U) * 8.0F;
+        for (std::uint8_t row = 0; row < 8; ++row) {
+            const std::uint8_t low =
+                assets.substitute_mon_tiles[tile_begin + static_cast<std::size_t>(row) * 2U];
+            const std::uint8_t high =
+                assets.substitute_mon_tiles[tile_begin + static_cast<std::size_t>(row) * 2U + 1U];
+            for (std::uint8_t column = 0; column < 8; ++column) {
+                const std::uint8_t bit = static_cast<std::uint8_t>(7U - column);
+                const std::uint8_t pixel =
+                    static_cast<std::uint8_t>(((high >> bit) & 1U) << 1U | ((low >> bit) & 1U));
+                if (pixel == 0) continue;
+                draw_mon_pixel(renderer, view, palette, pixel, tile_x + static_cast<float>(column),
+                               tile_y + static_cast<float>(row));
+            }
+        }
+    }
+}
+
+void draw_minimized_mon(SDL_Renderer* renderer, const ViewLayout& view,
+                        const AnimationTarget& target, content::AnimationPalette palette,
+                        const ImportedAnimationAssets& assets) {
+    const float left = target.x + target.offset_x - 4.0F;
+    const float top = target.y + target.offset_y + 8.0F;
+    for (std::size_t row = 0; row < assets.minimized_mon_rows.size(); ++row) {
+        const std::uint8_t pixels = assets.minimized_mon_rows[row];
+        for (std::uint8_t column = 0; column < 8; ++column) {
+            const std::uint8_t bit = static_cast<std::uint8_t>(7U - column);
+            if (((pixels >> bit) & 1U) == 0) continue;
+            draw_mon_pixel(renderer, view, palette, 3, left + static_cast<float>(column),
+                           top + static_cast<float>(row));
+        }
+    }
+}
+
 void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const AnimationTarget& target,
-                  bool player, content::AnimationPalette screen_palette) {
-    if (!target.visible) return;
+                  bool player, content::AnimationPalette screen_palette,
+                  const ImportedAnimationAssets& assets) {
+    if (!target.visible || target.form == content::AnimationForm::blank) return;
     const float x = target.x + target.offset_x;
     const float y = target.y + target.offset_y;
 
     // Use deliberately original block creatures while the ROM asset importer is absent.
     const content::AnimationPalette palette =
         target.palette == content::AnimationPalette::normal ? screen_palette : target.palette;
-    if (player)
+    const bool transformed = target.form == content::AnimationForm::transformed;
+    if (player != transformed)
         set_draw_color(renderer, palette, 68, 104, 156);
     else
         set_draw_color(renderer, palette, 176, 104, 72);
-    fill_native_rect(renderer, view, x - 18.0F, y - 16.0F, 34.0F, 28.0F);
-    fill_native_rect(renderer, view, x - 11.0F, y - 28.0F, 22.0F, 15.0F);
-    fill_native_rect(renderer, view, player ? x - 25.0F : x + 14.0F, y - 10.0F, 12.0F,
-                     10.0F);
-    fill_native_rect(renderer, view, x - 14.0F, y + 9.0F, 9.0F, 11.0F);
-    fill_native_rect(renderer, view, x + 5.0F, y + 9.0F, 9.0F, 11.0F);
+
+    if (target.form == content::AnimationForm::minimized) {
+        if (!assets.minimized_mon_rows.empty())
+            draw_minimized_mon(renderer, view, target, palette, assets);
+        else
+            fill_native_rect(renderer, view, x - 3.0F, y + 10.0F, 6.0F, 5.0F);
+        return;
+    }
+    if (target.form == content::AnimationForm::substitute) {
+        if (!assets.substitute_mon_tiles.empty())
+            draw_substitute_mon(renderer, view, target, player, palette, assets);
+        else {
+            fill_native_rect(renderer, view, x - 8.0F, y - 2.0F, 16.0F, 16.0F);
+            fill_native_rect(renderer, view, x - 5.0F, y - 10.0F, 10.0F, 9.0F);
+        }
+        return;
+    }
+
+    const float width_scale = 1.0F - static_cast<float>(target.squish_half_steps) / 8.0F;
+    const auto squished_rect = [&](float center_x, float top_y, float width, float height) {
+        const float scaled_width = width * width_scale;
+        fill_native_rect(renderer, view, center_x - scaled_width * 0.5F, top_y, scaled_width,
+                         height);
+    };
+    squished_rect(x - 1.0F, y - 16.0F, 34.0F, 28.0F);
+    squished_rect(x, y - 28.0F, 22.0F, 15.0F);
+    squished_rect(player ? x - 19.0F : x + 20.0F, y - 10.0F, 12.0F, 10.0F);
+    squished_rect(x - 9.5F, y + 9.0F, 9.0F, 11.0F);
+    squished_rect(x + 9.5F, y + 9.0F, 9.0F, 11.0F);
 
     set_draw_color(renderer, palette, 246, 242, 224);
-    fill_native_rect(renderer, view, x + 2.0F, y - 24.0F, 4.0F, 4.0F);
+    squished_rect(x + 4.0F, y - 24.0F, 4.0F, 4.0F);
 }
 
-void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel,
-                              std::uint8_t attributes,
+void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel, std::uint8_t attributes,
                               content::AnimationPalette screen_palette) {
     const std::uint8_t palette = (attributes & 0x10U) == 0 ? 0xE4U : 0x6CU;
     const std::uint8_t shade = static_cast<std::uint8_t>((palette >> (pixel * 2U)) & 0x03U);
@@ -98,41 +179,38 @@ void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel,
 }
 
 bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
-                          const AnimationEffect& effect,
-                          const ImportedAnimationAssets& assets,
+                          const AnimationEffect& effect, const ImportedAnimationAssets& assets,
                           content::AnimationPalette screen_palette) {
-    const ImportedAnimationVisual* visual =
-        find_imported_animation_visual(assets, effect.visual);
+    const ImportedAnimationVisual* visual = find_imported_animation_visual(assets, effect.visual);
     if (visual == nullptr) return false;
     // Lower OAM indexes win sprite overlap priority, so draw them last.
-    for (auto piece_iterator = visual->pieces.rbegin();
-         piece_iterator != visual->pieces.rend(); ++piece_iterator) {
+    for (auto piece_iterator = visual->pieces.rbegin(); piece_iterator != visual->pieces.rend();
+         ++piece_iterator) {
         const ImportedAnimationPiece& piece = *piece_iterator;
         const std::vector<std::uint8_t>& tiles =
             piece.tile_set == 0 ? assets.tile_set_0 : assets.tile_set_1;
         const std::size_t tile_begin = static_cast<std::size_t>(piece.tile) * 16U;
         for (std::uint8_t output_y = 0; output_y < 8; ++output_y) {
-            const std::uint8_t source_y =
-                (piece.attributes & 0x40U) == 0 ? output_y
-                                               : static_cast<std::uint8_t>(7U - output_y);
+            const std::uint8_t source_y = (piece.attributes & 0x40U) == 0
+                                              ? output_y
+                                              : static_cast<std::uint8_t>(7U - output_y);
             const std::uint8_t low = tiles[tile_begin + static_cast<std::size_t>(source_y) * 2U];
             const std::uint8_t high =
                 tiles[tile_begin + static_cast<std::size_t>(source_y) * 2U + 1U];
             for (std::uint8_t output_x = 0; output_x < 8; ++output_x) {
-                const std::uint8_t source_x =
-                    (piece.attributes & 0x20U) == 0 ? output_x
-                                                   : static_cast<std::uint8_t>(7U - output_x);
+                const std::uint8_t source_x = (piece.attributes & 0x20U) == 0
+                                                  ? output_x
+                                                  : static_cast<std::uint8_t>(7U - output_x);
                 const std::uint8_t bit = static_cast<std::uint8_t>(7U - source_x);
-                const std::uint8_t pixel = static_cast<std::uint8_t>(
-                    ((high >> bit) & 1U) << 1U | ((low >> bit) & 1U));
+                const std::uint8_t pixel =
+                    static_cast<std::uint8_t>(((high >> bit) & 1U) << 1U | ((low >> bit) & 1U));
                 if (pixel == 0) continue;
                 set_imported_pixel_color(renderer, pixel, piece.attributes, screen_palette);
-                fill_native_rect(renderer, view,
-                                 effect.x + static_cast<float>(piece.x) +
-                                     static_cast<float>(output_x),
-                                 effect.y + static_cast<float>(piece.y) +
-                                     static_cast<float>(output_y),
-                                 1.0F, 1.0F);
+                fill_native_rect(
+                    renderer, view,
+                    effect.x + static_cast<float>(piece.x) + static_cast<float>(output_x),
+                    effect.y + static_cast<float>(piece.y) + static_cast<float>(output_y), 1.0F,
+                    1.0F);
             }
         }
     }
@@ -192,22 +270,46 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     set_draw_color(renderer, screen_palette, 246, 238, 230);
     (void)SDL_RenderFillRect(renderer, &viewport);
 
+    // Apply imported screen motion to the native composition, while the fixed
+    // viewport clips the shifted result.
+    ViewLayout scene_view = view;
+    if (battle_screen != nullptr) {
+        scene_view.x += battle_screen->offset_x * view.scale;
+        scene_view.y += battle_screen->offset_y * view.scale;
+        if (battle_screen->wave_phase >= 0 && !lab.imported_assets.wave_offsets.empty()) {
+            const std::size_t phase = static_cast<std::size_t>(battle_screen->wave_phase) %
+                                      lab.imported_assets.wave_offsets.size();
+            scene_view.x -=
+                static_cast<float>(lab.imported_assets.wave_offsets[phase]) * view.scale;
+        }
+    }
+    const SDL_Rect clip{
+        static_cast<int>(std::lround(view.x)),
+        static_cast<int>(std::lround(view.y)),
+        static_cast<int>(std::lround(view.width)),
+        static_cast<int>(std::lround(view.height)),
+    };
+    (void)SDL_SetRenderClipRect(renderer, &clip);
+
     // Draw a fixed Pokémon battle composition; animation state supplies only overrides.
     set_draw_color(renderer, screen_palette, 190, 181, 167);
-    fill_native_rect(renderer, view, 8.0F, 94.0F, 56.0F, 2.0F);
-    fill_native_rect(renderer, view, 96.0F, 54.0F, 56.0F, 2.0F);
+    fill_native_rect(renderer, scene_view, 8.0F, 94.0F, 56.0F, 2.0F);
+    fill_native_rect(renderer, scene_view, 96.0F, 54.0F, 56.0F, 2.0F);
     const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
     const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
-    if (attacker != nullptr) draw_battler(renderer, view, *attacker, true, screen_palette);
-    if (defender != nullptr) draw_battler(renderer, view, *defender, false, screen_palette);
+    if (attacker != nullptr)
+        draw_battler(renderer, scene_view, *attacker, true, screen_palette, lab.imported_assets);
+    if (defender != nullptr)
+        draw_battler(renderer, scene_view, *defender, false, screen_palette, lab.imported_assets);
     for (const AnimationEffect& effect : lab.animation.effects)
-        draw_effect(renderer, view, effect, lab.imported_assets, screen_palette);
+        draw_effect(renderer, scene_view, effect, lab.imported_assets, screen_palette);
 
     // Gen 1 reserves the lower six tile rows for battle text and action menus.
     set_draw_color(renderer, screen_palette, 54, 47, 58);
-    fill_native_rect(renderer, view, 0.0F, 96.0F, 160.0F, 48.0F);
+    fill_native_rect(renderer, scene_view, 0.0F, 96.0F, 160.0F, 48.0F);
     set_draw_color(renderer, screen_palette, 250, 247, 238);
-    fill_native_rect(renderer, view, 2.0F, 98.0F, 156.0F, 44.0F);
+    fill_native_rect(renderer, scene_view, 2.0F, 98.0F, 156.0F, 44.0F);
+    (void)SDL_SetRenderClipRect(renderer, nullptr);
 }
 
 } // namespace

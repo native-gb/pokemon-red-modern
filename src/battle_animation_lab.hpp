@@ -33,6 +33,11 @@ struct ImportedAnimationVisual {
 struct ImportedAnimationAssets {
     std::vector<std::uint8_t> tile_set_0;
     std::vector<std::uint8_t> tile_set_1;
+    std::vector<std::int8_t> wave_offsets;
+    std::vector<std::uint8_t> minimized_mon_rows;
+    std::vector<std::uint8_t> substitute_mon_tiles;
+    std::vector<std::uint8_t> long_flash_dmg_palettes;
+    std::vector<std::uint8_t> long_flash_sgb_palettes;
     std::vector<ImportedAnimationVisual> visuals;
 };
 
@@ -56,7 +61,7 @@ void restart_battle_animation_lab(BattleAnimationLab& lab);
 void next_battle_animation_lab(BattleAnimationLab& lab);
 void previous_battle_animation_lab(BattleAnimationLab& lab);
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab);
-const ImportedAnimationVisual* find_imported_animation_visual(
-    const ImportedAnimationAssets& assets, const Symbol& name);
+const ImportedAnimationVisual* find_imported_animation_visual(const ImportedAnimationAssets& assets,
+                                                              const Symbol& name);
 
 } // namespace pokered

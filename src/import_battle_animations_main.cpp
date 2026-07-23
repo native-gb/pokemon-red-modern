@@ -14,8 +14,7 @@ bool read_file(const std::filesystem::path& path, std::vector<std::uint8_t>& res
     std::ifstream input(path, std::ios::binary);
     if (!input) return false;
     std::vector<char> bytes;
-    bytes.assign(std::istreambuf_iterator<char>(input),
-                 std::istreambuf_iterator<char>());
+    bytes.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
     result.reserve(bytes.size());
     for (const char byte : bytes)
         result.push_back(static_cast<std::uint8_t>(static_cast<unsigned char>(byte)));
@@ -46,9 +45,11 @@ int main(int argc, char** argv) {
     }
     std::cout << "Imported " << imported.animation_programs << " battle animations from "
               << rom_path << '\n';
-    std::cout << "Readable scripts: "
-              << output_root / "source" / "animations" / "battle_moves" << '\n';
-    std::cout << "Frame assets: "
-              << output_root / "compiled" / "battle_animation_frames.bin" << '\n';
+    std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"
+              << '\n';
+    std::cout << "Frame assets: " << output_root / "compiled" / "battle_animation_frames.bin"
+              << '\n';
+    std::cout << "Procedural profile: "
+              << output_root / "compiled" / "battle_animation_procedural.bin" << '\n';
     return 0;
 }

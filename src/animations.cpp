@@ -85,6 +85,15 @@ std::optional<content::AnimationPalette> palette(const Symbol& symbol) {
     return std::nullopt;
 }
 
+std::optional<content::AnimationForm> animation_form(const Symbol& symbol) {
+    if (symbol.text == "normal") return content::AnimationForm::normal;
+    if (symbol.text == "minimized") return content::AnimationForm::minimized;
+    if (symbol.text == "substitute") return content::AnimationForm::substitute;
+    if (symbol.text == "transformed") return content::AnimationForm::transformed;
+    if (symbol.text == "blank") return content::AnimationForm::blank;
+    return std::nullopt;
+}
+
 bool integer_fits_i32(std::int64_t value) {
     return value >= std::numeric_limits<std::int32_t>::min() &&
            value <= std::numeric_limits<std::int32_t>::max();
@@ -151,13 +160,11 @@ std::uint32_t compile_set_position(const sexpr::Form& form, std::uint32_t at_tic
     const auto space = coordinate_space(*space_name);
     if (!subject || !space || !integer_fits_i32(*x) || !integer_fits_i32(*y)) {
         add_error(compiler.diagnostics, form.source, "invalid_animation_position",
-                  form.head.symbol.text +
-                      " uses an unknown space or out-of-range coordinate");
+                  form.head.symbol.text + " uses an unknown space or out-of-range coordinate");
         return 0;
     }
     compiler.program.events.push_back({
-        .operation =
-            offset ? content::AnimationOp::set_offset : content::AnimationOp::set_position,
+        .operation = offset ? content::AnimationOp::set_offset : content::AnimationOp::set_position,
         .at_tick = at_tick,
         .subject = *subject,
         .visual = 0,
@@ -284,8 +291,7 @@ std::uint32_t compile_statement(const sexpr::Form& form, std::uint32_t at_tick,
     if (operation == "tween_position")
         return compile_tween_position(form, at_tick, compiler, false);
     if (operation == "set_offset") return compile_set_position(form, at_tick, compiler, true);
-    if (operation == "tween_offset")
-        return compile_tween_position(form, at_tick, compiler, true);
+    if (operation == "tween_offset") return compile_tween_position(form, at_tick, compiler, true);
     if (operation == "set_palette") {
         if (!exact_arguments(form, 2, compiler.diagnostics)) return 0;
         const Symbol* node = symbol_argument(form, 0, compiler.diagnostics);
@@ -303,6 +309,52 @@ std::uint32_t compile_statement(const sexpr::Form& form, std::uint32_t at_tick,
             .at_tick = at_tick,
             .subject = *subject,
             .palette = *selected_palette,
+            .sound = {},
+            .source = form.source,
+        });
+        return 0;
+    }
+    if (operation == "set_form") {
+        if (!exact_arguments(form, 2, compiler.diagnostics)) return 0;
+        const Symbol* node = symbol_argument(form, 0, compiler.diagnostics);
+        const Symbol* form_name = symbol_argument(form, 1, compiler.diagnostics);
+        if (node == nullptr || form_name == nullptr) return 0;
+        const auto subject = intern_symbol(*node, compiler);
+        const auto selected_form = animation_form(*form_name);
+        if (!subject || !selected_form) {
+            add_error(compiler.diagnostics, form.source, "invalid_animation_form",
+                      "set_form uses an unknown picture form");
+            return 0;
+        }
+        compiler.program.events.push_back({
+            .operation = content::AnimationOp::set_form,
+            .at_tick = at_tick,
+            .subject = *subject,
+            .form = *selected_form,
+            .sound = {},
+            .source = form.source,
+        });
+        return 0;
+    }
+    if (operation == "set_squish" || operation == "set_wave_phase") {
+        if (!exact_arguments(form, 2, compiler.diagnostics)) return 0;
+        const Symbol* node = symbol_argument(form, 0, compiler.diagnostics);
+        const auto value = integer_argument(form, 1, compiler.diagnostics);
+        if (node == nullptr || !value) return 0;
+        const auto subject = intern_symbol(*node, compiler);
+        const bool valid_squish = operation != "set_squish" || (*value >= 0 && *value <= 8);
+        const bool valid_wave = operation != "set_wave_phase" || (*value >= -1 && *value <= 255);
+        if (!subject || !valid_squish || !valid_wave) {
+            add_error(compiler.diagnostics, form.source, "invalid_animation_transform",
+                      operation + " uses an out-of-range value");
+            return 0;
+        }
+        compiler.program.events.push_back({
+            .operation = operation == "set_squish" ? content::AnimationOp::set_squish
+                                                   : content::AnimationOp::set_wave_phase,
+            .at_tick = at_tick,
+            .subject = *subject,
+            .x = static_cast<std::int32_t>(*value),
             .sound = {},
             .source = form.source,
         });
@@ -418,19 +470,31 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
         if (target_index) state.targets[*target_index].palette = event.palette;
         return;
     }
+    if (event.operation == content::AnimationOp::set_form) {
+        if (target_index) state.targets[*target_index].form = event.form;
+        return;
+    }
+    if (event.operation == content::AnimationOp::set_squish) {
+        if (target_index)
+            state.targets[*target_index].squish_half_steps = static_cast<std::uint8_t>(event.x);
+        return;
+    }
+    if (event.operation == content::AnimationOp::set_wave_phase) {
+        if (target_index)
+            state.targets[*target_index].wave_phase = static_cast<std::int16_t>(event.x);
+        return;
+    }
 
     // Persistent target offsets remain separate from renderer-owned base positions.
     const bool offset_operation = event.operation == content::AnimationOp::set_offset ||
                                   event.operation == content::AnimationOp::tween_offset;
     if (offset_operation && !target_index) return;
-    float* x = target_index
-                   ? (offset_operation ? &state.targets[*target_index].offset_x
-                                       : &state.targets[*target_index].x)
-                   : &state.effects[*effect_index].x;
-    float* y = target_index
-                   ? (offset_operation ? &state.targets[*target_index].offset_y
-                                       : &state.targets[*target_index].y)
-                   : &state.effects[*effect_index].y;
+    float* x = target_index ? (offset_operation ? &state.targets[*target_index].offset_x
+                                                : &state.targets[*target_index].x)
+                            : &state.effects[*effect_index].x;
+    float* y = target_index ? (offset_operation ? &state.targets[*target_index].offset_y
+                                                : &state.targets[*target_index].y)
+                            : &state.effects[*effect_index].y;
     bool* visible = target_index ? &state.targets[*target_index].visible
                                  : &state.effects[*effect_index].visible;
     content::CoordinateSpace* space =
@@ -549,14 +613,12 @@ void step_animation(AnimationState& state) {
         const float progress =
             static_cast<float>(state.tick - tween.begin_tick) / static_cast<float>(tween.duration);
         const float amount = eased(progress, tween.ease);
-        float* x = target_index
-                       ? (tween.offset ? &state.targets[*target_index].offset_x
-                                       : &state.targets[*target_index].x)
-                       : &state.effects[*effect_index].x;
-        float* y = target_index
-                       ? (tween.offset ? &state.targets[*target_index].offset_y
-                                       : &state.targets[*target_index].y)
-                       : &state.effects[*effect_index].y;
+        float* x = target_index ? (tween.offset ? &state.targets[*target_index].offset_x
+                                                : &state.targets[*target_index].x)
+                                : &state.effects[*effect_index].x;
+        float* y = target_index ? (tween.offset ? &state.targets[*target_index].offset_y
+                                                : &state.targets[*target_index].y)
+                                : &state.effects[*effect_index].y;
         *x = tween.from_x + (tween.to_x - tween.from_x) * amount;
         *y = tween.from_y + (tween.to_y - tween.from_y) * amount;
     }

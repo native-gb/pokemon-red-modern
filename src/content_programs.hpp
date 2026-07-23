@@ -120,6 +120,14 @@ enum class AnimationPalette : std::uint8_t {
     white,
 };
 
+enum class AnimationForm : std::uint8_t {
+    normal,
+    minimized,
+    substitute,
+    transformed,
+    blank,
+};
+
 enum class AnimationOp : std::uint8_t {
     spawn,
     destroy,
@@ -130,6 +138,9 @@ enum class AnimationOp : std::uint8_t {
     set_offset,
     tween_offset,
     set_palette,
+    set_form,
+    set_squish,
+    set_wave_phase,
     play_sound,
     signal,
 };
@@ -145,6 +156,7 @@ struct AnimationEvent {
     CoordinateSpace space{CoordinateSpace::native_canvas};
     AnimationEase ease{AnimationEase::linear};
     AnimationPalette palette{AnimationPalette::normal};
+    AnimationForm form{AnimationForm::normal};
     SoundId sound;
     SourceSpan source;
 };
