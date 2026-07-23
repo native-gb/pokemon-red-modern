@@ -226,12 +226,19 @@ actor_spawn pallet_oak
     actor oak
     position 10 6
     facing down
+    movement_region pallet_town_authored_bounds
     visible_when oak_waiting_in_pallet
     interact oak_pallet_dialogue
 ```
 
 `MapDef` stores ranges into owner-sorted connection, warp, trigger, and spawn
 tables. Those ranges are generated after overlays resolve.
+
+Movement regions use global cells and are optional. A roaming imported Red
+actor receives its authored map as a default region. Stationary actors have no
+region because they never request ambient movement. A package may define a
+larger, disconnected, or multi-map region for an actor intended to travel
+between map domains.
 
 ## Types and interactions
 

@@ -80,13 +80,21 @@ The actor atlas is uploaded once. Authored outdoor spawns are transformed from
 map-local 16×16 cells into global coordinates and drawn above terrain at every
 camera scale. These are authored spawn records, not yet campaign-resolved
 actor instances: toggle conditions and scripts will later decide which spawns
-are active and may move an actor freely across a connection.
+are active.
 
 Red does not store a rectangular roam radius per NPC. Object records contain
 `WALK` or `STAY` and an any-direction, vertical, horizontal, or fixed-facing
 policy. Map collision and topology supply the cartridge's practical movement
-boundary. The modern actor state uses global coordinates; the engine does not
-impose map ownership as a universal movement limit.
+boundary.
+
+The importer therefore gives every Red `WALK` spawn an explicit half-open
+movement region equal to its authored map bounds. `STAY` and stationary/scripted
+spawns have no movement region because they do not participate in ambient
+roaming. The movement executor must reject a roaming destination outside the
+actor's region before collision resolution. Regions use global cells rather
+than map-local coordinates, so custom content can define multi-map regions or
+scripts can explicitly transfer an actor without making map ownership a
+universal engine restriction.
 
 ## Presentation cadence
 
@@ -126,10 +134,12 @@ data observed by a distant camera.
 Annotations use constant-resolution text and zoom-aware anchors:
 
 - cyan/yellow map outlines identify map domains and the selected map;
+- inset orange outlines identify imported ambient-roaming regions;
 - cyan squares identify authored warp cells and, when readable, show
   destination map and warp IDs;
 - green, red, and gold anchors identify NPC, trainer/Pokemon, and item spawns;
-- actor labels show local actor ID, sprite ID, and imported movement policy.
+- actor labels show local actor ID, sprite ID, imported movement policy, and
+  whether it is map-bounded.
 
 At distant whole-Kanto zoom, labels are suppressed while anchors remain. At
 selected-map scale, labels remain full-resolution and readable. The overlay

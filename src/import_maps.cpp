@@ -820,6 +820,11 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                 source << " parameters " << static_cast<unsigned>(actor.parameter_a) << ' '
                        << static_cast<unsigned>(actor.parameter_b);
             source << '\n';
+            if (actor.movement == 0xFEU) {
+                source << "        movement_bounds authored_map " << map.global_x_cells << ' '
+                       << map.global_y_cells << ' ' << static_cast<unsigned>(map.width_blocks) * 2U
+                       << ' ' << static_cast<unsigned>(map.height_blocks) * 2U << " global_cells\n";
+            }
         }
         source << "    blocks\n";
         for (std::size_t y = 0; y < map.height_blocks; ++y) {
@@ -839,7 +844,7 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
 void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedSprite>& sprites,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '5'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '6'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
@@ -898,6 +903,14 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
             bytes.push_back(actor.parameter_a);
             bytes.push_back(actor.parameter_b);
             bytes.push_back(actor.kind);
+            const bool roams = actor.movement == 0xFEU;
+            bytes.push_back(roams ? 1U : 0U);
+            if (roams) {
+                write_i32(bytes, map.global_x_cells);
+                write_i32(bytes, map.global_y_cells);
+                write_u16(bytes, static_cast<std::size_t>(map.width_blocks) * 2U);
+                write_u16(bytes, static_cast<std::size_t>(map.height_blocks) * 2U);
+            }
         }
     }
     result.files.push_back({"compiled/world_maps.bin", std::move(bytes)});

@@ -252,6 +252,16 @@ void draw_world_annotations(const WorldState& world,
         draw->AddRect(top_left, bottom_right,
                       selected_map ? IM_COL32(255, 224, 80, 235) : IM_COL32(92, 210, 255, 175),
                       0.0F, ImDrawFlags_None, selected_map ? 2.0F : 1.0F);
+        const bool has_roaming_actors =
+            std::any_of(map.actors.begin(), map.actors.end(), [](const WorldActorSpawn& actor) {
+                return actor.movement_bounds.has_value();
+            });
+        if (has_roaming_actors && bottom_right.x - top_left.x > 8.0F &&
+            bottom_right.y - top_left.y > 8.0F) {
+            draw->AddRect({top_left.x + 3.0F, top_left.y + 3.0F},
+                          {bottom_right.x - 3.0F, bottom_right.y - 3.0F},
+                          IM_COL32(255, 154, 64, 210), 0.0F, ImDrawFlags_None, 1.5F);
+        }
         if (bottom_right.x - top_left.x >= 72.0F || selected_map) {
             std::array<char, 96> map_text{};
             std::snprintf(map_text.data(), map_text.size(), "%s [0x%02X]", map.display_name.c_str(),
@@ -293,18 +303,19 @@ void draw_world_annotations(const WorldState& world,
             if (projection.scale >= 0.75F) {
                 std::array<char, 96> actor_text{};
                 const std::string_view movement = movement_label(actor);
-                std::snprintf(actor_text.data(), actor_text.size(), "A%u S%u %.*s",
+                std::snprintf(actor_text.data(), actor_text.size(), "A%u S%u %.*s%s",
                               static_cast<unsigned>(actor.index),
                               static_cast<unsigned>(actor.sprite_id),
-                              static_cast<int>(movement.size()), movement.data());
+                              static_cast<int>(movement.size()), movement.data(),
+                              actor.movement_bounds.has_value() ? " map_bound" : "");
                 label_text({center.x + 8.0F, center.y + 2.0F}, color, actor_text.data());
             }
         }
     }
 
-    draw->AddText(
-        {8.0F, 43.0F}, IM_COL32(230, 245, 255, 255),
-        "F3 annotations: map bounds | cyan warps | green NPCs | red trainers | gold items");
+    draw->AddText({8.0F, 43.0F}, IM_COL32(230, 245, 255, 255),
+                  "F3 annotations: map bounds | orange roam bounds | cyan warps | green NPCs | "
+                  "red trainers | gold items");
 }
 
 } // namespace

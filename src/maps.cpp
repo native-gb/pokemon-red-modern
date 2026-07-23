@@ -195,11 +195,13 @@ bool read_map(std::istream& input, const WorldState& world, WorldMap& map, std::
     for (std::uint8_t index = 0; index < actor_count; ++index) {
         WorldActorSpawn actor;
         std::uint8_t kind = 0;
+        std::uint8_t has_movement_bounds = 0;
         if (!read_u8(input, actor.index) || !read_u8(input, actor.sprite_id) ||
             !read_u8(input, actor.x) || !read_u8(input, actor.y) ||
             !read_u8(input, actor.movement) || !read_u8(input, actor.direction_or_axis) ||
             !read_u8(input, actor.text_id) || !read_u8(input, actor.parameter_a) ||
             !read_u8(input, actor.parameter_b) || !read_u8(input, kind) ||
+            !read_u8(input, has_movement_bounds) || has_movement_bounds > 1 ||
             actor.index != static_cast<std::uint8_t>(index + 1U) || kind > 2 ||
             actor.x >= map.width_blocks * 2U || actor.y >= map.height_blocks * 2U ||
             find_world_sprite(world, actor.sprite_id) == nullptr) {
@@ -207,6 +209,30 @@ bool read_map(std::istream& input, const WorldState& world, WorldMap& map, std::
             return false;
         }
         actor.kind = static_cast<WorldActorKind>(kind);
+        if (has_movement_bounds != 0) {
+            WorldMovementBounds bounds;
+            std::uint16_t width = 0;
+            std::uint16_t height = 0;
+            if (!read_i32(input, bounds.x) || !read_i32(input, bounds.y) ||
+                !read_u16(input, width) || !read_u16(input, height) || width == 0 || height == 0) {
+                error = "world map cache has invalid actor movement bounds";
+                return false;
+            }
+            bounds.width = width;
+            bounds.height = height;
+            actor.movement_bounds = bounds;
+        }
+        const bool should_roam = actor.movement == 0xFEU;
+        const std::int32_t expected_x = map.global_x_tiles / 2;
+        const std::int32_t expected_y = map.global_y_tiles / 2;
+        if (should_roam != actor.movement_bounds.has_value() ||
+            (actor.movement_bounds.has_value() &&
+             (actor.movement_bounds->x != expected_x || actor.movement_bounds->y != expected_y ||
+              actor.movement_bounds->width != map.width_blocks * 2 ||
+              actor.movement_bounds->height != map.height_blocks * 2))) {
+            error = "world map cache actor movement bounds disagree with its authored map";
+            return false;
+        }
         map.actors.push_back(actor);
     }
     return true;
@@ -245,7 +271,7 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', '5'}) {
+        magic != std::array{'P', 'M', 'V', '6'}) {
         error = "world map cache is missing or has an invalid header";
         return false;
     }
@@ -356,6 +382,13 @@ const WorldSprite* find_world_sprite(const WorldState& world, std::uint8_t id) {
     const auto found = std::find_if(world.sprites.begin(), world.sprites.end(),
                                     [id](const WorldSprite& sprite) { return sprite.id == id; });
     return found == world.sprites.end() ? nullptr : &*found;
+}
+
+bool actor_can_roam_to(const WorldActorSpawn& actor, std::int32_t global_x, std::int32_t global_y) {
+    if (actor.movement != 0xFEU || !actor.movement_bounds.has_value()) return false;
+    const WorldMovementBounds& bounds = *actor.movement_bounds;
+    return global_x >= bounds.x && global_y >= bounds.y && global_x < bounds.x + bounds.width &&
+           global_y < bounds.y + bounds.height;
 }
 
 std::string_view selected_map_name(const WorldState& world) {

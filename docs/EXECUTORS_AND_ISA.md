@@ -252,6 +252,12 @@ set_cell pallet_town 12 8 cut_tree_stump
 warp player oaks_lab lab_entrance
 ```
 
+Ambient `move` first verifies that the destination lies inside the actor's
+optional movement region, then resolves terrain and actor collision. An actor
+with no movement region is not eligible for ambient roaming. Scripted movement
+may use an explicit transfer or temporary region override; it never bypasses a
+region accidentally merely because two maps share global edges.
+
 Dialogue and menus:
 
 ```text

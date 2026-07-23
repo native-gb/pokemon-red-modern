@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,6 +39,14 @@ struct WorldWarp {
     std::uint8_t destination_warp_index{};
 };
 
+struct WorldMovementBounds {
+    // Half-open global 16 by 16 world-cell bounds.
+    std::int32_t x{};
+    std::int32_t y{};
+    std::int32_t width{};
+    std::int32_t height{};
+};
+
 struct WorldActorSpawn {
     std::uint8_t index{};
     std::uint8_t sprite_id{};
@@ -49,6 +58,7 @@ struct WorldActorSpawn {
     std::uint8_t parameter_a{};
     std::uint8_t parameter_b{};
     WorldActorKind kind{WorldActorKind::npc};
+    std::optional<WorldMovementBounds> movement_bounds;
 };
 
 struct WorldMap {
@@ -104,6 +114,7 @@ void step_world_animation(WorldState& world);
 const WorldMap* selected_map(const WorldState& world);
 const MapTileset* find_tileset(const WorldState& world, std::uint8_t id);
 const WorldSprite* find_world_sprite(const WorldState& world, std::uint8_t id);
+bool actor_can_roam_to(const WorldActorSpawn& actor, std::int32_t global_x, std::int32_t global_y);
 std::string_view selected_map_name(const WorldState& world);
 std::string_view label(WorldView view);
 std::string_view label(WorldActorKind kind);
