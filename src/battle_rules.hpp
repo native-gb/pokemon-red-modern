@@ -128,6 +128,34 @@ struct StatFormulaProgram {
     std::vector<StatFormulaInstruction> instructions;
 };
 
+struct AccuracyStageRatio {
+    std::uint16_t numerator{};
+    std::uint16_t denominator{};
+};
+
+enum class AccuracyFormulaOpcode : std::uint8_t {
+    guarantee_if_bypassed,
+    reflect_evasion,
+    apply_accuracy_stage,
+    apply_evasion_stage,
+    cap_chance,
+    sample_random,
+    compare_less,
+};
+
+struct AccuracyFormulaInstruction {
+    AccuracyFormulaOpcode opcode{
+        AccuracyFormulaOpcode::guarantee_if_bypassed};
+    std::array<std::uint16_t, 4> operands{};
+};
+
+struct AccuracyFormulaProgram {
+    std::string key;
+    std::vector<AccuracyStageRatio> stage_ratios;
+    std::uint8_t neutral_stage{};
+    std::vector<AccuracyFormulaInstruction> instructions;
+};
+
 struct BattleRuleCatalog {
     std::filesystem::path source;
     std::vector<DamageFormulaProgram> damage_formulas;
@@ -140,6 +168,8 @@ struct BattleRuleCatalog {
     std::uint16_t original_experience_formula{};
     std::vector<StatFormulaProgram> stat_formulas;
     std::uint16_t original_stat_formula{};
+    std::vector<AccuracyFormulaProgram> accuracy_formulas;
+    std::uint16_t original_accuracy_formula{};
     bool loaded{};
 };
 
@@ -219,6 +249,19 @@ struct StatFormulaResult {
     std::uint8_t hp_dv{};
 };
 
+struct AccuracyFormulaInput {
+    std::uint8_t raw_accuracy{};
+    std::uint8_t accuracy_stage{};
+    std::uint8_t target_evasion_stage{};
+    bool bypassed{};
+};
+
+struct AccuracyFormulaResult {
+    std::uint16_t chance{};
+    std::size_t random_bytes_consumed{};
+    bool hit{};
+};
+
 bool load_battle_rules(const std::filesystem::path& path,
                        BattleRuleCatalog& result, std::string& error);
 const DamageFormulaProgram* find_damage_formula(
@@ -230,6 +273,8 @@ const CaptureFormulaProgram* find_capture_formula(
 const ExperienceFormulaProgram* find_experience_formula(
     const BattleRuleCatalog& rules, std::uint16_t id);
 const StatFormulaProgram* find_stat_formula(
+    const BattleRuleCatalog& rules, std::uint16_t id);
+const AccuracyFormulaProgram* find_accuracy_formula(
     const BattleRuleCatalog& rules, std::uint16_t id);
 bool execute_damage_formula(const RuleCatalog& pokemon_rules,
                             const DamageFormulaProgram& program,
@@ -254,5 +299,10 @@ bool execute_stat_formula(const StatFormulaProgram& program,
                           const StatFormulaInput& input,
                           StatFormulaResult& result,
                           std::string& error);
+bool execute_accuracy_formula(
+    const AccuracyFormulaProgram& program,
+    const AccuracyFormulaInput& input,
+    std::span<const std::uint8_t> random_bytes,
+    AccuracyFormulaResult& result, std::string& error);
 
 } // namespace pokered

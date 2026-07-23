@@ -901,6 +901,84 @@ void test_local_rule_cache(TestState& state) {
               "owned Pokemon progression applies imported experience, "
               "learnset, and stat programs end to end");
     }
+
+    const pokered::AccuracyFormulaProgram* accuracy =
+        pokered::find_accuracy_formula(
+            battle_rules, battle_rules.original_accuracy_formula);
+    check(state,
+          accuracy != nullptr &&
+              accuracy->key == "gen_1_original_accuracy" &&
+              accuracy->neutral_stage == 7U &&
+              accuracy->stage_ratios.size() == 13U &&
+              accuracy->instructions.size() == 7U,
+          "original accuracy formula and stage ratios resolve by imported "
+          "ruleset binding");
+    if (accuracy != nullptr) {
+        constexpr std::array<std::uint8_t, 1> last_hit_roll{254U};
+        pokered::AccuracyFormulaResult last_hit;
+        check(state,
+              pokered::execute_accuracy_formula(
+                  *accuracy,
+                  {
+                      .raw_accuracy = 255U,
+                      .accuracy_stage = 7U,
+                      .target_evasion_stage = 7U,
+                      .bypassed = false,
+                  },
+                  last_hit_roll, last_hit, error) &&
+                  last_hit.chance == 255U && last_hit.hit &&
+                  last_hit.random_bytes_consumed == 1U,
+              "neutral maximum accuracy hits through random value 254");
+
+        constexpr std::array<std::uint8_t, 1> miss_roll{255U};
+        pokered::AccuracyFormulaResult one_in_256_miss;
+        check(state,
+              pokered::execute_accuracy_formula(
+                  *accuracy,
+                  {
+                      .raw_accuracy = 255U,
+                      .accuracy_stage = 7U,
+                      .target_evasion_stage = 7U,
+                      .bypassed = false,
+                  },
+                  miss_roll, one_in_256_miss, error) &&
+                  one_in_256_miss.chance == 255U &&
+                  !one_in_256_miss.hit,
+              "strict accuracy comparison preserves the cartridge's "
+              "one-in-256 maximum-accuracy miss");
+
+        constexpr std::array<std::uint8_t, 1> scaled_roll{11U};
+        pokered::AccuracyFormulaResult scaled;
+        check(state,
+              pokered::execute_accuracy_formula(
+                  *accuracy,
+                  {
+                      .raw_accuracy = 200U,
+                      .accuracy_stage = 1U,
+                      .target_evasion_stage = 13U,
+                      .bypassed = false,
+                  },
+                  scaled_roll, scaled, error) &&
+                  scaled.chance == 12U && scaled.hit,
+              "accuracy executor applies the two cartridge ratios "
+              "sequentially with integer floors");
+
+        pokered::AccuracyFormulaResult bypassed;
+        check(state,
+              pokered::execute_accuracy_formula(
+                  *accuracy,
+                  {
+                      .raw_accuracy = 1U,
+                      .accuracy_stage = 1U,
+                      .target_evasion_stage = 13U,
+                      .bypassed = true,
+                  },
+                  {}, bypassed, error) &&
+                  bypassed.chance == 255U && bypassed.hit &&
+                  bypassed.random_bytes_consumed == 0U,
+              "content-requested accuracy bypass guarantees a hit without "
+              "consuming battle random state");
+    }
 }
 
 void test_local_boot_cache(TestState& state) {

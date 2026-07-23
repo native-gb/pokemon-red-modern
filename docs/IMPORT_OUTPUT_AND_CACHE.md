@@ -116,7 +116,8 @@ The exact chunk format can change without changing the readable source syntax.
 The current vertical slice loads `battle_rules.bin`, `boot_content.bin`,
 `world_maps.bin`, and `world_interactions.bin` directly. `battle_rules.bin`
 contains validated semantic ordinary-damage, critical-hit, capture, and
-experience-award formula programs, plus owned-Pokemon stat calculation.
+experience-award formula programs, plus owned-Pokemon stat calculation and
+ordinary accuracy/evasion calculation with the cartridge-owned stage ratios.
 `boot_content.bin` contains normalized boot graphics, layouts, text programs,
 title timing tables, and initial-placement content.
 `world_interactions.bin` contains typed map-local interaction programs and

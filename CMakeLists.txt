@@ -82,6 +82,7 @@ if(POKERED_MODERN_BUILD_IMPORTER)
 endif()
 
 add_executable(native-gb-pokemon-red-modern
+    src/accuracy_rules.cpp
     src/animations.cpp
     src/battle_animation_lab.cpp
     src/battle_rules.cpp
@@ -130,6 +131,7 @@ pokered_modern_target_defaults(native-gb-pokemon-red-modern)
 if(BUILD_TESTING)
     add_executable(pokered-modern-foundation-tests
         tests/foundation_tests.cpp
+        src/accuracy_rules.cpp
         src/animations.cpp
         src/battle_animation_lab.cpp
         src/battle_rules.cpp

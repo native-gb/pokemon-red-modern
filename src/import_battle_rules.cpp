@@ -64,6 +64,13 @@ StatFormulaInstruction stat_instruction(
     return {.opcode = opcode, .operands = {a, b, c, d}};
 }
 
+AccuracyFormulaInstruction accuracy_instruction(
+    AccuracyFormulaOpcode opcode, std::uint16_t a = 0U,
+    std::uint16_t b = 0U, std::uint16_t c = 0U,
+    std::uint16_t d = 0U) {
+    return {.opcode = opcode, .operands = {a, b, c, d}};
+}
+
 DamageFormulaProgram lift_original_damage_formula() {
     DamageFormulaProgram program;
     program.key = "gen_1_original_damage";
@@ -227,6 +234,82 @@ bool lift_original_stat_formula(
     return true;
 }
 
+bool lift_original_accuracy_formula(
+    std::span<const std::uint8_t> rom, AccuracyFormulaProgram& program,
+    std::string& error) {
+    constexpr std::size_t ratio_offset = 0x03F6CBU;
+    constexpr std::size_t ratio_count = 13U;
+    if (ratio_offset + ratio_count * 2U > rom.size()) {
+        error = "accuracy stage table exceeds the verified cartridge";
+        return false;
+    }
+
+    program.stage_ratios.reserve(ratio_count);
+    std::uint8_t neutral_stage = 0U;
+    for (std::size_t index = 0; index < ratio_count; ++index) {
+        const std::uint8_t numerator = rom[ratio_offset + index * 2U];
+        const std::uint8_t denominator =
+            rom[ratio_offset + index * 2U + 1U];
+        if (numerator == 0U || denominator == 0U) {
+            error = "accuracy stage table contains a zero ratio";
+            return false;
+        }
+        program.stage_ratios.push_back({numerator, denominator});
+        if (numerator == denominator) {
+            if (neutral_stage != 0U) {
+                error = "accuracy stage table has multiple neutral stages";
+                return false;
+            }
+            neutral_stage = static_cast<std::uint8_t>(index + 1U);
+        }
+    }
+    if (neutral_stage == 0U) {
+        error = "accuracy stage table has no neutral stage";
+        return false;
+    }
+
+    std::uint8_t reflection_sum = 0U;
+    std::uint8_t calculation_count = 0U;
+    std::uint8_t chance_cap = 0U;
+    if (!read_immediate(rom, 0x03E63FU, 0x3EU,
+                        reflection_sum, error) ||
+        !read_immediate(rom, 0x03E64CU, 0x16U,
+                        calculation_count, error) ||
+        !read_immediate(rom, 0x03E682U, 0x3EU,
+                        chance_cap, error)) {
+        return false;
+    }
+    constexpr std::array<std::uint8_t, 6> strict_compare_sequence{
+        0xCDU, 0x9BU, 0x6EU, 0xB8U, 0x30U, 0x01U};
+    if (calculation_count != 2U ||
+        reflection_sum != neutral_stage * 2U ||
+        chance_cap == 0U ||
+        !std::equal(strict_compare_sequence.begin(),
+                    strict_compare_sequence.end(),
+                    rom.begin() + 0x03E602U)) {
+        error = "accuracy calculation is not the verified cartridge routine";
+        return false;
+    }
+
+    program.key = "gen_1_original_accuracy";
+    program.neutral_stage = neutral_stage;
+    program.instructions = {
+        accuracy_instruction(
+            AccuracyFormulaOpcode::guarantee_if_bypassed, chance_cap),
+        accuracy_instruction(
+            AccuracyFormulaOpcode::reflect_evasion, reflection_sum),
+        accuracy_instruction(
+            AccuracyFormulaOpcode::apply_accuracy_stage),
+        accuracy_instruction(
+            AccuracyFormulaOpcode::apply_evasion_stage),
+        accuracy_instruction(
+            AccuracyFormulaOpcode::cap_chance, chance_cap),
+        accuracy_instruction(AccuracyFormulaOpcode::sample_random),
+        accuracy_instruction(AccuracyFormulaOpcode::compare_less),
+    };
+    return true;
+}
+
 bool lift_original_capture_formula(
     std::span<const std::uint8_t> rom, CaptureFormulaProgram& program,
     std::string& error) {
@@ -373,6 +456,7 @@ void emit_source(const DamageFormulaProgram& program,
                  const CaptureFormulaProgram& capture,
                  const ExperienceFormulaProgram& experience,
                  const StatFormulaProgram& stats,
+                 const AccuracyFormulaProgram& accuracy,
                  BattleRuleImport& result) {
     std::ostringstream source;
     source << "; Semantic lift from the verified cartridge's damage routines.\n"
@@ -546,6 +630,54 @@ void emit_source(const DamageFormulaProgram& program,
     add_text_file(result, "source/battle_effects/stats.sexpr",
                   stat_source.str());
 
+    std::ostringstream accuracy_source;
+    accuracy_source
+        << "; Semantic lift of MoveHitTest/CalcHitChance at\n"
+        << "; 0x03e5f3..0x03e687 and the cartridge-owned stage ratio table\n"
+        << "; at 0x03f6cb..0x03f6e5. Stages are one-based.\n\n"
+        << "accuracy_formula " << accuracy.key << '\n'
+        << "    neutral_stage "
+        << static_cast<unsigned>(accuracy.neutral_stage) << '\n'
+        << "    stage_ratios\n";
+    for (std::size_t index = 0; index < accuracy.stage_ratios.size();
+         ++index) {
+        const AccuracyStageRatio& ratio = accuracy.stage_ratios[index];
+        accuracy_source << "        stage " << (index + 1U) << ' '
+                        << ratio.numerator << ' ' << ratio.denominator
+                        << '\n';
+    }
+    for (const AccuracyFormulaInstruction& instruction :
+         accuracy.instructions) {
+        switch (instruction.opcode) {
+        case AccuracyFormulaOpcode::guarantee_if_bypassed:
+            accuracy_source << "    guarantee_if_bypassed "
+                            << instruction.operands[0] << '\n';
+            break;
+        case AccuracyFormulaOpcode::reflect_evasion:
+            accuracy_source << "    reflect_evasion "
+                            << instruction.operands[0] << '\n';
+            break;
+        case AccuracyFormulaOpcode::apply_accuracy_stage:
+            accuracy_source << "    apply_accuracy_stage\n";
+            break;
+        case AccuracyFormulaOpcode::apply_evasion_stage:
+            accuracy_source << "    apply_evasion_stage\n";
+            break;
+        case AccuracyFormulaOpcode::cap_chance:
+            accuracy_source << "    cap_chance "
+                            << instruction.operands[0] << '\n';
+            break;
+        case AccuracyFormulaOpcode::sample_random:
+            accuracy_source << "    sample_random\n";
+            break;
+        case AccuracyFormulaOpcode::compare_less:
+            accuracy_source << "    compare_less\n";
+            break;
+        }
+    }
+    add_text_file(result, "source/battle_effects/accuracy.sexpr",
+                  accuracy_source.str());
+
     std::ostringstream report;
     report << "Pokemon Red semantic battle-rule import\n"
            << "damage_formula_programs 1\n"
@@ -555,11 +687,13 @@ void emit_source(const DamageFormulaProgram& program,
            << "critical_hit_programs 1\n"
            << "experience_formula_programs 1\n"
            << "stat_formula_programs 1\n"
+           << "accuracy_formula_programs 1\n"
            << "move_effect_programs 0\n"
            << "status_programs 0\n"
-           << "coverage_note damage, critical-hit, capture, experience, and "
-              "owned-Pokemon stat calculations are executable; remaining "
-              "battle program domains stay explicitly incomplete\n";
+           << "coverage_note damage, critical-hit, capture, experience, "
+              "owned-Pokemon stat, and ordinary accuracy calculations are "
+              "executable; remaining battle program domains stay explicitly "
+              "incomplete\n";
     add_text_file(result, "reports/battle_rule_import_summary.txt",
                   report.str());
 }
@@ -569,8 +703,9 @@ void emit_cache(const DamageFormulaProgram& program,
                 const CaptureFormulaProgram& capture,
                 const ExperienceFormulaProgram& experience,
                 const StatFormulaProgram& stats,
+                const AccuracyFormulaProgram& accuracy,
                 BattleRuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '5'};
+    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '6'};
     write_u16(bytes, 1U);
     write_u16(bytes, 0U);
     write_string(bytes, program.key);
@@ -646,6 +781,25 @@ void emit_cache(const DamageFormulaProgram& program,
         for (const std::uint16_t operand : value.operands)
             write_u16(bytes, operand);
     }
+
+    write_u16(bytes, 1U);
+    write_u16(bytes, 0U);
+    write_string(bytes, accuracy.key);
+    write_u16(bytes,
+              static_cast<std::uint16_t>(accuracy.stage_ratios.size()));
+    for (const AccuracyStageRatio& ratio : accuracy.stage_ratios) {
+        write_u16(bytes, ratio.numerator);
+        write_u16(bytes, ratio.denominator);
+    }
+    bytes.push_back(accuracy.neutral_stage);
+    write_u16(bytes,
+              static_cast<std::uint16_t>(accuracy.instructions.size()));
+    for (const AccuracyFormulaInstruction& value :
+         accuracy.instructions) {
+        bytes.push_back(static_cast<std::uint8_t>(value.opcode));
+        for (const std::uint16_t operand : value.operands)
+            write_u16(bytes, operand);
+    }
     result.files.push_back(
         {"compiled/battle_rules.bin", std::move(bytes)});
 }
@@ -673,13 +827,18 @@ bool decode_battle_rule_import(std::span<const std::uint8_t> rom,
         return false;
     StatFormulaProgram stats;
     if (!lift_original_stat_formula(rom, stats, error)) return false;
-    emit_source(program, critical, capture, experience, stats, result);
-    emit_cache(program, critical, capture, experience, stats, result);
+    AccuracyFormulaProgram accuracy;
+    if (!lift_original_accuracy_formula(rom, accuracy, error)) return false;
+    emit_source(program, critical, capture, experience, stats, accuracy,
+                result);
+    emit_cache(program, critical, capture, experience, stats, accuracy,
+               result);
     result.damage_formulas = 1U;
     result.critical_hit_programs = 1U;
     result.capture_formulas = 1U;
     result.experience_formulas = 1U;
     result.stat_formulas = 1U;
+    result.accuracy_formulas = 1U;
     error.clear();
     return true;
 }

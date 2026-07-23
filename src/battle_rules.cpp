@@ -132,6 +132,22 @@ bool valid_instruction(const StatFormulaInstruction& instruction) {
     return false;
 }
 
+bool valid_instruction(const AccuracyFormulaInstruction& instruction) {
+    const auto& value = instruction.operands;
+    switch (instruction.opcode) {
+    case AccuracyFormulaOpcode::guarantee_if_bypassed:
+    case AccuracyFormulaOpcode::apply_accuracy_stage:
+    case AccuracyFormulaOpcode::apply_evasion_stage:
+    case AccuracyFormulaOpcode::sample_random:
+    case AccuracyFormulaOpcode::compare_less:
+        return true;
+    case AccuracyFormulaOpcode::reflect_evasion:
+    case AccuracyFormulaOpcode::cap_chance:
+        return value[0] != 0U && value[0] <= 0xFFU;
+    }
+    return false;
+}
+
 std::uint16_t interaction_multiplier(const RuleCatalog& rules,
                                      std::uint8_t attacking,
                                      std::uint8_t defending) {
@@ -158,7 +174,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '5'}) {
+        magic != std::array{'P', 'B', 'R', '6'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -458,6 +474,80 @@ bool load_battle_rules(const std::filesystem::path& path,
             program.instructions.push_back(instruction);
         }
         loaded.stat_formulas.push_back(std::move(program));
+    }
+
+    std::uint16_t accuracy_count = 0;
+    if (!read_u16(input, accuracy_count) || accuracy_count == 0U ||
+        accuracy_count > 64U ||
+        !read_u16(input, loaded.original_accuracy_formula) ||
+        loaded.original_accuracy_formula >= accuracy_count) {
+        error = "battle rule cache has an invalid accuracy formula index";
+        return false;
+    }
+    loaded.accuracy_formulas.reserve(accuracy_count);
+    keys.clear();
+    for (std::uint16_t index = 0; index < accuracy_count; ++index) {
+        AccuracyFormulaProgram program;
+        std::uint16_t ratio_count = 0;
+        std::uint16_t instruction_count = 0;
+        if (!read_string(input, program.key) ||
+            !keys.insert(program.key).second ||
+            !read_u16(input, ratio_count) || ratio_count == 0U ||
+            ratio_count > 255U) {
+            error = "battle rule cache has an invalid accuracy formula";
+            return false;
+        }
+        program.stage_ratios.reserve(ratio_count);
+        for (std::uint16_t ratio_index = 0; ratio_index < ratio_count;
+             ++ratio_index) {
+            AccuracyStageRatio ratio;
+            if (!read_u16(input, ratio.numerator) ||
+                !read_u16(input, ratio.denominator) ||
+                ratio.denominator == 0U) {
+                error = "battle rule cache has invalid accuracy stage ratios";
+                return false;
+            }
+            program.stage_ratios.push_back(ratio);
+        }
+        if (!read_u8(input, program.neutral_stage) ||
+            program.neutral_stage == 0U ||
+            program.neutral_stage > program.stage_ratios.size() ||
+            !read_u16(input, instruction_count) ||
+            instruction_count == 0U || instruction_count > 64U) {
+            error = "battle rule cache has invalid accuracy formula metadata";
+            return false;
+        }
+        const AccuracyStageRatio& neutral =
+            program.stage_ratios[program.neutral_stage - 1U];
+        if (neutral.numerator != neutral.denominator) {
+            error = "battle rule cache accuracy neutral stage is not neutral";
+            return false;
+        }
+        program.instructions.reserve(instruction_count);
+        for (std::uint16_t instruction_index = 0;
+             instruction_index < instruction_count; ++instruction_index) {
+            AccuracyFormulaInstruction instruction;
+            std::uint8_t opcode = 0;
+            if (!read_u8(input, opcode) ||
+                opcode > static_cast<std::uint8_t>(
+                             AccuracyFormulaOpcode::compare_less)) {
+                error = "battle rule cache has an unknown accuracy opcode";
+                return false;
+            }
+            instruction.opcode = static_cast<AccuracyFormulaOpcode>(opcode);
+            for (std::uint16_t& operand : instruction.operands)
+                if (!read_u16(input, operand)) {
+                    error =
+                        "battle rule cache has truncated accuracy operands";
+                    return false;
+                }
+            if (!valid_instruction(instruction)) {
+                error = "battle rule cache has invalid accuracy operands";
+                return false;
+            }
+            program.instructions.push_back(instruction);
+        }
+        loaded.accuracy_formulas.push_back(std::move(program));
     }
 
     if (input.peek() != std::char_traits<char>::eof()) {

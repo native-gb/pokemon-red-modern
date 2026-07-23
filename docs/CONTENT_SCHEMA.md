@@ -323,6 +323,8 @@ battle_ruleset pokemon_red_original
     damage_formula gen_1_original_damage
     capture_formula gen_1_original_capture
     experience_formula gen_1_original_experience
+    stat_formula gen_1_original_stats
+    accuracy_formula gen_1_original_accuracy
     type_interactions gen_1_type_chart
     critical_hit_profile gen_1_original_critical_hits
 
@@ -336,7 +338,10 @@ Damage formula programs consume typed values such as level, power, attack,
 defense, STAB, type multipliers, critical state, random roll, and ordered
 modifiers. Capture formula programs consume species catch rate, ball profile,
 HP, status, Safari factors, and deterministic RNG. They cannot access raw
-memory or arbitrary engine state.
+memory or arbitrary engine state. Accuracy programs consume raw move accuracy,
+attacker accuracy stage, target evasion stage, semantic bypass state, and
+deterministic RNG; their complete stage-ratio table comes from campaign
+content rather than an engine-owned list.
 
 Move effect programs decide semantic behavior—damage, status, recoil, drain,
 multi-hit, fixed damage, transform, metronome, and other effects—while formula
