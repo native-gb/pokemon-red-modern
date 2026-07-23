@@ -1,4 +1,4 @@
-#include "content/catalog.hpp"
+#include "catalog.hpp"
 
 namespace pokered::content {
 

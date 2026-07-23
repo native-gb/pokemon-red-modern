@@ -12,13 +12,13 @@ verify ROM
   -> normalize to semantic records
   -> resolve typed references
   -> validate invariants and completeness
-  -> compile scripts and presentation tracks
+  -> compile scripts and animation tracks
   -> pack atlases and audio
   -> write versioned local cache atomically
 ```
 
 The cache key includes the ROM digest, importer version, schema version,
-enhancement profile, presentation profile, and language. A mismatch rebuilds
+enhancement profile, visual profile, and language. A mismatch rebuilds
 the cache. The source ROM is never modified.
 
 ## Pre-extraction inventory
@@ -39,7 +39,7 @@ range and assign it to a domain:
 8. trainer classes, parties, rewards, AI, wild encounters, and special battles;
 9. map scripts, NPC scripts, movement paths, flags, variables, and event entry
    points;
-10. music, instruments, patterns, sound effects, cries, and presentation cues;
+10. music, instruments, patterns, sound effects, cries, and animation cues;
 11. title, naming, healing, travel, ending, and credits sequences;
 12. save fields and persistent world-state mappings.
 
@@ -67,7 +67,7 @@ graphics
 palettes
 audio
 ui
-presentation
+animations
 credits
 provenance
 ```

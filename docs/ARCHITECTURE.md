@@ -5,8 +5,8 @@
 Pokémon Red Modern is a data-driven RPG engine, not a translation of Game Boy
 machine organization. The cartridge tells the importer what campaign content
 exists and provides behavioral evidence. The modern runtime owns semantic
-state: maps, actors, parties, inventory, quests, scripts, battles, and
-presentation timelines.
+state: maps, actors, parties, inventory, quests, scripts, battles, and animation
+timelines.
 
 ## Visible ownership graph
 
@@ -17,7 +17,7 @@ local ROM -> importer -> immutable ContentPack -> cache
                                   |
 input -> deterministic GameState -> semantic events
                                   |
-                PresentationState + audio director
+                    RenderState + audio director
                          |                 |
                     GPU renderer       audio device
 
@@ -26,6 +26,37 @@ host window / controls / persistence / ImGui observe the edges
 
 There is no all-purpose application context. Dependencies are parameters or
 small domain-owned handles. Shutdown follows the visible ownership order.
+
+## Source layout
+
+Keep the top-level code flat until a module has enough concrete files to earn a
+directory:
+
+```text
+src/
+  main.cpp
+  catalog.cpp/.hpp
+  state.cpp/.hpp
+  window.cpp/.hpp
+  tools.cpp/.hpp
+  input.cpp/.hpp
+  save.cpp/.hpp
+  scripts.cpp/.hpp
+  battle.cpp/.hpp
+  audio.cpp/.hpp
+  render/
+    frame.cpp/.hpp
+    overworld.cpp/.hpp
+    battle.cpp/.hpp
+    menus.cpp/.hpp
+    text.cpp/.hpp
+    atlases.cpp/.hpp
+    utils.cpp/.hpp
+```
+
+`render/frame` is the top-level frame dispatcher. The other render files own
+specific draw passes and shared GPU helpers. Do not recreate umbrella
+`runtime`, `content`, or `host` directories merely to label dependencies.
 
 ## Core domains
 
@@ -41,7 +72,7 @@ One manifest points to many typed indexes:
 - items, shops, machines, field uses, and key-item behavior;
 - parties, trainer classes, AI profiles, and encounter tables;
 - graphics, palettes, UI layouts, animation tracks, music, and sound effects;
-- credits and presentation sequences;
+- credits and animation sequences;
 - provenance and completeness records.
 
 Indexes use stable typed IDs. Imported content is immutable after validation.
@@ -100,10 +131,10 @@ Compatibility quirks are named rules in a profile. Unsafe memory overlap is not
 modeled. If a visible bug is worth preserving, implement its semantic result
 directly and test it.
 
-### Presentation
+### Rendering and animation sequences
 
 Gameplay publishes events such as `DialogueOpened`, `MoveUsed`,
-`DamageApplied`, `WarpStarted`, and `ItemReceived`. Presentation timelines
+`DamageApplied`, `WarpStarted`, and `ItemReceived`. Animation timelines
 translate these into:
 
 - sprite and tile draw commands;
@@ -112,15 +143,17 @@ translate these into:
 - animation tracks;
 - music state and sound cues.
 
-The GPU backend owns atlases and batches. Imported assets are decoded once; the
-renderer does not reconstruct Game Boy tiles or sprites every frame. A 160×144
-compatibility composition is one view policy, not an architectural constraint.
+`render/` contains concrete frame dispatchers, render utilities, atlas
+resources, and draw functions. The GPU backend owns atlases and batches.
+Imported assets are decoded once; the renderer does not reconstruct Game Boy
+tiles or sprites every frame. A 160×144 compatibility composition is one view
+policy, not an architectural constraint.
 
 ## Fixed-step sequencing
 
 Simulation advances at a fixed cadence. The host accumulates monotonic elapsed
 time, runs zero or more deterministic steps, then renders once. Rendering may
-interpolate walking, cameras, and non-rule presentation. Speed-up changes the
+interpolate walking, cameras, and non-rule animation. Speed-up changes the
 number of simulation steps per wall-clock second while audio pitch and music
 tempo remain independently controlled.
 

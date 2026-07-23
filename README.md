@@ -5,7 +5,7 @@ imported campaign.
 
 This repository is not an emulator and does not contain Pokémon Red game data.
 It will verify a user-supplied supported cartridge, decode it into typed
-semantic content, and cache that content locally. Runtime logic, presentation,
+semantic content, and cache that content locally. Runtime logic, rendering,
 tooling, enhancements, and future authored campaigns remain independent of ROM
 layout.
 
@@ -16,7 +16,7 @@ The repository currently provides:
 - a windowed 1280×720 GPU host with a centered 10:9 game view;
 - ImGui player tools on F1 and full-screen developer tools on F2;
 - fullscreen toggle on F11;
-- independent content, runtime, presentation, and host targets;
+- a flat source tree with a concrete `render/` module;
 - incremental Debug, Release, and sanitizer builds;
 - architecture, coding, distribution, and extraction plans.
 

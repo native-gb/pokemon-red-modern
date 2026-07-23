@@ -1,8 +1,8 @@
 #pragma once
 
-#include "content/catalog.hpp"
-#include "host/window.hpp"
-#include "runtime/state.hpp"
+#include "catalog.hpp"
+#include "state.hpp"
+#include "window.hpp"
 
 namespace pokered {
 

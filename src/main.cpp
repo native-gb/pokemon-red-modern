@@ -1,9 +1,9 @@
-#include "content/catalog.hpp"
-#include "host/tools.hpp"
-#include "host/window.hpp"
-#include "presentation/game_view.hpp"
-#include "runtime/state.hpp"
+#include "catalog.hpp"
+#include "render/frame.hpp"
 #include "src/imgui_layer.hpp"
+#include "state.hpp"
+#include "tools.hpp"
+#include "window.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -99,9 +99,9 @@ int main(int argc, char** argv) {
 
         pokered::update_window(window, elapsed);
         imgui_new_frame();
-        if (!pokered::presentation::draw_game_view(
-                window.frame.renderer, window.frame.render_target, window.frame.render_width,
-                window.frame.render_height, game, catalog) ||
+        if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
+                                           window.frame.render_width, window.frame.render_height,
+                                           game, catalog) ||
             !pokered::draw_window(window)) {
             std::fprintf(stderr, "could not render frame: %s\n", SDL_GetError());
             render_failed = true;

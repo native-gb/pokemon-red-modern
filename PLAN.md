@@ -12,7 +12,7 @@ rendering or memory constraints.
 - [x] Independent repository and incremental build.
 - [x] Windowed GPU host with centered 10:9 view.
 - [x] Full-screen F1 player and F2 developer layouts.
-- [x] Content/runtime/presentation/host boundaries.
+- [x] Flat source layout with gameplay isolated from concrete render and host APIs.
 - [x] Architecture, code-style, distribution, and extraction plans.
 
 ## Milestone 1 — reproducible content pack
@@ -43,7 +43,7 @@ reload, and continue.
 
 - Wild and trainer battle rules.
 - Party stats, experience, levels, status, capture, switching, items, and AI.
-- Battle presentation timelines and audio events.
+- Battle animation timelines and audio events.
 - Evolution, move learning, Pokédex, money, blackout, and healing.
 
 Exit: the Route 1/Viridian loop is fully playable, including encounters,
@@ -61,7 +61,7 @@ and reachable-content audits passing.
 
 ## Milestone 5 — modern enhancements
 
-- Color and presentation profiles.
+- Color and animation profiles.
 - Rebindable controls, independent text/game speeds, accessibility.
 - Optional bug fixes and compatibility presets.
 - Expanded availability/no-exclusive rules behind explicit settings.

@@ -9,14 +9,19 @@ shape for this repository.
 
 ## Runtime boundaries
 
-- `runtime/` owns deterministic rules and mutable game state. It does not
-  include SDL, ImGui, filesystem, audio-device, or ROM-parsing headers.
-- `content/` owns immutable typed campaign data and import validation. Runtime
-  code consumes stable IDs and semantic records, never ROM offsets.
-- `presentation/` converts semantic state and events into render/audio commands.
-  Presentation timing must not mutate game rules.
-- `host/` owns windows, GPU resources, input devices, persistence, and developer
-  UI. These types do not leak into runtime code.
+- Keep ordinary modules flat in `src/`: `state`, `catalog`, `window`, `tools`,
+  input, persistence, audio, scripts, battles, maps, and similarly concrete
+  names. Add a directory only when a real family of files has formed.
+- `state` and gameplay modules own deterministic rules and mutable game state.
+  They do not include SDL, ImGui, filesystem, audio-device, or ROM-parsing
+  headers.
+- `catalog` and importer modules own immutable typed campaign data and import
+  validation. Gameplay consumes stable IDs and semantic records, never ROM
+  offsets.
+- `render/` owns render dispatchers, render utilities, atlas resources, and
+  concrete draw functions. Animation timing must not mutate game rules.
+- Window, GPU, input-device, persistence, and developer-UI code stays outside
+  gameplay state even though its small modules live directly in `src/`.
 - `main.cpp` visibly owns and connects independent domains. Do not introduce an
   `App`, `Engine`, `Context`, service locator, or global registry.
 
@@ -48,7 +53,8 @@ shape for this repository.
 
 - Advance gameplay on a deterministic fixed step. Rendering may interpolate
   but may never change the number or order of simulation steps.
-- World, battle, menus, cutscenes, and transitions publish semantic events.
+- World, battle, menus, cutscenes, and transitions publish semantic events for
+  render and audio systems.
 - Campaign orchestration uses a validated, indentation-scoped script language.
   Compile source to typed IR/bytecode; execute it with resumable coroutines.
 - Script waits are explicit. A script owns input when its current instruction

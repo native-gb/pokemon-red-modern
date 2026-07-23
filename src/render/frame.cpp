@@ -1,11 +1,11 @@
-#include "presentation/game_view.hpp"
+#include "render/frame.hpp"
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cmath>
 
-namespace pokered::presentation {
+namespace pokered::render {
 
 ViewLayout layout_view(int output_width, int output_height) {
     constexpr float native_width = 160.0F;
@@ -28,9 +28,8 @@ ViewLayout layout_view(int output_width, int output_height) {
     };
 }
 
-bool draw_game_view(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
-                    int output_height, const GameState& game,
-                    const content::CatalogSummary& catalog) {
+bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width, int output_height,
+                  const GameState& game, const content::CatalogSummary& catalog) {
     if (renderer == nullptr || target == nullptr) return false;
     if (!SDL_SetRenderTarget(renderer, target)) return false;
 
@@ -68,4 +67,4 @@ bool draw_game_view(SDL_Renderer* renderer, SDL_Texture* target, int output_widt
     return true;
 }
 
-} // namespace pokered::presentation
+} // namespace pokered::render

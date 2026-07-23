@@ -59,48 +59,23 @@ else()
     set(POKERED_MODERN_GUBSY_DIR "${gubsy_SOURCE_DIR}")
 endif()
 
-add_library(pokered-modern-content STATIC
-    src/content/catalog.cpp
+add_executable(native-gb-pokemon-red-modern
+    src/catalog.cpp
+    src/main.cpp
+    src/render/frame.cpp
+    src/state.cpp
+    src/tools.cpp
+    src/window.cpp
 )
-target_include_directories(pokered-modern-content PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-pokered_modern_target_defaults(pokered-modern-content)
-
-add_library(pokered-modern-runtime STATIC
-    src/runtime/state.cpp
-)
-target_include_directories(pokered-modern-runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(pokered-modern-runtime PUBLIC pokered-modern-content)
-pokered_modern_target_defaults(pokered-modern-runtime)
-
-add_library(pokered-modern-presentation STATIC
-    src/presentation/game_view.cpp
-)
-target_include_directories(pokered-modern-presentation PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(pokered-modern-presentation PUBLIC
-    pokered-modern-runtime SDL3::SDL3)
-pokered_modern_target_defaults(pokered-modern-presentation)
-
-add_library(pokered-modern-host STATIC
-    src/host/tools.cpp
-    src/host/window.cpp
-)
-target_include_directories(pokered-modern-host PUBLIC
+target_include_directories(native-gb-pokemon-red-modern PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${POKERED_MODERN_GUBSY_DIR}/include"
     "${POKERED_MODERN_GUBSY_DIR}"
     "${POKERED_MODERN_GUBSY_DIR}/imgui"
     "${POKERED_MODERN_GUBSY_DIR}/imgui/backends")
-target_compile_definitions(pokered-modern-host PUBLIC
+target_compile_definitions(native-gb-pokemon-red-modern PRIVATE
     POKERED_MODERN_SOURCE_DIR="${POKERED_MODERN_RUNTIME_PROJECT_ROOT}"
     POKERED_MODERN_GUBSY_ASSETS_DIR="${POKERED_MODERN_GUBSY_DIR}/src/assets")
-target_link_libraries(pokered-modern-host PUBLIC
-    pokered-modern-content pokered-modern-runtime gubsy::engine SDL3::SDL3)
-pokered_modern_target_defaults(pokered-modern-host)
-
-add_executable(native-gb-pokemon-red-modern src/main.cpp)
-target_compile_definitions(native-gb-pokemon-red-modern PRIVATE
-    POKERED_MODERN_SOURCE_DIR="${POKERED_MODERN_RUNTIME_PROJECT_ROOT}")
 target_link_libraries(native-gb-pokemon-red-modern PRIVATE
-    pokered-modern-content pokered-modern-host pokered-modern-presentation
-    pokered-modern-runtime)
+    gubsy::engine SDL3::SDL3)
 pokered_modern_target_defaults(native-gb-pokemon-red-modern)

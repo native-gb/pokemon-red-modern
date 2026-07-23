@@ -60,7 +60,7 @@ The first compiler should cover:
 - inventory: `give`, `take`, `has`, `open shop`;
 - party: `give pokemon`, `heal party`, `open party`;
 - encounters: `start battle`, `start trainer battle`;
-- presentation: `play cue`, `start timeline`, `fade`;
+- animation: `play cue`, `start timeline`, `fade`;
 - system: `save`, `open menu`, `show credits`.
 
 Commands are versioned. Unsupported commands fail pack validation; they never
@@ -113,7 +113,7 @@ Script commands call narrow semantic interfaces owned by native executors:
 - inventory, shops, machines, and field-item use;
 - battle rules and AI;
 - dialogue, menus, and text layout;
-- presentation timelines and animation tracks;
+- render timelines and animation tracks;
 - music/effect direction and mixing;
 - save/load and migration.
 
