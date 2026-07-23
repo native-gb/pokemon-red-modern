@@ -19,6 +19,7 @@
 #include "sexpr.hpp"
 #include "state.hpp"
 #include "symbols.hpp"
+#include "trainers.hpp"
 
 #include <algorithm>
 #include <array>
@@ -697,6 +698,33 @@ void test_local_rule_cache(TestState& state) {
               rules.growth_curves.size() == 6 && rules.machines.size() == 55,
           "complete progression and machine tables load");
 
+    pokered::TrainerCatalog trainers;
+    check(state,
+          pokered::load_trainers(path.parent_path() / "trainers.bin",
+                                 trainers, error),
+          "complete trainer cache loads");
+    const pokered::TrainerClassRule* youngster =
+        pokered::find_trainer_class(trainers, 1U);
+    const pokered::TrainerPartyRule* youngster_party =
+        pokered::find_trainer_party(trainers, 1U, 0U);
+    std::size_t trainer_party_count = 0U;
+    std::size_t trainer_member_count = 0U;
+    for (const pokered::TrainerClassRule& trainer : trainers.classes) {
+        trainer_party_count += trainer.parties.size();
+        for (const pokered::TrainerPartyRule& party : trainer.parties)
+            trainer_member_count += party.members.size();
+    }
+    check(state,
+          trainers.classes.size() == 47U &&
+              trainer_party_count == 391U &&
+              trainer_member_count == 994U && youngster != nullptr &&
+              youngster->name == "YOUNGSTER" &&
+              youngster_party != nullptr &&
+              youngster_party->members ==
+                  std::vector<pokered::TrainerPartyMember>{
+                      {11U, 19U}, {11U, 23U}},
+          "trainer classes join rewards, AI profiles, and indexed parties");
+
     const pokered::SpeciesRule* bulbasaur = pokered::find_species(rules, 1);
     check(state,
           bulbasaur != nullptr && bulbasaur->key == "bulbasaur" && bulbasaur->internal_id == 153 &&
@@ -1005,6 +1033,29 @@ void test_local_rule_cache(TestState& state) {
           stats != nullptr && stats->key == "gen_1_original_stats" &&
               stats->instructions.size() == 7U,
           "original owned-Pokemon stat formula resolves by imported binding");
+    if (stats != nullptr && youngster_party != nullptr) {
+        pokered::PokemonState player_fixture;
+        pokered::PartyState trainer_player;
+        pokered::BattleState trainer_battle;
+        check(state,
+              pokered::build_pokemon(
+                  rules, *stats, 1U, 12U,
+                  {15U, 15U, 15U, 15U}, 7U, "PLAYER",
+                  player_fixture, error),
+              "trainer battle player fixture builds");
+        trainer_player.members.push_back(std::move(player_fixture));
+        check(state,
+              pokered::begin_trainer_battle(
+                  rules, battle_rules, trainer_player, *youngster_party,
+                  0x2468ACE1U, trainer_battle, error) &&
+                  trainer_battle.active &&
+                  trainer_battle.kind == pokered::BattleKind::trainer &&
+                  trainer_battle.enemy_party.members.size() == 2U &&
+                  trainer_battle.enemy_party.members[0].species_dex == 19U &&
+                  trainer_battle.enemy_party.members[0].level == 11U &&
+                  trainer_battle.enemy_party.members[1].species_dex == 23U,
+              "indexed trainer party materializes an owned trainer battle");
+    }
     if (stats != nullptr) {
         const pokered::SpeciesRule* squirtle_species =
             pokered::find_species(rules, 7U);

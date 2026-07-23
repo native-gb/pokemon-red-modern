@@ -17,6 +17,7 @@
 #include "src/imgui_layer.hpp"
 #include "state.hpp"
 #include "tools.hpp"
+#include "trainers.hpp"
 #include "window.hpp"
 
 #include <SDL3/SDL.h>
@@ -115,6 +116,7 @@ int main(int argc, char** argv) {
 
     pokered::WorldState world;
     pokered::EncounterCatalog encounters;
+    pokered::TrainerCatalog trainers;
     pokered::RuleCatalog rules;
     pokered::BattleRuleCatalog battle_rules;
     pokered::InteractionCatalog interactions;
@@ -147,11 +149,17 @@ int main(int argc, char** argv) {
     if (!pokered::load_encounters(encounter_cache, encounters,
                                   encounter_error))
         std::fprintf(stderr, "%s\n", encounter_error.c_str());
+    const std::filesystem::path trainer_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" /
+        "trainers.bin";
+    std::string trainer_error;
+    if (!pokered::load_trainers(trainer_cache, trainers, trainer_error))
+        std::fprintf(stderr, "%s\n", trainer_error.c_str());
     if (world.loaded && interactions.loaded &&
         !pokered::initialize_world_runtime(world, interactions, interaction_error))
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
     if (world.loaded && interactions.loaded && rules.loaded &&
-        encounters.loaded &&
+        encounters.loaded && trainers.loaded &&
         battle_rules.loaded && boot_content.loaded) {
         catalog.state = pokered::content::PackState::partial;
         catalog.campaign = "Pokemon Red";

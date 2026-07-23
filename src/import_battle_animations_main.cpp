@@ -7,6 +7,7 @@
 #include "import_pictures.hpp"
 #include "import_rules.hpp"
 #include "import_scripts.hpp"
+#include "import_trainers.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -53,6 +54,7 @@ int main(int argc, char** argv) {
     pokered::import::PictureImport pictures;
     pokered::import::RuleImport rules;
     pokered::import::ScriptImport scripts;
+    pokered::import::TrainerImport trainers;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
         !pokered::import::decode_battle_rule_import(rom, battle_rules, error) ||
@@ -61,6 +63,7 @@ int main(int argc, char** argv) {
         !pokered::import::decode_picture_import(rom, pictures, error) ||
         !pokered::import::decode_map_import(rom, maps, error) ||
         !pokered::import::decode_rule_import(rom, rules, error) ||
+        !pokered::import::decode_trainer_import(rom, trainers, error) ||
         !pokered::import::decode_script_import(rom, scripts, error)) {
         std::cerr << error << '\n';
         return 1;
@@ -81,6 +84,9 @@ int main(int argc, char** argv) {
                           std::make_move_iterator(maps.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(rules.files.begin()),
                           std::make_move_iterator(rules.files.end()));
+    imported.files.insert(imported.files.end(),
+                          std::make_move_iterator(trainers.files.begin()),
+                          std::make_move_iterator(trainers.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(scripts.files.begin()),
                           std::make_move_iterator(scripts.files.end()));
     const auto manifest =
@@ -114,6 +120,10 @@ int main(int argc, char** argv) {
                     << "active_water_encounter_tables "
                     << encounters.active_water_tables << '\n'
                     << "encounter_slots " << encounters.slots << '\n'
+                    << "trainer_importer_version 1\n"
+                    << "trainer_classes " << trainers.classes << '\n'
+                    << "trainer_parties " << trainers.parties << '\n'
+                    << "trainer_party_members " << trainers.members << '\n'
                     << "boot_importer_version 1\n"
                     << "boot_images " << boot.images << '\n'
                     << "boot_title_species " << boot.title_species << '\n'
@@ -181,6 +191,12 @@ int main(int argc, char** argv) {
               << " explicit land/water slots\n";
     std::cout << "Encounter cache: "
               << output_root / "compiled" / "encounters.bin" << '\n';
+    std::cout << "Imported " << trainers.classes
+              << " trainer classes with " << trainers.parties
+              << " indexed parties and " << trainers.members
+              << " party members\n";
+    std::cout << "Trainer cache: "
+              << output_root / "compiled" / "trainers.bin" << '\n';
     std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"
               << '\n';
     std::cout << "Frame assets: " << output_root / "compiled" / "battle_animation_frames.bin"

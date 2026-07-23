@@ -81,6 +81,8 @@ data/runtime/imports/pokemon_red_us_rev_0/
             species.sexpr
             learnsets.sexpr
             evolutions.sexpr
+        trainers/
+            classes_and_parties.sexpr
         moves.sexpr
         items.sexpr
         trainers.sexpr
@@ -93,6 +95,7 @@ data/runtime/imports/pokemon_red_us_rev_0/
         battle_rule_import_summary.txt
         boot_import_summary.txt
         encounter_import_summary.txt
+        trainer_import_summary.txt
         completeness.txt
         unresolved.txt
         source_ranges.txt
@@ -101,6 +104,7 @@ data/runtime/imports/pokemon_red_us_rev_0/
         battle_rules.bin
         boot_content.bin
         encounters.bin
+        trainers.bin
         world_maps.bin
         world_interactions.bin
         map_program_index.bin
@@ -138,6 +142,11 @@ the cartridge-derived ten-slot cumulative probability curve and terrain
 selection policy. A resolved encounter is materialized as an owned Pokemon
 through the imported stat, species, starting-move, and learnset rules before
 the ordinary battle executor receives it.
+`trainers.bin` owns all 47 trainer classes, their cartridge rewards and AI-use
+profiles, and all 391 indexed parties containing 994 party members. Internal
+species IDs are resolved to the shared 151-species index during import. Map
+actor/script bindings will select these records by class and party index; the
+battle engine does not own trainer rosters.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Normal startup does not parse the readable `.sexpr` files.
 

@@ -74,6 +74,7 @@ if(POKERED_MODERN_BUILD_IMPORTER)
         src/import_pictures.cpp
         src/import_rules.cpp
         src/import_rules_emit.cpp
+        src/import_trainers.cpp
         src/import_scripts.cpp
         src/import_text.cpp
     )
@@ -118,6 +119,7 @@ add_executable(native-gb-pokemon-red-modern
     src/stat_rules.cpp
     src/symbols.cpp
     src/tools.cpp
+    src/trainers.cpp
     src/window.cpp
 )
 target_include_directories(native-gb-pokemon-red-modern PRIVATE
@@ -163,6 +165,7 @@ if(BUILD_TESTING)
         src/settings.cpp
         src/stat_rules.cpp
         src/symbols.cpp
+        src/trainers.cpp
     )
     target_include_directories(pokered-modern-foundation-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")

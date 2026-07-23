@@ -3,6 +3,7 @@
 #include "battle_rules.hpp"
 #include "encounters.hpp"
 #include "rules.hpp"
+#include "trainers.hpp"
 
 #include <algorithm>
 #include <array>
@@ -488,6 +489,44 @@ bool begin_wild_battle(const RuleCatalog& rules,
     enemy.members.push_back(std::move(wild));
     return begin_battle(rules, battle_rules, player_party, std::move(enemy),
                         BattleKind::wild, state, result, error);
+}
+
+bool begin_trainer_battle(const RuleCatalog& rules,
+                          const BattleRuleCatalog& battle_rules,
+                          const PartyState& player_party,
+                          const TrainerPartyRule& trainer_party,
+                          std::uint32_t random_seed, BattleState& result,
+                          std::string& error) {
+    const StatFormulaProgram* stats = find_stat_formula(
+        battle_rules, battle_rules.original_stat_formula);
+    if (trainer_party.members.empty() ||
+        trainer_party.members.size() > 6U || stats == nullptr) {
+        error = "trainer battle cannot begin from an incomplete party";
+        return false;
+    }
+    std::uint32_t state = random_seed == 0U ? 1U : random_seed;
+    PartyState enemy;
+    enemy.members.reserve(trainer_party.members.size());
+    for (const TrainerPartyMember& member : trainer_party.members) {
+        const std::uint8_t first = next_random_byte(state);
+        const std::uint8_t second = next_random_byte(state);
+        PokemonState pokemon;
+        if (!build_pokemon(
+                rules, *stats, member.species_dex, member.level,
+                {
+                    static_cast<std::uint8_t>(first >> 4U),
+                    static_cast<std::uint8_t>(first & 0x0FU),
+                    static_cast<std::uint8_t>(second >> 4U),
+                    static_cast<std::uint8_t>(second & 0x0FU),
+                },
+                0U, {}, pokemon, error)) {
+            return false;
+        }
+        enemy.members.push_back(std::move(pokemon));
+    }
+    return begin_battle(rules, battle_rules, player_party,
+                        std::move(enemy), BattleKind::trainer, state,
+                        result, error);
 }
 
 std::optional<std::size_t> first_executable_move_slot(
