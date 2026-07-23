@@ -1,0 +1,106 @@
+; Original development fixtures for the isolated battle-animation lab.
+
+animation tackle
+    set_position attacker 42 92 native_canvas
+    tween_position attacker 86 62 7 ease_in native_canvas
+    wait 2
+    tween_position attacker 42 92 7 ease_out native_canvas
+    signal animation_finished
+
+animation scratch
+    spawn slash_left slash
+    set_position slash_left 106 34 native_canvas
+    spawn slash_right slash
+    set_position slash_right 116 42 native_canvas
+    parallel
+        sequence
+            tween_position slash_left 122 50 5 ease_out native_canvas
+            destroy slash_left
+        sequence
+            wait 2
+            tween_position slash_right 128 54 5 ease_out native_canvas
+            destroy slash_right
+    signal animation_finished
+
+animation ember
+    spawn flame ember
+    set_position flame 52 80 native_canvas
+    tween_position flame 108 46 12 ease_out native_canvas
+    destroy flame
+    parallel
+        sequence
+            hide defender
+            wait 2
+            show defender
+            wait 2
+            hide defender
+            wait 2
+            show defender
+        sequence
+            spawn impact ember_burst
+            set_position impact 112 42 native_canvas
+            wait 6
+            destroy impact
+    signal animation_finished
+
+animation water_stream
+    parallel
+        sequence
+            spawn drop_a water_drop
+            set_position drop_a 50 80 native_canvas
+            tween_position drop_a 108 44 11 ease_out native_canvas
+            destroy drop_a
+        sequence
+            wait 3
+            spawn drop_b water_drop
+            set_position drop_b 48 86 native_canvas
+            tween_position drop_b 114 50 11 ease_out native_canvas
+            destroy drop_b
+        sequence
+            wait 6
+            spawn drop_c water_drop
+            set_position drop_c 54 88 native_canvas
+            tween_position drop_c 120 46 11 ease_out native_canvas
+            destroy drop_c
+    signal animation_finished
+
+animation thunder_shock
+    spawn bolt lightning
+    set_position bolt 116 18 native_canvas
+    wait 2
+    parallel
+        sequence
+            hide defender
+            wait 2
+            show defender
+            wait 2
+            hide defender
+            wait 2
+            show defender
+        sequence
+            tween_position bolt 116 48 6 linear native_canvas
+            destroy bolt
+    signal animation_finished
+
+animation recover
+    parallel
+        sequence
+            spawn star_left healing_star
+            set_position star_left 28 100 native_canvas
+            tween_position star_left 36 76 10 ease_out native_canvas
+            destroy star_left
+        sequence
+            wait 4
+            spawn star_right healing_star
+            set_position star_right 54 98 native_canvas
+            tween_position star_right 48 72 10 ease_out native_canvas
+            destroy star_right
+        sequence
+            hide attacker
+            wait 2
+            show attacker
+            wait 2
+            hide attacker
+            wait 2
+            show attacker
+    signal animation_finished

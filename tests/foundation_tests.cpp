@@ -1,4 +1,5 @@
 #include "animations.hpp"
+#include "battle_animation_lab.hpp"
 #include "catalog.hpp"
 #include "content_index.hpp"
 #include "overlays.hpp"
@@ -8,6 +9,7 @@
 
 #include <array>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -263,6 +265,26 @@ void test_animations(TestState& state) {
           "title_ready signal ends timeline");
 }
 
+void test_battle_animation_lab(TestState& state) {
+    // Load the same readable source tree used by the visual development view.
+    const std::filesystem::path source_root =
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "dev" / "battle_animations";
+    pokered::Diagnostics diagnostics;
+    pokered::BattleAnimationLab lab;
+    check(state, pokered::load_battle_animation_lab(source_root, lab, diagnostics),
+          "battle animation lab source loads");
+    check(state, lab.entries.size() == 6, "all original lab animations compile");
+
+    // Exercise temporary-effect ownership independently of SDL rendering.
+    lab.auto_advance = false;
+    for (std::uint32_t tick = 0; tick < 40 && !lab.animation.finished; ++tick)
+        pokered::step_battle_animation_lab(lab);
+    check(state, lab.animation.finished, "first lab animation reaches completion");
+    pokered::next_battle_animation_lab(lab);
+    pokered::step_battle_animation_lab(lab);
+    check(state, !lab.animation.effects.empty(), "scratch spawns temporary visual effects");
+}
+
 } // namespace
 
 int main() {
@@ -273,6 +295,7 @@ int main() {
     test_indexes_and_catalog(state);
     test_predicates(state);
     test_animations(state);
+    test_battle_animation_lab(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

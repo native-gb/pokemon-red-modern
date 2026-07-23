@@ -1,3 +1,4 @@
+#include "battle_animation_lab.hpp"
 #include "catalog.hpp"
 #include "render/frame.hpp"
 #include "src/imgui_layer.hpp"
@@ -65,6 +66,18 @@ int main(int argc, char** argv) {
 
     pokered::content::CatalogSummary catalog;
     pokered::GameState game;
+    pokered::BattleAnimationLab animation_lab;
+    pokered::Diagnostics animation_diagnostics;
+    const std::filesystem::path animation_root =
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "dev" / "battle_animations";
+    if (!pokered::load_battle_animation_lab(animation_root, animation_lab, animation_diagnostics)) {
+        for (const pokered::Diagnostic& diagnostic : animation_diagnostics.entries)
+            std::fprintf(stderr, "%s\n", pokered::format_diagnostic(diagnostic).c_str());
+    } else {
+        game.mode = pokered::Mode::battle;
+        std::printf("Loaded %zu battle animation lab programs from %s\n",
+                    animation_lab.entries.size(), animation_root.c_str());
+    }
     pokered::HostWindow window;
     if (!pokered::initialize_window(window, data_root)) return 1;
 
@@ -87,6 +100,18 @@ int main(int argc, char** argv) {
         const pokered::WindowInput input = pokered::poll_window_events(window);
         if (input.quit) break;
         pokered::apply_tool_shortcuts(tools, input);
+        if (input.previous_animation) pokered::previous_battle_animation_lab(animation_lab);
+        if (input.next_animation) pokered::next_battle_animation_lab(animation_lab);
+        if (input.restart_animation) pokered::restart_battle_animation_lab(animation_lab);
+        if (input.reload_animation_sources) {
+            pokered::Diagnostics reload_diagnostics;
+            if (!pokered::reload_battle_animation_lab(animation_lab, reload_diagnostics)) {
+                for (const pokered::Diagnostic& diagnostic : reload_diagnostics.entries)
+                    std::fprintf(stderr, "%s\n", pokered::format_diagnostic(diagnostic).c_str());
+            }
+        }
+        if (input.toggle_animation_auto_advance)
+            animation_lab.auto_advance = !animation_lab.auto_advance;
 
         const auto now = Clock::now();
         const double elapsed = std::chrono::duration<double>(now - previous).count();
@@ -94,6 +119,7 @@ int main(int argc, char** argv) {
         accumulator = std::min(accumulator + elapsed, 0.25);
         while (accumulator >= step_seconds) {
             pokered::step_game(game);
+            if (!game.paused) pokered::step_battle_animation_lab(animation_lab);
             accumulator -= step_seconds;
         }
 
@@ -101,14 +127,14 @@ int main(int argc, char** argv) {
         imgui_new_frame();
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
                                            window.frame.render_width, window.frame.render_height,
-                                           game, catalog) ||
+                                           game, catalog, animation_lab) ||
             !pokered::draw_window(window)) {
             std::fprintf(stderr, "could not render frame: %s\n", SDL_GetError());
             render_failed = true;
             break;
         }
 
-        pokered::draw_tools(tools, game, catalog,
+        pokered::draw_tools(tools, game, catalog, animation_lab,
                             renderer_name != nullptr ? renderer_name : "unknown");
         imgui_render_layer();
         pokered::present_window(window);

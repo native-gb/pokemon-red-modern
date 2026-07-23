@@ -19,7 +19,7 @@ struct AnimationTarget {
 };
 
 struct AnimationTween {
-    std::uint32_t node{};
+    std::uint32_t subject{};
     std::uint32_t begin_tick{};
     std::uint32_t duration{};
     float from_x{};
@@ -27,6 +27,15 @@ struct AnimationTween {
     float to_x{};
     float to_y{};
     content::AnimationEase ease{content::AnimationEase::linear};
+    content::CoordinateSpace space{content::CoordinateSpace::native_canvas};
+};
+
+struct AnimationEffect {
+    Symbol name;
+    Symbol visual;
+    float x{};
+    float y{};
+    bool visible{};
     content::CoordinateSpace space{content::CoordinateSpace::native_canvas};
 };
 
@@ -44,6 +53,7 @@ struct AnimationCue {
 struct AnimationState {
     const content::AnimationProgram* program{};
     std::vector<AnimationTarget> targets;
+    std::vector<AnimationEffect> effects;
     std::vector<AnimationTween> tweens;
     std::vector<AnimationCue> cues;
     std::uint32_t tick{};
@@ -58,5 +68,6 @@ bool start_animation(const content::AnimationProgram& program,
                      Diagnostics& diagnostics);
 void step_animation(AnimationState& state);
 const AnimationTarget* find_animation_target(const AnimationState& state, const Symbol& name);
+const AnimationEffect* find_animation_effect(const AnimationState& state, const Symbol& name);
 
 } // namespace pokered

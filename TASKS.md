@@ -3,12 +3,14 @@
 ## Next
 
 1. Implement campaign and battle-effect compilers and executors.
-2. Implement battle-AI and audio compilers and executors.
-3. Port only ROM verification/hash utilities into the importer boundary.
-4. Build the domain inventory and deterministic readable-source emitter.
-5. Compile generated source into the indexed runtime pack and startup fast path.
-6. Assemble the Pallet Town vertical slice.
-7. Choose the public repository license before the first external release.
+2. Import Red battle-animation programs, subanimations, precomposed frame
+   sprites, coordinates, and side transforms into the visual lab.
+3. Implement battle-AI and audio compilers and executors.
+4. Port only ROM verification/hash utilities into the importer boundary.
+5. Build the domain inventory and deterministic readable-source emitter.
+6. Compile generated source into the indexed runtime pack and startup fast path.
+7. Assemble the Pallet Town vertical slice.
+8. Choose the public repository license before the first external release.
 
 ## Completed
 
@@ -22,6 +24,9 @@
 - Implemented the first typed animation timeline compiler and executor.
 - Proved sequence, parallel, tween, sound-cue, and signal execution with an
   original placeholder title fixture.
+- Added deterministic source-directory loading and F5 hot reload.
+- Added a GPU-rendered two-battler animation lab with manual/automatic
+  iteration and temporary effect ownership.
 
 ## Deliberately deferred
 

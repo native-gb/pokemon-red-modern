@@ -22,6 +22,8 @@ The repository currently provides:
 - snake_case symbols, dense typed IDs, content records, and indexes;
 - the indented S-expression reader and canonical diagnostic printer;
 - deterministic package `define`/`override` resolution with field provenance;
+- a hot-reloadable, isolated battle-animation lab with two placeholder
+  battlers and readable source fixtures;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.
@@ -42,3 +44,6 @@ campaign coroutine design is in
 - [executors and typed ISAs](docs/EXECUTORS_AND_ISA.md);
 - [packages and patches](docs/PACKAGES_AND_PATCHES.md);
 - [generated source and compiled cache](docs/IMPORT_OUTPUT_AND_CACHE.md).
+
+The current visual development entry point is the
+[battle animation lab](docs/BATTLE_ANIMATION_LAB.md).

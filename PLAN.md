@@ -24,6 +24,8 @@ rendering or memory constraints.
   package overlays with provenance.
 - [x] Compile and execute typed predicates and the first animation timeline
   instruction subset.
+- [x] Load readable animation sources into an isolated two-battler visual lab
+  with hot reload and deterministic iteration.
 - Verify supported ROM identity and header.
 - Define pack manifest, schema versions, cache keys, and provenance.
 - Emit deterministic readable source for every imported content/program domain.

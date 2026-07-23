@@ -62,6 +62,7 @@ endif()
 
 add_executable(native-gb-pokemon-red-modern
     src/animations.cpp
+    src/battle_animation_lab.cpp
     src/catalog.cpp
     src/diagnostics.cpp
     src/main.cpp
@@ -69,6 +70,7 @@ add_executable(native-gb-pokemon-red-modern
     src/predicates.cpp
     src/render/frame.cpp
     src/sexpr.cpp
+    src/source_loader.cpp
     src/state.cpp
     src/symbols.cpp
     src/tools.cpp
@@ -91,15 +93,19 @@ if(BUILD_TESTING)
     add_executable(pokered-modern-foundation-tests
         tests/foundation_tests.cpp
         src/animations.cpp
+        src/battle_animation_lab.cpp
         src/catalog.cpp
         src/diagnostics.cpp
         src/overlays.cpp
         src/predicates.cpp
         src/sexpr.cpp
+        src/source_loader.cpp
         src/symbols.cpp
     )
     target_include_directories(pokered-modern-foundation-tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_compile_definitions(pokered-modern-foundation-tests PRIVATE
+        POKERED_MODERN_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     pokered_modern_target_defaults(pokered-modern-foundation-tests)
     add_test(NAME pokered_modern_foundation COMMAND pokered-modern-foundation-tests)
 endif()

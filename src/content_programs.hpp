@@ -112,6 +112,8 @@ enum class AnimationEase : std::uint8_t {
 };
 
 enum class AnimationOp : std::uint8_t {
+    spawn,
+    destroy,
     show,
     hide,
     set_position,
@@ -125,6 +127,7 @@ struct AnimationEvent {
     std::uint32_t at_tick{};
     std::uint32_t duration{};
     std::uint32_t subject{};
+    std::uint32_t visual{};
     std::int32_t x{};
     std::int32_t y{};
     CoordinateSpace space{CoordinateSpace::native_canvas};

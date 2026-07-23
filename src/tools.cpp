@@ -51,7 +51,7 @@ void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog)
 }
 
 void draw_developer_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                          const char* renderer_name) {
+                          BattleAnimationLab& lab, const char* renderer_name) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     constexpr float margin = 12.0F;
     constexpr float top = 42.0F;
@@ -70,6 +70,14 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Separator();
         ImGui::Text("Renderer: %s", renderer_name);
         ImGui::TextUnformatted("Fixed simulation: 60 Hz");
+        ImGui::Separator();
+        ImGui::Text("Animation: %.*s", static_cast<int>(battle_animation_lab_name(lab).size()),
+                    battle_animation_lab_name(lab).data());
+        ImGui::Text("Program: %zu / %zu", lab.entries.empty() ? 0 : lab.current + 1,
+                    lab.entries.size());
+        ImGui::Text("Tick: %u", lab.animation.tick);
+        ImGui::Text("Effects: %zu", lab.animation.effects.size());
+        ImGui::Checkbox("Auto advance", &lab.auto_advance);
     }
     ImGui::End();
 
@@ -117,18 +125,22 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 }
 
 void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                const char* renderer_name) {
+                BattleAnimationLab& lab, const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
-        ImGui::TextUnformatted("F1 Player tools   F2 Developer tools   F11 Fullscreen");
+        const std::string_view animation = battle_animation_lab_name(lab);
+        ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()), animation.data());
+        ImGui::Separator();
+        ImGui::TextUnformatted("Left/Right Select   R Restart   F5 Reload   Space Auto   F1/F2 "
+                               "Tools   F11 Fullscreen");
         ImGui::EndMainMenuBar();
     }
 
     if (tools.layout == ToolLayout::player)
         draw_player_tools(tools, catalog);
     else if (tools.layout == ToolLayout::developer)
-        draw_developer_tools(tools, game, catalog, renderer_name);
+        draw_developer_tools(tools, game, catalog, lab, renderer_name);
     tools.arrange = false;
 }
 

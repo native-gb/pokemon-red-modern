@@ -10,6 +10,11 @@ struct WindowInput {
     bool quit{};
     bool toggle_player_tools{};
     bool toggle_developer_tools{};
+    bool previous_animation{};
+    bool next_animation{};
+    bool restart_animation{};
+    bool reload_animation_sources{};
+    bool toggle_animation_auto_advance{};
 };
 
 struct HostWindow {

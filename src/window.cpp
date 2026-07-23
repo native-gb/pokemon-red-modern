@@ -62,6 +62,16 @@ WindowInput poll_window_events(HostWindow& window) {
             input.toggle_player_tools = true;
         else if (event.key.key == SDLK_F2)
             input.toggle_developer_tools = true;
+        else if (event.key.key == SDLK_LEFT)
+            input.previous_animation = true;
+        else if (event.key.key == SDLK_RIGHT)
+            input.next_animation = true;
+        else if (event.key.key == SDLK_R)
+            input.restart_animation = true;
+        else if (event.key.key == SDLK_F5)
+            input.reload_animation_sources = true;
+        else if (event.key.key == SDLK_SPACE)
+            input.toggle_animation_auto_advance = true;
         else if (event.key.key == SDLK_F11) {
             const bool fullscreen =
                 (SDL_GetWindowFlags(window.frame.window) & SDL_WINDOW_FULLSCREEN) != 0;

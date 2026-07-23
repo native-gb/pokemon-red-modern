@@ -122,6 +122,7 @@ std::uint32_t compile_visibility(const sexpr::Form& form, std::uint32_t at_tick,
         .operation = visible ? content::AnimationOp::show : content::AnimationOp::hide,
         .at_tick = at_tick,
         .subject = *subject,
+        .visual = 0,
         .sound = {},
         .source = form.source,
     });
@@ -147,6 +148,7 @@ std::uint32_t compile_set_position(const sexpr::Form& form, std::uint32_t at_tic
         .operation = content::AnimationOp::set_position,
         .at_tick = at_tick,
         .subject = *subject,
+        .visual = 0,
         .x = static_cast<std::int32_t>(*x),
         .y = static_cast<std::int32_t>(*y),
         .space = *space,
@@ -182,6 +184,7 @@ std::uint32_t compile_tween_position(const sexpr::Form& form, std::uint32_t at_t
         .at_tick = at_tick,
         .duration = static_cast<std::uint32_t>(*duration),
         .subject = *subject,
+        .visual = 0,
         .x = static_cast<std::int32_t>(*x),
         .y = static_cast<std::int32_t>(*y),
         .space = *space,
@@ -229,6 +232,40 @@ std::uint32_t compile_statement(const sexpr::Form& form, std::uint32_t at_tick,
     }
     if (operation == "show") return compile_visibility(form, at_tick, compiler, true);
     if (operation == "hide") return compile_visibility(form, at_tick, compiler, false);
+    if (operation == "spawn") {
+        if (!exact_arguments(form, 2, compiler.diagnostics)) return 0;
+        const Symbol* effect = symbol_argument(form, 0, compiler.diagnostics);
+        const Symbol* visual = symbol_argument(form, 1, compiler.diagnostics);
+        if (effect == nullptr || visual == nullptr) return 0;
+        const auto subject = intern_symbol(*effect, compiler);
+        const auto visual_index = intern_symbol(*visual, compiler);
+        if (!subject || !visual_index) return 0;
+        compiler.program.events.push_back({
+            .operation = content::AnimationOp::spawn,
+            .at_tick = at_tick,
+            .subject = *subject,
+            .visual = *visual_index,
+            .sound = {},
+            .source = form.source,
+        });
+        return 0;
+    }
+    if (operation == "destroy") {
+        if (!exact_arguments(form, 1, compiler.diagnostics)) return 0;
+        const Symbol* effect = symbol_argument(form, 0, compiler.diagnostics);
+        if (effect == nullptr) return 0;
+        const auto subject = intern_symbol(*effect, compiler);
+        if (!subject) return 0;
+        compiler.program.events.push_back({
+            .operation = content::AnimationOp::destroy,
+            .at_tick = at_tick,
+            .subject = *subject,
+            .visual = 0,
+            .sound = {},
+            .source = form.source,
+        });
+        return 0;
+    }
     if (operation == "set_position") return compile_set_position(form, at_tick, compiler);
     if (operation == "tween_position") return compile_tween_position(form, at_tick, compiler);
     if (operation == "play_sound") {
@@ -244,6 +281,7 @@ std::uint32_t compile_statement(const sexpr::Form& form, std::uint32_t at_tick,
         compiler.program.events.push_back({
             .operation = content::AnimationOp::play_sound,
             .at_tick = at_tick,
+            .visual = 0,
             .sound = *sound,
             .source = form.source,
         });
@@ -259,6 +297,7 @@ std::uint32_t compile_statement(const sexpr::Form& form, std::uint32_t at_tick,
             .operation = content::AnimationOp::signal,
             .at_tick = at_tick,
             .subject = *subject,
+            .visual = 0,
             .sound = {},
             .source = form.source,
         });
@@ -288,6 +327,14 @@ std::optional<std::size_t> runtime_target_index(const AnimationState& state, con
     return static_cast<std::size_t>(std::distance(state.targets.begin(), found));
 }
 
+std::optional<std::size_t> runtime_effect_index(const AnimationState& state, const Symbol& name) {
+    const auto found =
+        std::find_if(state.effects.begin(), state.effects.end(),
+                     [&name](const AnimationEffect& effect) { return effect.name == name; });
+    if (found == state.effects.end()) return std::nullopt;
+    return static_cast<std::size_t>(std::distance(state.effects.begin(), found));
+}
+
 void apply_event(const content::AnimationEvent& event, AnimationState& state) {
     const content::AnimationProgram& program = *state.program;
     if (event.operation == content::AnimationOp::play_sound) {
@@ -304,35 +351,63 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
         state.cues.push_back(std::move(cue));
         return;
     }
+    if (event.operation == content::AnimationOp::spawn) {
+        const Symbol& name = program.symbols[event.subject];
+        const auto existing = runtime_effect_index(state, name);
+        if (existing)
+            state.effects.erase(state.effects.begin() + static_cast<std::ptrdiff_t>(*existing));
+        AnimationEffect effect;
+        effect.name = name;
+        effect.visual = program.symbols[event.visual];
+        effect.visible = true;
+        state.effects.push_back(std::move(effect));
+        return;
+    }
+    if (event.operation == content::AnimationOp::destroy) {
+        const auto existing = runtime_effect_index(state, program.symbols[event.subject]);
+        if (existing)
+            state.effects.erase(state.effects.begin() + static_cast<std::ptrdiff_t>(*existing));
+        return;
+    }
 
-    const auto index = runtime_target_index(state, program.symbols[event.subject]);
-    if (!index) return;
-    AnimationTarget& target = state.targets[*index];
+    const Symbol& subject = program.symbols[event.subject];
+    const auto target_index = runtime_target_index(state, subject);
+    const auto effect_index = runtime_effect_index(state, subject);
+    if (!target_index && !effect_index) return;
+
+    // Persistent battlers and temporary effects expose the same small transform surface.
+    float* x = target_index ? &state.targets[*target_index].x : &state.effects[*effect_index].x;
+    float* y = target_index ? &state.targets[*target_index].y : &state.effects[*effect_index].y;
+    bool* visible = target_index ? &state.targets[*target_index].visible
+                                 : &state.effects[*effect_index].visible;
+    content::CoordinateSpace* space =
+        target_index ? &state.targets[*target_index].space : &state.effects[*effect_index].space;
     if (event.operation == content::AnimationOp::show)
-        target.visible = true;
+        *visible = true;
     else if (event.operation == content::AnimationOp::hide)
-        target.visible = false;
+        *visible = false;
     else if (event.operation == content::AnimationOp::set_position) {
-        target.x = static_cast<float>(event.x);
-        target.y = static_cast<float>(event.y);
-        target.space = event.space;
+        *x = static_cast<float>(event.x);
+        *y = static_cast<float>(event.y);
+        *space = event.space;
     } else if (event.operation == content::AnimationOp::tween_position) {
-        state.tweens.erase(
-            std::remove_if(state.tweens.begin(), state.tweens.end(),
-                           [index](const AnimationTween& tween) { return tween.node == *index; }),
-            state.tweens.end());
+        state.tweens.erase(std::remove_if(state.tweens.begin(), state.tweens.end(),
+                                          [&event](const AnimationTween& tween) {
+                                              return tween.subject == event.subject;
+                                          }),
+                           state.tweens.end());
         state.tweens.push_back({
-            .node = static_cast<std::uint32_t>(*index),
+            .subject = event.subject,
             .begin_tick = event.at_tick,
             .duration = event.duration,
-            .from_x = target.x,
-            .from_y = target.y,
+            .from_x = *x,
+            .from_y = *y,
             .to_x = static_cast<float>(event.x),
             .to_y = static_cast<float>(event.y),
             .ease = event.ease,
             .space = event.space,
         });
-        target.space = event.space;
+        *space = event.space;
     }
 }
 
@@ -366,17 +441,23 @@ bool compile_animation(const sexpr::Form& source, const content::Catalog& catalo
 bool start_animation(const content::AnimationProgram& program,
                      std::span<const AnimationTarget> targets, AnimationState& state,
                      Diagnostics& diagnostics) {
-    // Persistent targets belong to the active Pokémon view and are bound by semantic name.
+    std::vector<Symbol> available;
+    available.reserve(targets.size() + program.events.size());
+    for (const AnimationTarget& target : targets)
+        available.push_back(target.name);
+
+    // Validate each timeline reference against view targets or effects spawned earlier.
     for (const content::AnimationEvent& event : program.events) {
         if (event.operation == content::AnimationOp::play_sound ||
             event.operation == content::AnimationOp::signal) {
             continue;
         }
         const Symbol& name = program.symbols[event.subject];
-        const bool found =
-            std::find_if(targets.begin(), targets.end(), [&name](const AnimationTarget& target) {
-                return target.name == name;
-            }) != targets.end();
+        if (event.operation == content::AnimationOp::spawn) {
+            available.push_back(name);
+            continue;
+        }
+        const bool found = std::find(available.begin(), available.end(), name) != available.end();
         if (!found) {
             add_error(diagnostics, event.source, "missing_animation_target",
                       "active view does not expose animation target '" + name.text + "'");
@@ -404,13 +485,18 @@ void step_animation(AnimationState& state) {
         ++state.next_event;
     }
     for (const AnimationTween& tween : state.tweens) {
-        if (tween.node >= state.targets.size()) continue;
+        if (tween.subject >= state.program->symbols.size()) continue;
+        const Symbol& subject = state.program->symbols[tween.subject];
+        const auto target_index = runtime_target_index(state, subject);
+        const auto effect_index = runtime_effect_index(state, subject);
+        if (!target_index && !effect_index) continue;
         const float progress =
             static_cast<float>(state.tick - tween.begin_tick) / static_cast<float>(tween.duration);
         const float amount = eased(progress, tween.ease);
-        AnimationTarget& target = state.targets[tween.node];
-        target.x = tween.from_x + (tween.to_x - tween.from_x) * amount;
-        target.y = tween.from_y + (tween.to_y - tween.from_y) * amount;
+        float* x = target_index ? &state.targets[*target_index].x : &state.effects[*effect_index].x;
+        float* y = target_index ? &state.targets[*target_index].y : &state.effects[*effect_index].y;
+        *x = tween.from_x + (tween.to_x - tween.from_x) * amount;
+        *y = tween.from_y + (tween.to_y - tween.from_y) * amount;
     }
     state.tweens.erase(std::remove_if(state.tweens.begin(), state.tweens.end(),
                                       [&state](const AnimationTween& tween) {
@@ -427,6 +513,11 @@ void step_animation(AnimationState& state) {
 const AnimationTarget* find_animation_target(const AnimationState& state, const Symbol& name) {
     const auto found = runtime_target_index(state, name);
     return found ? &state.targets[*found] : nullptr;
+}
+
+const AnimationEffect* find_animation_effect(const AnimationState& state, const Symbol& name) {
+    const auto found = runtime_effect_index(state, name);
+    return found ? &state.effects[*found] : nullptr;
 }
 
 } // namespace pokered
