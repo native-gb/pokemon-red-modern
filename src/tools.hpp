@@ -3,6 +3,7 @@
 #include "battle_animation_lab.hpp"
 #include "catalog.hpp"
 #include "maps.hpp"
+#include "render/maps.hpp"
 #include "state.hpp"
 #include "window.hpp"
 
@@ -22,6 +23,6 @@ struct ToolState {
 void apply_tool_shortcuts(ToolState& tools, const WindowInput& input);
 void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
                 BattleAnimationLab& lab, WorldState& maps, PresentationSettings& presentation,
-                const char* renderer_name);
+                const render::WorldRenderResources& world_resources, const char* renderer_name);
 
 } // namespace pokered

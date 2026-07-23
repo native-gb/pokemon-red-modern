@@ -30,6 +30,7 @@ struct WindowInput {
     bool reload_animation_sources{};
     bool toggle_animation_auto_advance{};
     bool toggle_world_view{};
+    bool toggle_world_annotations{};
     bool zoom_world_in{};
     bool zoom_world_out{};
     bool reset_world_view{};

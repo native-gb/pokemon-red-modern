@@ -69,8 +69,10 @@ int main(int argc, char** argv) {
               << " trainer-class portraits\n";
     std::cout << "Picture cache: " << output_root / "compiled" / "battle_pictures.bin" << '\n';
     std::cout << "Battle UI cache: " << output_root / "compiled" / "battle_ui_tiles.bin" << '\n';
-    std::cout << "Imported " << maps.maps << " maps through " << maps.tilesets
-              << " tileset into " << maps.expanded_tiles << " expanded tiles\n";
+    std::cout << "Imported " << maps.maps << " maps through " << maps.tilesets << " tilesets into "
+              << maps.expanded_tiles << " expanded tiles, " << maps.sprites
+              << " overworld sprites, " << maps.actors << " actor spawns, and " << maps.warps
+              << " warps\n";
     std::cout << "World map cache: " << output_root / "compiled" / "world_maps.bin" << '\n';
     return 0;
 }

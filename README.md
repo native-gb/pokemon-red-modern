@@ -37,6 +37,8 @@ The repository currently provides:
   with connection-derived global coordinates, fixed world-space render caches,
   visible-chunk culling, smooth pan/zoom, and ROM-derived water and flower
   animation;
+- all 72 ROM-decoded overworld sprite sheets, 245 authored outdoor actor
+  spawns, 143 outdoor warps, and an F3 map/actor/warp annotation overlay;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.

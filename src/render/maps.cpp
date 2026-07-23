@@ -23,6 +23,8 @@ constexpr int kChunkSizePixels = kChunkSizeTiles * kTileSize;
 constexpr int kTerrainPageSize = 2048;
 constexpr int kChunksPerPageRow = kTerrainPageSize / kChunkSizePixels;
 constexpr int kChunksPerPage = kChunksPerPageRow * kChunksPerPageRow;
+constexpr int kActorSize = 16;
+constexpr int kActorAtlasColumns = 16;
 
 struct TileBatch {
     std::vector<SDL_Vertex> vertices;
@@ -102,6 +104,48 @@ SDL_Texture* upload_tileset(SDL_Renderer* renderer, const MapTileset& tileset,
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_DestroySurface(surface);
     if (texture != nullptr) (void)SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    return texture;
+}
+
+SDL_Texture* upload_actor_atlas(SDL_Renderer* renderer, const WorldState& world, int& columns) {
+    if (world.sprites.empty()) return nullptr;
+    const std::size_t frame_count = world.sprites.size() * 4U;
+    columns = kActorAtlasColumns;
+    const int rows = static_cast<int>((frame_count + static_cast<std::size_t>(columns) - 1U) /
+                                      static_cast<std::size_t>(columns));
+    const int width = columns * kActorSize;
+    const int height = rows * kActorSize;
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width * height) * 4U, 0);
+    for (const WorldSprite& sprite : world.sprites) {
+        if (sprite.id == 0 || sprite.pixels.size() != 4U * 16U * 16U) return nullptr;
+        for (std::size_t facing = 0; facing < 4U; ++facing) {
+            const std::size_t frame = (static_cast<std::size_t>(sprite.id) - 1U) * 4U + facing;
+            const std::size_t frame_x = frame % static_cast<std::size_t>(columns);
+            const std::size_t frame_y = frame / static_cast<std::size_t>(columns);
+            for (std::size_t y = 0; y < 16U; ++y) {
+                for (std::size_t x = 0; x < 16U; ++x) {
+                    const std::uint8_t shade = sprite.pixels[facing * 256U + y * 16U + x];
+                    if (shade == 0) continue;
+                    const auto color = map_color(shade);
+                    const std::size_t target =
+                        ((frame_y * 16U + y) * static_cast<std::size_t>(width) + frame_x * 16U +
+                         x) *
+                        4U;
+                    std::copy(color.begin(), color.end(),
+                              pixels.begin() + static_cast<std::ptrdiff_t>(target));
+                }
+            }
+        }
+    }
+    SDL_Surface* surface =
+        SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_RGBA32, pixels.data(), width * 4);
+    if (surface == nullptr) return nullptr;
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_DestroySurface(surface);
+    if (texture != nullptr) {
+        (void)SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+        (void)SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+    }
     return texture;
 }
 
@@ -478,6 +522,52 @@ bool draw_visible_chunks(SDL_Renderer* renderer, int output_width, int output_he
     return true;
 }
 
+std::size_t actor_facing(std::uint8_t direction_or_axis) {
+    if (direction_or_axis == 0xD1U) return 1U;
+    if (direction_or_axis == 0xD2U) return 2U;
+    if (direction_or_axis == 0xD3U) return 3U;
+    return 0U;
+}
+
+bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_height,
+                       const WorldState& world, const WorldRenderResources& resources,
+                       const WorldProjection& projection) {
+    if (resources.actor_atlas == nullptr || resources.actor_atlas_columns <= 0) return false;
+    const WorldMap* selected = selected_map(world);
+    for (const WorldMap& map : world.maps) {
+        if (world.view == WorldView::selected && &map != selected) continue;
+        for (const WorldActorSpawn& actor : map.actors) {
+            const std::size_t frame = (static_cast<std::size_t>(actor.sprite_id) - 1U) * 4U +
+                                      actor_facing(actor.direction_or_axis);
+            const SDL_FRect source{
+                .x = static_cast<float>(
+                    frame % static_cast<std::size_t>(resources.actor_atlas_columns) * 16U),
+                .y = static_cast<float>(
+                    frame / static_cast<std::size_t>(resources.actor_atlas_columns) * 16U),
+                .w = 16.0F,
+                .h = 16.0F,
+            };
+            const float world_x = static_cast<float>(map.global_x_tiles * kTileSize) +
+                                  static_cast<float>(actor.x) * 16.0F;
+            const float world_y = static_cast<float>(map.global_y_tiles * kTileSize) +
+                                  static_cast<float>(actor.y) * 16.0F;
+            const SDL_FRect destination{
+                .x = projection.center_x + (world_x - world.camera_x) * projection.scale,
+                .y = projection.center_y + (world_y - world.camera_y) * projection.scale,
+                .w = 16.0F * projection.scale,
+                .h = 16.0F * projection.scale,
+            };
+            if (destination.x >= static_cast<float>(output_width) ||
+                destination.y >= static_cast<float>(output_height) ||
+                destination.x + destination.w <= 0.0F || destination.y + destination.h <= 0.0F)
+                continue;
+            if (!SDL_RenderTexture(renderer, resources.actor_atlas, &source, &destination))
+                return false;
+        }
+    }
+    return true;
+}
+
 bool update_animated_pages(SDL_Renderer* renderer, const WorldState& world,
                            WorldRenderResources& resources) {
     const std::uint64_t signature = world_animation_signature(world);
@@ -544,6 +634,11 @@ bool upload_world_textures(SDL_Renderer* renderer, const WorldState& world,
             return false;
         }
     }
+    resources.actor_atlas = upload_actor_atlas(renderer, world, resources.actor_atlas_columns);
+    if (resources.actor_atlas == nullptr) {
+        destroy_world_textures(resources);
+        return false;
+    }
     if (!upload_terrain_chunks(renderer, world, resources)) {
         destroy_world_textures(resources);
         return false;
@@ -560,7 +655,10 @@ void destroy_world_textures(WorldRenderResources& resources) {
         SDL_DestroyTexture(tileset.texture);
     for (SDL_Texture* page : resources.terrain_pages)
         SDL_DestroyTexture(page);
+    SDL_DestroyTexture(resources.actor_atlas);
     resources.tilesets.clear();
+    resources.actor_atlas = nullptr;
+    resources.actor_atlas_columns = 0;
     resources.terrain_pages.clear();
     resources.terrain_chunks.clear();
     resources.animated_tiles.clear();
@@ -570,12 +668,10 @@ void destroy_world_textures(WorldRenderResources& resources) {
     resources.world_height_pixels = 0;
 }
 
-bool draw_world(SDL_Renderer* renderer, int output_width, int output_height,
-                const WorldState& world, WorldRenderResources& resources) {
+WorldProjection world_projection(int output_width, int output_height, const WorldState& world,
+                                 const WorldRenderResources& resources) {
     const WorldMap* map = selected_map(world);
-    if (renderer == nullptr || map == nullptr || resources.tilesets.size() != world.tilesets.size())
-        return false;
-
+    if (map == nullptr) return {};
     const bool show_connected_world = world.view == WorldView::world;
     const float pixel_width = show_connected_world
                                   ? static_cast<float>(resources.world_width_pixels)
@@ -588,20 +684,36 @@ bool draw_world(SDL_Renderer* renderer, int output_width, int output_height,
     float fit_scale = std::min(available_width / pixel_width, available_height / pixel_height);
     if (!show_connected_world && fit_scale >= 1.0F)
         fit_scale = std::max(1.0F, std::floor(fit_scale));
-    const float scale = fit_scale * world.zoom;
-    if (scale <= 0.0F) return false;
-    const float view_center_x = static_cast<float>(output_width) * 0.5F;
-    const float view_center_y = static_cast<float>(output_height) * 0.5F + 12.0F;
+    return {
+        .center_x = static_cast<float>(output_width) * 0.5F,
+        .center_y = static_cast<float>(output_height) * 0.5F + 12.0F,
+        .scale = fit_scale * world.zoom,
+    };
+}
+
+bool draw_world(SDL_Renderer* renderer, int output_width, int output_height,
+                const WorldState& world, WorldRenderResources& resources) {
+    const WorldMap* map = selected_map(world);
+    if (renderer == nullptr || map == nullptr || resources.tilesets.size() != world.tilesets.size())
+        return false;
+
+    const bool show_connected_world = world.view == WorldView::world;
+    const WorldProjection projection =
+        world_projection(output_width, output_height, world, resources);
+    if (projection.scale <= 0.0F) return false;
 
     if (show_connected_world) {
         return update_animated_pages(renderer, world, resources) &&
                draw_visible_chunks(renderer, output_width, output_height, world, resources,
-                                   view_center_x, view_center_y, scale);
+                                   projection.center_x, projection.center_y, projection.scale) &&
+               draw_world_actors(renderer, output_width, output_height, world, resources,
+                                 projection);
     }
     std::vector<TileBatch> batches(world.tilesets.size());
-    append_visible_map(world, resources, *map, output_width, output_height, view_center_x,
-                       view_center_y, scale, batches);
-    return draw_batches(renderer, resources, batches);
+    append_visible_map(world, resources, *map, output_width, output_height, projection.center_x,
+                       projection.center_y, projection.scale, batches);
+    return draw_batches(renderer, resources, batches) &&
+           draw_world_actors(renderer, output_width, output_height, world, resources, projection);
 }
 
 } // namespace pokered::render

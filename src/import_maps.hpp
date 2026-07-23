@@ -14,11 +14,13 @@ struct MapImport {
     std::vector<GeneratedFile> files;
     std::size_t maps{};
     std::size_t tilesets{};
+    std::size_t sprites{};
+    std::size_t warps{};
+    std::size_t actors{};
     std::size_t expanded_tiles{};
 };
 
-// Import a small verified outdoor-map slice into readable source and a runtime cache.
-bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result,
-                       std::string& error);
+// Import the verified outdoor world, its object events, and overworld sprites.
+bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result, std::string& error);
 
 } // namespace pokered::import

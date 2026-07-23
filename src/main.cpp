@@ -155,6 +155,7 @@ int main(int argc, char** argv) {
         }
         if (game.mode == pokered::Mode::overworld) {
             if (input.toggle_world_view) pokered::toggle_world_view(world);
+            if (input.toggle_world_annotations) world.show_annotations = !world.show_annotations;
             constexpr float zoom_speed = 2.0F;
             if (input.zoom_world_in)
                 pokered::zoom_world_view(world, std::exp(zoom_speed * frame_seconds));
@@ -211,7 +212,7 @@ int main(int argc, char** argv) {
         }
 
         pokered::draw_tools(tools, game, catalog, animation_lab, world, presentation,
-                            renderer_name != nullptr ? renderer_name : "unknown");
+                            world_resources, renderer_name != nullptr ? renderer_name : "unknown");
         imgui_render_layer();
         pokered::present_window(window);
 

@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 
 namespace pokered {
 namespace {
@@ -100,6 +101,7 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
                     maps.maps.size());
         ImGui::Text("View: %.*s", static_cast<int>(label(maps.view).size()),
                     label(maps.view).data());
+        ImGui::Checkbox("World annotations (F3)", &maps.show_annotations);
         if (map != nullptr) {
             ImGui::Text("ROM ID: 0x%02X", static_cast<unsigned>(map->id));
             ImGui::Text("Blocks: %u x %u", static_cast<unsigned>(map->width_blocks),
@@ -155,6 +157,15 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Text("Pack: %s", content::label(catalog.state));
         ImGui::Separator();
         ImGui::Text("Imported maps    %zu", maps.maps.size());
+        std::size_t actor_count = 0;
+        std::size_t warp_count = 0;
+        for (const WorldMap& map : maps.maps) {
+            actor_count += map.actors.size();
+            warp_count += map.warps.size();
+        }
+        ImGui::Text("Overworld sprites %zu", maps.sprites.size());
+        ImGui::Text("Actor spawns     %zu", actor_count);
+        ImGui::Text("Warps            %zu", warp_count);
         ImGui::Text("Scripts          %zu", catalog.scripts);
         ImGui::Text("Species          %zu", catalog.species);
         ImGui::Text("Moves            %zu", catalog.moves);
@@ -187,6 +198,115 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
     ImGui::End();
 }
 
+std::string_view movement_label(const WorldActorSpawn& actor) {
+    if (actor.movement == 0xFFU) {
+        if (actor.direction_or_axis == 0xD1U) return "stay/up";
+        if (actor.direction_or_axis == 0xD2U) return "stay/left";
+        if (actor.direction_or_axis == 0xD3U) return "stay/right";
+        return "stay/down";
+    }
+    if (actor.movement == 0xFEU) {
+        if (actor.direction_or_axis == 1U) return "walk/vertical";
+        if (actor.direction_or_axis == 2U) return "walk/horizontal";
+        return "walk/any";
+    }
+    return "scripted";
+}
+
+void draw_world_annotations(const WorldState& world,
+                            const render::WorldRenderResources& resources) {
+    if (!world.show_annotations || !world.loaded) return;
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const render::WorldProjection projection = render::world_projection(
+        static_cast<int>(display.x), static_cast<int>(display.y), world, resources);
+    if (projection.scale <= 0.0F) return;
+
+    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    const WorldMap* selected = selected_map(world);
+    const auto label_text = [&](ImVec2 position, ImU32 color, const char* text) {
+        const ImVec2 size = ImGui::CalcTextSize(text);
+        draw->AddRectFilled({position.x - 2.0F, position.y - 1.0F},
+                            {position.x + size.x + 2.0F, position.y + size.y + 1.0F},
+                            IM_COL32(5, 9, 13, 210), 2.0F);
+        draw->AddText(position, color, text);
+    };
+    const auto screen_point = [&](float world_x, float world_y) {
+        return ImVec2{
+            projection.center_x + (world_x - world.camera_x) * projection.scale,
+            projection.center_y + (world_y - world.camera_y) * projection.scale,
+        };
+    };
+    for (const WorldMap& map : world.maps) {
+        if (world.view == WorldView::selected && &map != selected) continue;
+        const float map_x = static_cast<float>(map.global_x_tiles) * 8.0F;
+        const float map_y = static_cast<float>(map.global_y_tiles) * 8.0F;
+        const ImVec2 top_left = screen_point(map_x, map_y);
+        const ImVec2 bottom_right =
+            screen_point(map_x + static_cast<float>(map.width_tiles) * 8.0F,
+                         map_y + static_cast<float>(map.height_tiles) * 8.0F);
+        if (bottom_right.x < 0.0F || bottom_right.y < 20.0F || top_left.x > display.x ||
+            top_left.y > display.y)
+            continue;
+
+        const bool selected_map = &map == selected;
+        draw->AddRect(top_left, bottom_right,
+                      selected_map ? IM_COL32(255, 224, 80, 235) : IM_COL32(92, 210, 255, 175),
+                      0.0F, ImDrawFlags_None, selected_map ? 2.0F : 1.0F);
+        if (bottom_right.x - top_left.x >= 72.0F || selected_map) {
+            std::array<char, 96> map_text{};
+            std::snprintf(map_text.data(), map_text.size(), "%s [0x%02X]", map.display_name.c_str(),
+                          static_cast<unsigned>(map.id));
+            label_text({top_left.x + 3.0F, top_left.y + 2.0F}, IM_COL32(255, 245, 190, 255),
+                       map_text.data());
+        }
+
+        for (const WorldWarp& warp : map.warps) {
+            const ImVec2 center = screen_point(map_x + static_cast<float>(warp.x) * 16.0F + 8.0F,
+                                               map_y + static_cast<float>(warp.y) * 16.0F + 8.0F);
+            const float radius = std::clamp(6.0F * projection.scale, 3.0F, 10.0F);
+            draw->AddRectFilled({center.x - radius, center.y - radius},
+                                {center.x + radius, center.y + radius}, IM_COL32(32, 224, 240, 95));
+            draw->AddRect({center.x - radius, center.y - radius},
+                          {center.x + radius, center.y + radius}, IM_COL32(48, 246, 255, 255), 0.0F,
+                          ImDrawFlags_None, 2.0F);
+            if (projection.scale >= 0.75F) {
+                std::array<char, 64> warp_text{};
+                std::snprintf(warp_text.data(), warp_text.size(), "W%u -> %02X:%u",
+                              static_cast<unsigned>(warp.index),
+                              static_cast<unsigned>(warp.destination_map_id),
+                              static_cast<unsigned>(warp.destination_warp_index));
+                label_text({center.x + radius + 2.0F, center.y - 7.0F}, IM_COL32(96, 255, 255, 255),
+                           warp_text.data());
+            }
+        }
+
+        for (const WorldActorSpawn& actor : map.actors) {
+            const ImVec2 center = screen_point(map_x + static_cast<float>(actor.x) * 16.0F + 8.0F,
+                                               map_y + static_cast<float>(actor.y) * 16.0F + 8.0F);
+            const ImU32 color = actor.kind == WorldActorKind::item ? IM_COL32(255, 206, 64, 255)
+                                : actor.kind == WorldActorKind::trainer_or_pokemon
+                                    ? IM_COL32(255, 100, 112, 255)
+                                    : IM_COL32(142, 255, 138, 255);
+            draw->AddCircleFilled(center, 3.5F, color);
+            draw->AddLine({center.x - 7.0F, center.y}, {center.x + 7.0F, center.y}, color, 1.0F);
+            draw->AddLine({center.x, center.y - 7.0F}, {center.x, center.y + 7.0F}, color, 1.0F);
+            if (projection.scale >= 0.75F) {
+                std::array<char, 96> actor_text{};
+                const std::string_view movement = movement_label(actor);
+                std::snprintf(actor_text.data(), actor_text.size(), "A%u S%u %.*s",
+                              static_cast<unsigned>(actor.index),
+                              static_cast<unsigned>(actor.sprite_id),
+                              static_cast<int>(movement.size()), movement.data());
+                label_text({center.x + 8.0F, center.y + 2.0F}, color, actor_text.data());
+            }
+        }
+    }
+
+    draw->AddText(
+        {8.0F, 43.0F}, IM_COL32(230, 245, 255, 255),
+        "F3 annotations: map bounds | cyan warps | green NPCs | red trainers | gold items");
+}
+
 } // namespace
 
 void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
@@ -200,7 +320,7 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 
 void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
                 BattleAnimationLab& lab, WorldState& maps, PresentationSettings& presentation,
-                const char* renderer_name) {
+                const render::WorldRenderResources& world_resources, const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
@@ -210,7 +330,7 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
             ImGui::Separator();
             ImGui::TextUnformatted(
                 "Left/Right Map   Tab World/Map   WASD Pan   +/- Zoom   0 Reset   "
-                "B Battle Lab   F1/F2 Tools   F11 Fullscreen");
+                "F3 Annotations   B Battle Lab   F1/F2 Tools   F11 Fullscreen");
         } else {
             const std::string_view animation = battle_animation_lab_name(lab);
             ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()), animation.data());
@@ -233,6 +353,8 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
         draw_player_tools(tools, catalog);
     else if (tools.layout == ToolLayout::developer)
         draw_developer_tools(tools, game, catalog, lab, maps, presentation, renderer_name);
+
+    if (game.mode == Mode::overworld) draw_world_annotations(maps, world_resources);
 
     if (presentation.show_fps) {
         std::array<char, 32> text{};

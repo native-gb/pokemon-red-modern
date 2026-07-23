@@ -37,6 +37,8 @@ struct AnimatedWorldTile {
 
 struct WorldRenderResources {
     std::vector<TilesetRenderResources> tilesets;
+    SDL_Texture* actor_atlas{};
+    int actor_atlas_columns{};
     std::vector<SDL_Texture*> terrain_pages;
     std::vector<TerrainChunk> terrain_chunks;
     std::vector<AnimatedWorldTile> animated_tiles;
@@ -46,9 +48,17 @@ struct WorldRenderResources {
     int world_height_pixels{};
 };
 
+struct WorldProjection {
+    float center_x{};
+    float center_y{};
+    float scale{};
+};
+
 bool upload_world_textures(SDL_Renderer* renderer, const WorldState& world,
                            WorldRenderResources& resources);
 void destroy_world_textures(WorldRenderResources& resources);
+WorldProjection world_projection(int output_width, int output_height, const WorldState& world,
+                                 const WorldRenderResources& resources);
 bool draw_world(SDL_Renderer* renderer, int output_width, int output_height,
                 const WorldState& world, WorldRenderResources& resources);
 
