@@ -25,7 +25,7 @@ The runtime currently executes:
 - the main menu's New Game and Options paths;
 - interactive option rows;
 - Oak dialogue pages, portrait transitions, default-name menus, and the
-  controller naming grid;
+  imported controller naming grid plus ordinary typed name entry;
 - the shrink ending and transfer into the imported initial world placement.
 
 All boot images are normalized once by the importer and uploaded once as GPU
@@ -40,8 +40,6 @@ gaps:
 - import and render the cartridge palette/SGB programs and exact fades;
 - replace page-at-a-time dialogue with the complete text timing, input-wait,
   and text-sound program;
-- import the naming alphabet/layout policy and support ordinary keyboard text
-  entry in addition to controller navigation;
 - add Continue only after semantic save/load and initial-state construction
   exist, and implement the clear-save chord;
 - construct the complete New Game party, bag, flags, variables, Pokédex,

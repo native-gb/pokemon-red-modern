@@ -1770,7 +1770,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 7> source_names{
+    constexpr std::array<std::string_view, 8> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1778,6 +1778,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "oaks_lab_first_rival_after_charmander.sexpr",
         "oaks_lab_first_rival_after_squirtle.sexpr",
         "oaks_lab_first_rival_after_bulbasaur.sexpr",
+        "viridian_mart_oaks_parcel.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2042,6 +2043,53 @@ void test_local_pallet_campaign_program(TestState& state) {
                   campaign.party.members.front().stats.hp &&
               !actor_visible(1U),
           "lab rival outcome heals the party and completes Blue's exit");
+
+    // Enter the Viridian Mart through its real city warp. The imported
+    // map-entry fiber owns the clerk interruption, simulated player path,
+    // dialogue, parcel grant, and progression flag.
+    check(state, pokered::enter_world_at(world, 1U, 29, 20, error),
+          "campaign fixture reaches the Viridian Mart entrance");
+    pokered::step_world(world, interactions, campaign, {.up = true});
+    check(state,
+          world.player.map_index < world.maps.size() &&
+              world.maps[world.player.map_index].id == 42U &&
+              world.last_warp.occurred &&
+              world.last_warp.destination_map_id == 42U,
+          "Viridian City entrance performs the imported mart warp");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign, error),
+          "Viridian Mart entry starts the parcel fiber");
+    check(state,
+          campaign.input_locked && world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "You came from") != std::string::npos,
+          "mart clerk interrupts with imported Pallet dialogue");
+
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world, campaign, error),
+              "Viridian Mart parcel fiber advances");
+        if (!error.empty()) break;
+    }
+    check(state, error.empty(),
+          "Viridian Mart parcel sequence reports no error");
+    check(state,
+          !campaign.fiber.active && !campaign.input_locked &&
+              pokered::campaign_flag(campaign, 0x6BA71U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 0x46U) == 1U,
+          "parcel sequence grants the ROM-derived item and progression flag");
+    check(state,
+          world.player.map_index < world.maps.size() &&
+              world.maps[world.player.map_index].id == 42U &&
+              world.player.x == 2 && world.player.y == 5,
+          "mart simulated joypad path ends beside the clerk");
 }
 
 } // namespace

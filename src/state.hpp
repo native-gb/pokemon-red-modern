@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battle.hpp"
+#include "inventory.hpp"
 
 #include <array>
 #include <cstddef>
@@ -60,6 +61,7 @@ struct CampaignState {
     std::array<std::uint8_t, 3> options{};
     std::uint16_t trainer_id{};
     PartyState party;
+    InventoryState inventory;
     BattleState battle;
     CampaignBattleOwner battle_owner;
     CampaignTrainerBattleRequest trainer_battle_request;

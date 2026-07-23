@@ -105,6 +105,7 @@ add_executable(native-gb-pokemon-red-modern
     src/encounters.cpp
     src/experience_rules.cpp
     src/interactions.cpp
+    src/inventory.cpp
     src/main.cpp
     src/maps.cpp
     src/naming.cpp
@@ -160,6 +161,7 @@ if(BUILD_TESTING)
         src/encounters.cpp
         src/experience_rules.cpp
         src/interactions.cpp
+        src/inventory.cpp
         src/maps.cpp
         src/naming.cpp
         src/overlays.cpp

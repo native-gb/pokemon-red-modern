@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first seven imported story fibers are executable from the ordinary
+The first eight imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -684,6 +684,16 @@ cartridge's y=6 challenge line:
   cartridge exit route including its player-x-dependent final step, and hides
   the rival actor.
 
+Entering the Viridian Mart through its ordinary city warp now starts the
+imported Oak's Parcel fiber. It:
+
+- detects the map entry through a generic warp-owned trigger and locks input;
+- presents both cartridge dialogue programs with campaign-name substitution;
+- consumes the ROM simulated-joypad stream to walk the player beside the
+  clerk and preserves the source three-frame delay;
+- grants the decoded item ID and quantity through the generic inventory owner;
+- records the decoded got-parcel event and returns control to the player.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -692,13 +702,14 @@ check drives the slice through its real warp, declines once, accepts
 Charmander, enters a typed nickname, executes the Squirtle rival battle through
 the real battle engine, and verifies party construction, rival selection, ball
 visibility, battle outcome, healing, rival exit, final map, and progression
-state.
+state. The same check then uses the real Viridian City-to-Mart warp, advances
+the parcel interruption, and verifies movement, inventory, event state, and
+final placement.
 
 This is not full-campaign completion. The next campaign blocker begins with
-the Viridian Mart parcel handoff, the return to Oak, Pokédex/Poké Ball
-delivery, and the remaining Pallet actors and gates. Every later map program
-still requires semantic lifting and the remaining acceptance gates above stay
-open.
+the return to Oak, parcel removal, Pokédex/Poké Ball delivery, and the
+remaining Pallet actors and gates. Every later map program still requires
+semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance
 

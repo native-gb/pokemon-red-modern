@@ -291,6 +291,9 @@ bool start_world_parallel_motion(
     const std::vector<WorldPathCommand>& player_path,
     bool hide_actor_at_end, std::string& error,
     bool actor_may_overlap_player = false);
+bool start_world_player_motion(
+    WorldState& world, const std::vector<WorldPathCommand>& player_path,
+    std::string& error);
 bool step_world_script_motion(WorldState& world, std::string& error);
 std::uint8_t next_world_random_byte(WorldState& world);
 const WorldMap* selected_map(const WorldState& world);

@@ -127,6 +127,18 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.value == 0U && instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
+    case CampaignOpcode::player_path:
+        return instruction.a == 0U && instruction.b == 0U &&
+               instruction.value == 0U && instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               !instruction.player_path.empty();
+    case CampaignOpcode::give_item:
+        return instruction.a != 0U && instruction.b == 0U &&
+               instruction.value != 0U &&
+               instruction.value <= 0xFFFFU &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
     case CampaignOpcode::wait_ticks:
         return instruction.value != 0U;
     case CampaignOpcode::start_trainer_battle:
@@ -153,6 +165,13 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
                    program.trigger_map_id &&
                world.last_actor_activation.actor_index ==
                    program.trigger_value;
+    if (program.trigger_kind == CampaignTriggerKind::map_entry)
+        return world.last_warp.occurred &&
+               world.last_warp.destination_map_id ==
+                   program.trigger_map_id &&
+               world.player.map_index < world.maps.size() &&
+               world.maps[world.player.map_index].id ==
+                   program.trigger_map_id;
     return world.player.map_index < world.maps.size() &&
            world.maps[world.player.map_index].id ==
                program.trigger_map_id &&
@@ -195,7 +214,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '4'}) {
+        magic != std::array{'P', 'C', 'P', '5'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -234,7 +253,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
             !read_u8(input, trigger_kind) ||
             trigger_kind >
                 static_cast<std::uint8_t>(
-                    CampaignTriggerKind::actor_activation) ||
+                    CampaignTriggerKind::map_entry) ||
             !read_u8(input, program.trigger_map_id) ||
             !read_u8(input, program.trigger_value) ||
             !read_u32(input, program.required_flag) ||
@@ -557,6 +576,22 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             error.clear();
             return true;
         }
+        case CampaignOpcode::player_path:
+            if (!start_world_player_motion(
+                    world, instruction.player_path, error))
+                return false;
+            fiber.waiting_motion = true;
+            error.clear();
+            return true;
+        case CampaignOpcode::give_item:
+            if (!give_inventory_item(
+                    campaign.inventory,
+                    static_cast<std::uint16_t>(instruction.value),
+                    instruction.a)) {
+                error = "campaign could not add an inventory item";
+                return false;
+            }
+            break;
         case CampaignOpcode::wait_ticks:
             fiber.waiting_ticks = instruction.value;
             error.clear();

@@ -17,6 +17,7 @@ struct RuleCatalog;
 enum class CampaignTriggerKind : std::uint8_t {
     player_y,
     actor_activation,
+    map_entry,
 };
 
 enum class CampaignOpcode : std::uint8_t {
@@ -35,6 +36,8 @@ enum class CampaignOpcode : std::uint8_t {
     set_variable,
     give_pokemon,
     nickname_last_party_member_if_yes,
+    player_path,
+    give_item,
     wait_ticks,
     actor_path_by_player_x,
     start_trainer_battle,

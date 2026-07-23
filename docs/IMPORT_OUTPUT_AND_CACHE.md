@@ -151,8 +151,9 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
-seven programs import Pallet Town's Oak interception, all three Oak's Lab
-starter-ball branches, and all three first-rival battle branches. They include
+eight programs import Pallet Town's Oak interception, all three Oak's Lab
+starter-ball branches, all three first-rival battle branches, and the Viridian
+Mart Oak's Parcel handoff. The Pallet and lab programs include
 both Pallet dialogue programs, Oak/player movement streams, the ordinary lab
 warp, Oak's two lab actor placements, both lab entry paths, the four
 choose-a-Pokemon speeches, each starter prompt, player/rival receipt text, both
@@ -165,7 +166,12 @@ peers live under `source/scripts/campaign/`. Map IDs, actor IDs, flags, source
 addresses, paths, text, species, opponent party, and branch ownership are
 generated-pack content; the runtime implements only generic fiber, choice,
 owned-Pokemon creation, trainer-battle handoff, conditional dialogue, and
-world-motion operations.
+world-motion operations. The parcel program activates through a generic
+map-entry trigger after the ordinary Viridian City-to-Mart warp. It imports
+the clerk interruption and parcel dialogue, the simulated player path, the
+three-frame delay, Oak's Parcel item ID and quantity, and both source event
+flags. A generic ordered inventory owns the resulting item stack; neither the
+inventory nor campaign executor recognizes Oak's Parcel by name.
 The same cache owns the cartridge-decoded English naming profile: both 45-cell
 case tables, the case-switch labels, END action, Pokemon name-length limit,
 nickname heading, and nickname question. Its readable peer is

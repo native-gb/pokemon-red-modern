@@ -1265,6 +1265,29 @@ bool start_world_parallel_motion(WorldState& world, std::uint8_t map_id, std::ui
     return true;
 }
 
+bool start_world_player_motion(
+    WorldState& world,
+    const std::vector<WorldPathCommand>& player_path,
+    std::string& error) {
+    if (player_path.empty()) {
+        error = "player path has no command data";
+        return false;
+    }
+    world.script_motion = {
+        .actor_runtime_index = world.actors.size(),
+        .actor_path = {},
+        .player_path = player_path,
+        .actor_cursor = 0U,
+        .player_cursor = 0U,
+        .step_cooldown = 0U,
+        .hide_actor_at_end = false,
+        .actor_may_overlap_player = false,
+        .active = true,
+    };
+    error.clear();
+    return true;
+}
+
 bool step_world_script_motion(WorldState& world, std::string& error) {
     WorldScriptMotion& motion = world.script_motion;
     if (!motion.active) {

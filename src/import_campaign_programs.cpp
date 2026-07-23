@@ -48,9 +48,16 @@ constexpr std::array<std::size_t, 3> kRivalStarterPathOffsets{
     0x01CC9CU, 0x01CCB7U, 0x01CCEFU};
 constexpr std::size_t kRivalBattleCodeOffset = 0x01CDB9U;
 constexpr std::size_t kRivalExitPathOffset = 0x01CE66U;
+constexpr std::size_t kViridianMartParcelCheckOffset = 0x01D47DU;
+constexpr std::size_t kViridianMartPlayerPathOffset = 0x01D4BBU;
+constexpr std::size_t kViridianMartParcelGrantOffset = 0x01D4CFU;
+constexpr std::size_t kViridianMartParcelFlagOffset = 0x01D4D5U;
+constexpr std::size_t kViridianMartCameFromPalletTextOffset = 0x01D4F5U;
+constexpr std::size_t kViridianMartParcelQuestTextOffset = 0x01D4FAU;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
+constexpr std::uint8_t kViridianMartMapId = 42U;
 constexpr std::uint32_t kFollowedOakFlag = static_cast<std::uint32_t>(0xD747U * 8U);
 constexpr std::uint32_t kFollowedOakSecondFlag = kFollowedOakFlag + 32U;
 constexpr std::uint32_t kOakAskedToChooseFlag = kFollowedOakFlag + 33U;
@@ -64,6 +71,7 @@ constexpr std::uint8_t kRivalStarterVariable = 1U;
 enum class TriggerKind : std::uint8_t {
     player_y,
     actor_activation,
+    map_entry,
 };
 
 enum class Opcode : std::uint8_t {
@@ -82,6 +90,8 @@ enum class Opcode : std::uint8_t {
     set_variable,
     give_pokemon,
     nickname_last_party_member_if_yes,
+    player_path,
+    give_item,
     wait_ticks,
     actor_path_by_player_x,
     start_trainer_battle,
@@ -137,6 +147,16 @@ struct RivalBattleChoice {
     std::uint16_t trainer_party{};
 };
 
+struct ParcelProgram {
+    std::uint32_t oak_got_parcel_flag{};
+    std::uint32_t got_oaks_parcel_flag{};
+    std::uint16_t item_id{};
+    std::uint8_t quantity{};
+    std::vector<PathCommand> player_path;
+    DecodedTextProgram came_from_pallet;
+    DecodedTextProgram parcel_quest;
+};
+
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
                       std::uint32_t value = 0U) {
     Instruction result;
@@ -173,6 +193,52 @@ bool has_bytes(std::span<const std::uint8_t> rom, std::size_t offset,
     return offset <= rom.size() && expected.size() <= rom.size() - offset &&
            std::equal(expected.begin(), expected.end(),
                       rom.begin() + static_cast<std::ptrdiff_t>(offset));
+}
+
+bool decode_checked_event(std::span<const std::uint8_t> rom,
+                          std::size_t offset, std::uint32_t& flag,
+                          std::string& error) {
+    if (offset > rom.size() || 5U > rom.size() - offset ||
+        rom[offset] != 0xFAU || rom[offset + 3U] != 0xCBU ||
+        rom[offset + 4U] < 0x47U ||
+        (rom[offset + 4U] - 0x47U) % 8U != 0U) {
+        error = "campaign event check does not match the verified ROM";
+        return false;
+    }
+    const std::uint8_t bit =
+        static_cast<std::uint8_t>((rom[offset + 4U] - 0x47U) / 8U);
+    if (bit > 7U) {
+        error = "campaign event check has an invalid bit";
+        return false;
+    }
+    const std::uint16_t address = static_cast<std::uint16_t>(
+        rom[offset + 1U] |
+        static_cast<std::uint16_t>(rom[offset + 2U]) << 8U);
+    flag = static_cast<std::uint32_t>(address) * 8U + bit;
+    return true;
+}
+
+bool decode_set_event(std::span<const std::uint8_t> rom,
+                      std::size_t offset, std::uint32_t& flag,
+                      std::string& error) {
+    if (offset > rom.size() || 5U > rom.size() - offset ||
+        rom[offset] != 0x21U || rom[offset + 3U] != 0xCBU ||
+        rom[offset + 4U] < 0xC6U ||
+        (rom[offset + 4U] - 0xC6U) % 8U != 0U) {
+        error = "campaign event mutation does not match the verified ROM";
+        return false;
+    }
+    const std::uint8_t bit =
+        static_cast<std::uint8_t>((rom[offset + 4U] - 0xC6U) / 8U);
+    if (bit > 7U) {
+        error = "campaign event mutation has an invalid bit";
+        return false;
+    }
+    const std::uint16_t address = static_cast<std::uint16_t>(
+        rom[offset + 1U] |
+        static_cast<std::uint16_t>(rom[offset + 2U]) << 8U);
+    flag = static_cast<std::uint32_t>(address) * 8U + bit;
+    return true;
 }
 
 bool decode_naming_string(std::span<const std::uint8_t> rom,
@@ -539,6 +605,66 @@ bool decode_direct_npc_path(std::span<const std::uint8_t> rom, std::size_t offse
     return false;
 }
 
+bool decode_viridian_mart_parcel(std::span<const std::uint8_t> rom,
+                                ParcelProgram& result,
+                                std::string& error) {
+    constexpr std::array<std::uint8_t, 2> check_tail{0x20U, 0x05U};
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    constexpr std::array<std::uint8_t, 15> parcel_wait{
+        0xFAU, 0x38U, 0xCDU, 0xA7U, 0xC0U,
+        0xCDU, 0xD7U, 0x3DU, 0x3EU, 0x05U,
+        0xE0U, 0x8CU, 0xCDU, 0x20U, 0x29U};
+
+    result = {};
+    if (!decode_checked_event(rom, kViridianMartParcelCheckOffset,
+                              result.oak_got_parcel_flag, error) ||
+        !has_bytes(rom, kViridianMartParcelCheckOffset + 5U,
+                   check_tail) ||
+        !has_bytes(rom, kViridianMartParcelGrantOffset + 3U,
+                   give_item_call) ||
+        !has_bytes(rom, kViridianMartParcelGrantOffset - 15U,
+                   parcel_wait) ||
+        !decode_set_event(rom, kViridianMartParcelFlagOffset,
+                          result.got_oaks_parcel_flag, error)) {
+        if (error.empty())
+            error =
+                "Viridian Mart parcel program does not match the verified ROM";
+        return false;
+    }
+    if (kViridianMartParcelGrantOffset + 2U >= rom.size() ||
+        rom[kViridianMartParcelGrantOffset] != 0x01U) {
+        error =
+            "Viridian Mart parcel item grant does not match the verified ROM";
+        return false;
+    }
+    result.quantity = rom[kViridianMartParcelGrantOffset + 1U];
+    result.item_id = rom[kViridianMartParcelGrantOffset + 2U];
+    if (result.quantity == 0U || result.item_id == 0U) {
+        error = "Viridian Mart parcel item grant is empty";
+        return false;
+    }
+    if (!decode_rle_path(rom, kViridianMartPlayerPathOffset, true,
+                         result.player_path, error))
+        return false;
+
+    // StartSimulatingJoypadStates consumes this buffer from its final index.
+    std::reverse(result.player_path.begin(), result.player_path.end());
+    if (!decode_text_program(
+            rom, 0x07U, kViridianMartCameFromPalletTextOffset,
+            result.came_from_pallet) ||
+        !decode_text_program(
+            rom, 0x07U, kViridianMartParcelQuestTextOffset,
+            result.parcel_quest) ||
+        result.came_from_pallet.pages.empty() ||
+        result.parcel_quest.pages.empty()) {
+        error =
+            "Viridian Mart parcel dialogue could not be decoded from the pinned ROM";
+        return false;
+    }
+    return true;
+}
+
 std::string source_quote(std::string_view value) {
     std::string result{"\""};
     for (const char character : value) {
@@ -846,6 +972,63 @@ GeneratedFile readable_rival_battle_source(
     };
 }
 
+GeneratedFile readable_viridian_mart_parcel_source(
+    const ParcelProgram& parcel) {
+    const auto path_name = [](PathCommand command) {
+        switch (command) {
+        case PathCommand::down:
+            return "down";
+        case PathCommand::up:
+            return "up";
+        case PathCommand::left:
+            return "left";
+        case PathCommand::right:
+            return "right";
+        case PathCommand::wait:
+            return "wait";
+        case PathCommand::face_down:
+            return "face_down";
+        }
+        return "invalid";
+    };
+
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Viridian Mart program.\n"
+        << "; The trigger, event flags, path, item grant, and text are ROM-derived.\n"
+        << "; The source switches clerk tables after flag 0x" << std::hex
+        << parcel.oak_got_parcel_flag << std::dec << ".\n\n"
+        << "campaign_program viridian_mart_oaks_parcel\n"
+        << "    source bank_07 0x01d49b\n"
+        << "    trigger map viridian_mart map_entry\n"
+        << "    absent_flag 0x" << std::hex
+        << parcel.got_oaks_parcel_flag << std::dec << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(parcel.came_from_pallet.pages, "        ")
+        << "    player_path";
+    for (const PathCommand command : parcel.player_path)
+        source << ' ' << path_name(command);
+    source
+        << "\n"
+        << "    wait_ticks 3\n"
+        << "    say\n"
+        << page_source(parcel.parcel_quest.pages, "        ")
+        << "    give_item oaks_parcel quantity "
+        << static_cast<unsigned>(parcel.quantity)
+        << " rom_id " << parcel.item_id << '\n'
+        << "    set_flag 0x" << std::hex
+        << parcel.got_oaks_parcel_flag << std::dec << '\n'
+        << "    unlock_input\n"
+        << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/viridian_mart_oaks_parcel.sexpr",
+        .bytes = std::vector<std::uint8_t>(text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -952,6 +1135,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_rival_battle_choices(rom, starter_choices,
                                      rival_battles, error))
         return false;
+    ParcelProgram parcel;
+    if (!decode_viridian_mart_parcel(rom, parcel, error))
+        return false;
 
     std::vector<PathCommand> oak_path;
     std::vector<PathCommand> player_path;
@@ -1041,7 +1227,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         "oaks_lab_first_rival_after_bulbasaur",
     };
     std::vector<Program> programs;
-    programs.reserve(1U + starter_choices.size() +
+    programs.reserve(2U + starter_choices.size() +
                      rival_battles.size());
     programs.push_back(std::move(opening));
     for (std::size_t index = 0U; index < starter_choices.size(); ++index) {
@@ -1153,7 +1339,32 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(rival));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '4'};
+    Program parcel_program;
+    parcel_program.key = "viridian_mart_oaks_parcel";
+    parcel_program.trigger_kind = TriggerKind::map_entry;
+    parcel_program.trigger_map = kViridianMartMapId;
+    parcel_program.absent_flag = parcel.got_oaks_parcel_flag;
+    parcel_program.instructions.push_back(
+        operation(Opcode::lock_input));
+    parcel_program.instructions.push_back(
+        dialogue(parcel.came_from_pallet.pages));
+    Instruction parcel_walk = operation(Opcode::player_path);
+    parcel_walk.player_path = parcel.player_path;
+    parcel_program.instructions.push_back(std::move(parcel_walk));
+    parcel_program.instructions.push_back(
+        operation(Opcode::wait_ticks, 0U, 0U, 3U));
+    parcel_program.instructions.push_back(
+        dialogue(parcel.parcel_quest.pages));
+    parcel_program.instructions.push_back(operation(
+        Opcode::give_item, parcel.quantity, 0U, parcel.item_id));
+    parcel_program.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U, parcel.got_oaks_parcel_flag));
+    parcel_program.instructions.push_back(
+        operation(Opcode::unlock_input));
+    parcel_program.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(parcel_program));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '5'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
@@ -1175,6 +1386,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             rival_battle_keys[index], rival_battles[index],
             rival_challenge, rival_player_victory, rival_player_loss,
             rival_exit_text, rival_exit_path));
+    result.files.push_back(
+        readable_viridian_mart_parcel_source(parcel));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
     result.programs = programs.size();
     error.clear();
