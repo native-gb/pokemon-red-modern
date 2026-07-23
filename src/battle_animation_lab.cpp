@@ -180,6 +180,76 @@ bool load_procedural_assets(const std::filesystem::path& path, ImportedAnimation
     return true;
 }
 
+bool read_picture(std::istream& input, ImportedBattlePicture& result) {
+    std::array<unsigned char, 2> dimensions{};
+    std::uint32_t pixel_count = 0;
+    if (!input.read(reinterpret_cast<char*>(dimensions.data()), dimensions.size()) ||
+        !read_u32(input, result.rom_offset) || !read_u32(input, result.compressed_size) ||
+        !read_u32(input, pixel_count))
+        return false;
+    result.width_tiles = dimensions[0];
+    result.height_tiles = dimensions[1];
+    const std::size_t width = static_cast<std::size_t>(result.width_tiles) * 8U;
+    const std::size_t height = static_cast<std::size_t>(result.height_tiles) * 8U;
+    if (result.width_tiles == 0 || result.height_tiles == 0 || width * height != pixel_count)
+        return false;
+    result.pixels.resize(pixel_count);
+    return input
+        .read(reinterpret_cast<char*>(result.pixels.data()),
+              static_cast<std::streamsize>(result.pixels.size()))
+        .good();
+}
+
+bool read_name(std::istream& input, std::string& result) {
+    std::uint16_t size = 0;
+    if (!read_u16(input, size) || size == 0 || size > 64) return false;
+    result.resize(size);
+    return input.read(result.data(), static_cast<std::streamsize>(result.size())).good();
+}
+
+bool load_battle_pictures(const std::filesystem::path& path, ImportedAnimationAssets& result,
+                          Diagnostics& diagnostics) {
+    if (!std::filesystem::exists(path)) return true;
+    // Load normalized pixels only; cartridge decompression never enters the hot loop.
+    std::ifstream input(path, std::ios::binary);
+    std::array<char, 4> magic{};
+    std::uint16_t species_count = 0;
+    std::uint16_t trainer_count = 0;
+    if (!input.read(magic.data(), magic.size()) || magic != std::array{'P', 'G', 'P', '1'} ||
+        !read_u16(input, species_count) || !read_u16(input, trainer_count) ||
+        species_count != 151 || trainer_count != 47) {
+        add_error(diagnostics, {path.string(), 1, 1}, "invalid_battle_picture_header",
+                  "imported battle-picture cache has an invalid header or record count");
+        return false;
+    }
+
+    result.pokemon.reserve(species_count);
+    for (std::uint16_t index = 0; index < species_count; ++index) {
+        ImportedPokemonVisual visual;
+        if (!read_name(input, visual.name) || !read_picture(input, visual.front) ||
+            !read_picture(input, visual.back) || visual.front.width_tiles < 5 ||
+            visual.front.width_tiles > 7 || visual.front.width_tiles != visual.front.height_tiles ||
+            visual.back.width_tiles != 4 || visual.back.height_tiles != 4) {
+            add_error(diagnostics, {path.string(), 1, 1}, "invalid_pokemon_picture",
+                      "imported Pokemon picture record is invalid or truncated");
+            return false;
+        }
+        result.pokemon.push_back(std::move(visual));
+    }
+    result.trainers.reserve(trainer_count);
+    for (std::uint16_t index = 0; index < trainer_count; ++index) {
+        ImportedTrainerVisual visual;
+        if (!read_name(input, visual.name) || !read_picture(input, visual.portrait) ||
+            visual.portrait.width_tiles != 7 || visual.portrait.height_tiles != 7) {
+            add_error(diagnostics, {path.string(), 1, 1}, "invalid_trainer_picture",
+                      "imported trainer portrait record is invalid or truncated");
+            return false;
+        }
+        result.trainers.push_back(std::move(visual));
+    }
+    return true;
+}
+
 } // namespace
 
 bool load_battle_animation_lab(const std::filesystem::path& source_root, BattleAnimationLab& result,
@@ -198,6 +268,9 @@ bool load_battle_animation_lab(const std::filesystem::path& source_root, BattleA
         imported_assets.parent_path() / "battle_animation_procedural.bin";
     if (!load_procedural_assets(procedural_assets, loaded.imported_assets, diagnostics))
         return false;
+    const std::filesystem::path battle_pictures =
+        imported_assets.parent_path() / "battle_pictures.bin";
+    if (!load_battle_pictures(battle_pictures, loaded.imported_assets, diagnostics)) return false;
     for (const SourceDocument& source : sources) {
         for (const sexpr::Form& form : source.document.forms) {
             if (!sexpr::is_head(form, "animation") || form.arguments.size() != 1 ||
@@ -232,6 +305,10 @@ bool reload_battle_animation_lab(BattleAnimationLab& lab, Diagnostics& diagnosti
     BattleAnimationLab reloaded;
     if (!load_battle_animation_lab(lab.source_root, reloaded, diagnostics)) return false;
     reloaded.auto_advance = lab.auto_advance;
+    if (!reloaded.entries.empty()) reloaded.current = lab.current % reloaded.entries.size();
+    if (!reloaded.imported_assets.pokemon.empty())
+        reloaded.current_species = lab.current_species % reloaded.imported_assets.pokemon.size();
+    if (!start_current(reloaded, diagnostics)) return false;
     lab = std::move(reloaded);
     return true;
 }
@@ -264,9 +341,32 @@ void previous_battle_animation_lab(BattleAnimationLab& lab) {
     restart_battle_animation_lab(lab);
 }
 
+void next_battle_species(BattleAnimationLab& lab) {
+    if (lab.imported_assets.pokemon.empty()) return;
+    lab.current_species = (lab.current_species + 1U) % lab.imported_assets.pokemon.size();
+    restart_battle_animation_lab(lab);
+}
+
+void previous_battle_species(BattleAnimationLab& lab) {
+    if (lab.imported_assets.pokemon.empty()) return;
+    lab.current_species = lab.current_species == 0 ? lab.imported_assets.pokemon.size() - 1U
+                                                   : lab.current_species - 1U;
+    restart_battle_animation_lab(lab);
+}
+
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab) {
     if (!lab.loaded || lab.current >= lab.entries.size()) return "unavailable";
     return lab.entries[lab.current].name.text;
+}
+
+std::string_view battle_animation_lab_species_name(const BattleAnimationLab& lab) {
+    const ImportedPokemonVisual* visual = battle_animation_lab_species(lab);
+    return visual == nullptr ? "placeholder" : std::string_view(visual->name);
+}
+
+const ImportedPokemonVisual* battle_animation_lab_species(const BattleAnimationLab& lab) {
+    if (lab.current_species >= lab.imported_assets.pokemon.size()) return nullptr;
+    return &lab.imported_assets.pokemon[lab.current_species];
 }
 
 const ImportedAnimationVisual* find_imported_animation_visual(const ImportedAnimationAssets& assets,

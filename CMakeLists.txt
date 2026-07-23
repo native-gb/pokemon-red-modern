@@ -61,7 +61,9 @@ else()
 endif()
 
 add_library(pokered-modern-import-core STATIC
+    src/gen1_picture_codec.cpp
     src/import_battle_animations.cpp
+    src/import_pictures.cpp
 )
 target_include_directories(pokered-modern-import-core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src")

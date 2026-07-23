@@ -1,5 +1,6 @@
 #include "import_battle_animations.hpp"
 #include "import_battle_animations_io.hpp"
+#include "import_pictures.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -37,9 +38,16 @@ int main(int argc, char** argv) {
     }
 
     pokered::import::BattleAnimationImport imported;
+    pokered::import::PictureImport pictures;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
-        !pokered::import::write_battle_animation_import(imported, output_root, error)) {
+        !pokered::import::decode_picture_import(rom, pictures, error)) {
+        std::cerr << error << '\n';
+        return 1;
+    }
+    imported.files.insert(imported.files.end(), std::make_move_iterator(pictures.files.begin()),
+                          std::make_move_iterator(pictures.files.end()));
+    if (!pokered::import::write_battle_animation_import(imported, output_root, error)) {
         std::cerr << error << '\n';
         return 1;
     }
@@ -51,5 +59,9 @@ int main(int argc, char** argv) {
               << '\n';
     std::cout << "Procedural profile: "
               << output_root / "compiled" / "battle_animation_procedural.bin" << '\n';
+    std::cout << "Imported " << pictures.front_pictures << " front pictures, "
+              << pictures.back_pictures << " back pictures, and " << pictures.trainer_classes
+              << " trainer-class portraits\n";
+    std::cout << "Picture cache: " << output_root / "compiled" / "battle_pictures.bin" << '\n';
     return 0;
 }

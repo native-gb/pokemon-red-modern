@@ -22,10 +22,14 @@ The repository currently provides:
 - snake_case symbols, dense typed IDs, content records, and indexes;
 - the indented S-expression reader and canonical diagnostic printer;
 - deterministic package `define`/`override` resolution with field provenance;
-- a hot-reloadable, isolated battle-animation lab with two placeholder
-  battlers and readable source fixtures;
+- a hot-reloadable, isolated battle-animation lab with all 151 imported
+  front/back picture pairs, readable source fixtures, and independent
+  animation/species browsing;
 - a portable C++ Pokemon Red battle-animation importer shared by the native
   command-line tool and future WebAssembly file import;
+- a portable Gen I picture decoder which emits readable species/trainer
+  bindings and a decoded local runtime cache for 151 species and 47 trainer
+  classes;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.
@@ -35,6 +39,12 @@ No cartridge is required for the scaffold to open.
 ./scripts/run.sh --tools
 ./scripts/run.sh --render-smoke
 ./scripts/test.sh
+```
+
+To replace original development fixtures with locally imported Red content:
+
+```sh
+./scripts/import_rom.sh
 ```
 
 See [PLAN.md](PLAN.md) for the implementation order and

@@ -115,9 +115,58 @@ void draw_minimized_mon(SDL_Renderer* renderer, const ViewLayout& view,
     }
 }
 
+void draw_imported_battler(SDL_Renderer* renderer, const ViewLayout& view,
+                           const AnimationTarget& target, bool player,
+                           content::AnimationPalette palette, const ImportedPokemonVisual& visual) {
+    // Reproduce Red's two distinct picture layouts from renderer-owned anchors.
+    const ImportedBattlePicture& picture = player ? visual.back : visual.front;
+    const std::size_t source_width = static_cast<std::size_t>(picture.width_tiles) * 8U;
+    const std::size_t source_height = static_cast<std::size_t>(picture.height_tiles) * 8U;
+    if (picture.pixels.size() != source_width * source_height) return;
+
+    const float center_x = target.x + target.offset_x;
+    const float center_y = target.y + target.offset_y;
+    const float width_scale =
+        std::max(1.0F - static_cast<float>(target.squish_half_steps) / 8.0F, 0.125F);
+    const std::size_t visible_width = player ? 28U : source_width;
+    const std::size_t visible_height = player ? 28U : source_height;
+    const float pixel_scale = player ? 2.0F : 1.0F;
+    const float box_left = center_x - 28.0F;
+    const float box_top = center_y - 28.0F;
+    const float source_left =
+        player ? box_left
+               : box_left +
+                     static_cast<float>((8U - static_cast<std::size_t>(picture.width_tiles)) / 2U) *
+                         8.0F;
+    const float source_top =
+        player ? box_top
+               : box_top +
+                     static_cast<float>(7U - static_cast<std::size_t>(picture.height_tiles)) * 8.0F;
+
+    for (std::size_t y = 0; y < visible_height; ++y) {
+        for (std::size_t x = 0; x < visible_width; ++x) {
+            const std::uint8_t pixel = picture.pixels[y * source_width + x];
+            if (pixel == 0) continue;
+            constexpr std::array<std::array<std::uint8_t, 3>, 4> colors{{
+                {246, 238, 230},
+                {190, 172, 176},
+                {116, 100, 124},
+                {54, 47, 58},
+            }};
+            const auto& color = colors[pixel & 0x03U];
+            set_draw_color(renderer, palette, color[0], color[1], color[2]);
+            const float unsquished_x = source_left + static_cast<float>(x) * pixel_scale;
+            const float squished_x = center_x + (unsquished_x - center_x) * width_scale;
+            fill_native_rect(renderer, view, squished_x,
+                             source_top + static_cast<float>(y) * pixel_scale,
+                             pixel_scale * width_scale, pixel_scale);
+        }
+    }
+}
+
 void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const AnimationTarget& target,
                   bool player, content::AnimationPalette screen_palette,
-                  const ImportedAnimationAssets& assets) {
+                  const ImportedAnimationAssets& assets, const ImportedPokemonVisual* pokemon) {
     if (!target.visible || target.form == content::AnimationForm::blank) return;
     const float x = target.x + target.offset_x;
     const float y = target.y + target.offset_y;
@@ -145,6 +194,10 @@ void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const Animatio
             fill_native_rect(renderer, view, x - 8.0F, y - 2.0F, 16.0F, 16.0F);
             fill_native_rect(renderer, view, x - 5.0F, y - 10.0F, 10.0F, 9.0F);
         }
+        return;
+    }
+    if (pokemon != nullptr) {
+        draw_imported_battler(renderer, view, target, player, palette, *pokemon);
         return;
     }
 
@@ -297,10 +350,13 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     fill_native_rect(renderer, scene_view, 96.0F, 54.0F, 56.0F, 2.0F);
     const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
     const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
+    const ImportedPokemonVisual* pokemon = battle_animation_lab_species(lab);
     if (attacker != nullptr)
-        draw_battler(renderer, scene_view, *attacker, true, screen_palette, lab.imported_assets);
+        draw_battler(renderer, scene_view, *attacker, true, screen_palette, lab.imported_assets,
+                     pokemon);
     if (defender != nullptr)
-        draw_battler(renderer, scene_view, *defender, false, screen_palette, lab.imported_assets);
+        draw_battler(renderer, scene_view, *defender, false, screen_palette, lab.imported_assets,
+                     pokemon);
     for (const AnimationEffect& effect : lab.animation.effects)
         draw_effect(renderer, scene_view, effect, lab.imported_assets, screen_palette);
 

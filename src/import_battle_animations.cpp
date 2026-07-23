@@ -1413,16 +1413,23 @@ bool emit_procedural_assets(std::span<const std::uint8_t> rom,
 
 } // namespace
 
+bool verify_pokemon_red_us_rev_0(std::span<const std::uint8_t> rom, std::string& error) {
+    const std::string digest = sha1(rom);
+    if (digest == kExpectedSha1) {
+        error.clear();
+        return true;
+    }
+    error = "unsupported ROM SHA1 " + digest + "; expected Pokemon Red US Rev 0 " +
+            std::string(kExpectedSha1);
+    return false;
+}
+
 bool decode_battle_animation_import(std::span<const std::uint8_t> rom,
                                     BattleAnimationImport& result, std::string& error) {
     result = {};
     error.clear();
-    const std::string digest = sha1(rom);
-    if (digest != kExpectedSha1) {
-        error = "unsupported ROM SHA1 " + digest + "; expected Pokemon Red US Rev 0 " +
-                std::string(kExpectedSha1);
-        return false;
-    }
+    if (!verify_pokemon_red_us_rev_0(rom, error)) return false;
+    const std::string digest = std::string(kExpectedSha1);
     if (!require_range(rom, kProgramPointers, kProgramCount * 2U, "animation pointer table",
                        error) ||
         !require_range(rom, kSubanimationPointers, kSubanimationCount * 2U,

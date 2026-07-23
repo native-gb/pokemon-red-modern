@@ -324,8 +324,10 @@ recompositing cartridge tiles.
 
 ## Recommended implementation order
 
-1. Decode all Pokémon front/back pictures and trainer battle portraits.
-2. Replace the battle-lab placeholder battlers with imported pictures.
+1. **Complete:** decode all Pokémon front/back pictures and trainer battle
+   portraits into readable bindings and `compiled/battle_pictures.bin`.
+2. **Complete:** replace the battle-lab placeholder battlers when imported
+   pictures are present; Up/Down and F2 controls iterate every species pair.
 3. Decode overworld sheets and generate all facing/walking clips.
 4. Decode tilesets and blocksets into complete map layers.
 5. Import shared party icons, fonts, battle HUD, and UI chrome.

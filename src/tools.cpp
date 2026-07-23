@@ -75,6 +75,14 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
                     battle_animation_lab_name(lab).data());
         ImGui::Text("Program: %zu / %zu", lab.entries.empty() ? 0 : lab.current + 1,
                     lab.entries.size());
+        const std::string_view species = battle_animation_lab_species_name(lab);
+        ImGui::Text("Pokemon: %.*s", static_cast<int>(species.size()), species.data());
+        ImGui::Text("Species: %zu / %zu",
+                    lab.imported_assets.pokemon.empty() ? 0 : lab.current_species + 1,
+                    lab.imported_assets.pokemon.size());
+        if (ImGui::Button("Previous Pokemon")) previous_battle_species(lab);
+        ImGui::SameLine();
+        if (ImGui::Button("Next Pokemon")) next_battle_species(lab);
         ImGui::Text("Tick: %u", lab.animation.tick);
         ImGui::Text("Effects: %zu", lab.animation.effects.size());
         ImGui::Checkbox("Auto advance", &lab.auto_advance);
@@ -90,6 +98,10 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Text("Species          %zu", catalog.species);
         ImGui::Text("Moves            %zu", catalog.moves);
         ImGui::Text("Items            %zu", catalog.items);
+        ImGui::Separator();
+        ImGui::Text("Pokemon fronts   %zu", lab.imported_assets.pokemon.size());
+        ImGui::Text("Pokemon backs    %zu", lab.imported_assets.pokemon.size());
+        ImGui::Text("Trainer portraits %zu", lab.imported_assets.trainers.size());
         ImGui::Spacing();
         ImGui::TextWrapped("Every domain will be a typed index with stable IDs, "
                            "validation, and import provenance.");
@@ -132,8 +144,11 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
         const std::string_view animation = battle_animation_lab_name(lab);
         ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()), animation.data());
         ImGui::Separator();
-        ImGui::TextUnformatted("Left/Right Select   R Restart   F5 Reload   Space Auto   F1/F2 "
-                               "Tools   F11 Fullscreen");
+        const std::string_view species = battle_animation_lab_species_name(lab);
+        ImGui::Text("Pokemon: %.*s", static_cast<int>(species.size()), species.data());
+        ImGui::Separator();
+        ImGui::TextUnformatted("Left/Right Animation   Up/Down Pokemon   R Restart   F5 Reload   "
+                               "Space Auto   F1/F2 Tools   F11 Fullscreen");
         ImGui::EndMainMenuBar();
     }
 

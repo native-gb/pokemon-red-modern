@@ -12,6 +12,8 @@ struct WindowInput {
     bool toggle_developer_tools{};
     bool previous_animation{};
     bool next_animation{};
+    bool previous_species{};
+    bool next_species{};
     bool restart_animation{};
     bool reload_animation_sources{};
     bool toggle_animation_auto_advance{};

@@ -66,6 +66,10 @@ WindowInput poll_window_events(HostWindow& window) {
             input.previous_animation = true;
         else if (event.key.key == SDLK_RIGHT)
             input.next_animation = true;
+        else if (event.key.key == SDLK_UP)
+            input.previous_species = true;
+        else if (event.key.key == SDLK_DOWN)
+            input.next_species = true;
         else if (event.key.key == SDLK_R)
             input.restart_animation = true;
         else if (event.key.key == SDLK_F5)
