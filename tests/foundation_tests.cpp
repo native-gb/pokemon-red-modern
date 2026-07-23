@@ -1771,7 +1771,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 15> source_names{
+    constexpr std::array<std::string_view, 16> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1787,6 +1787,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "oaks_lab_pokeballs.sexpr",
         "blues_house_daisy_town_map.sexpr",
         "pallet_reward_updates.sexpr",
+        "route_1_potion.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2430,6 +2431,36 @@ void test_local_pallet_campaign_program(TestState& state) {
               !actor_visible(39U, 1U) &&
               actor_visible(39U, 2U),
           "Pallet updates both reward flags and swaps Daisy to her walking actor");
+
+    check(state,
+          pokered::enter_world_at(world, 12U, 5, 25, error),
+          "campaign fixture reaches the Route 1 sample clerk");
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Route 1 potion sample program starts");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Route 1 potion sample advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BDF8U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 20U) == 1U,
+          "Route 1 clerk grants the ROM-derived Potion sample");
 }
 
 } // namespace

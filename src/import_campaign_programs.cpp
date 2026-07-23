@@ -109,6 +109,12 @@ constexpr std::size_t kPalletDaisyWalkingFlagOffset = 0x018F63U;
 constexpr std::size_t kPalletDaisySittingToggleOffset = 0x018F68U;
 constexpr std::size_t kPalletDaisyWalkingToggleOffset = 0x018F72U;
 constexpr std::size_t kPalletAfterPokeballs2FlagOffset = 0x018F82U;
+constexpr std::size_t kRoute1PotionProgramOffset = 0x01CAB9U;
+constexpr std::size_t kRoute1PotionGrantOffset = 0x01CAC8U;
+constexpr std::size_t kRoute1MartSampleTextOffset = 0x01CAE3U;
+constexpr std::size_t kRoute1GotPotionTextOffset = 0x01CAE8U;
+constexpr std::size_t kRoute1RepeatTextOffset = 0x01CAEEU;
+constexpr std::size_t kRoute1NoRoomTextOffset = 0x01CAF3U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -317,6 +323,17 @@ struct PalletRewardUpdates {
     ToggleActor daisy_walking;
 };
 
+struct Route1PotionProgram {
+    std::uint32_t got_potion_sample_flag{};
+    std::uint16_t item_id{};
+    std::uint8_t quantity{};
+    std::string item_name;
+    DecodedTextProgram sample;
+    DecodedTextProgram got_item;
+    DecodedTextProgram repeat;
+    DecodedTextProgram no_room;
+};
+
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
                       std::uint32_t value = 0U) {
     Instruction result;
@@ -521,6 +538,23 @@ bool decode_item_name(std::span<const std::uint8_t> rom,
         }
     }
     return true;
+}
+
+void resolve_item_name_buffer(
+    DecodedTextProgram& text, std::string_view item_name) {
+    for (std::string& page : text.pages) {
+        const std::size_t position = page.find("{ram_");
+        const std::size_t end =
+            position == std::string::npos
+                ? std::string::npos
+                : page.find('}', position);
+        if (end == std::string::npos) continue;
+        std::string replacement{item_name};
+        if (position != 0U && page[position - 1U] != '\n')
+            replacement.insert(replacement.begin(), '\n');
+        page.replace(position, end - position + 1U,
+                     replacement);
+    }
 }
 
 bool decode_naming_alphabet(
@@ -1495,21 +1529,8 @@ bool decode_daisy_town_map_program(
                 "Daisy Town Map dialogue could not be decoded from the pinned ROM";
             return false;
         }
-    for (std::string& page : result.got_map.pages) {
-        const std::size_t position = page.find("{ram_");
-        const std::size_t end =
-            position == std::string::npos
-                ? std::string::npos
-                : page.find('}', position);
-        if (end != std::string::npos) {
-            std::string replacement = result.item_name;
-            if (position != 0U &&
-                page[position - 1U] != '\n')
-                replacement.insert(replacement.begin(), '\n');
-            page.replace(position, end - position + 1U,
-                         replacement);
-        }
-    }
+    resolve_item_name_buffer(
+        result.got_map, result.item_name);
     return true;
 }
 
@@ -1572,6 +1593,66 @@ bool decode_pallet_reward_updates(
             "Pallet Daisy transition has inconsistent actor owners";
         return false;
     }
+    return true;
+}
+
+bool decode_route_1_potion_program(
+    std::span<const std::uint8_t> rom,
+    Route1PotionProgram& result, std::string& error) {
+    result = {};
+    if (kRoute1PotionProgramOffset + 7U > rom.size() ||
+        rom[kRoute1PotionProgramOffset] != 0x21U ||
+        rom[kRoute1PotionProgramOffset + 3U] != 0xCBU ||
+        rom[kRoute1PotionProgramOffset + 4U] != 0x46U ||
+        rom[kRoute1PotionProgramOffset + 5U] != 0xCBU ||
+        rom[kRoute1PotionProgramOffset + 6U] != 0xC6U) {
+        error =
+            "Route 1 potion event does not match the verified ROM";
+        return false;
+    }
+    const std::uint16_t address =
+        static_cast<std::uint16_t>(
+            rom[kRoute1PotionProgramOffset + 1U] |
+            static_cast<std::uint16_t>(
+                rom[kRoute1PotionProgramOffset + 2U])
+                << 8U);
+    result.got_potion_sample_flag =
+        static_cast<std::uint32_t>(address) * 8U;
+
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    if (kRoute1PotionGrantOffset + 6U > rom.size() ||
+        rom[kRoute1PotionGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kRoute1PotionGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "Route 1 potion item grant does not match the verified ROM";
+        return false;
+    }
+    result.quantity = rom[kRoute1PotionGrantOffset + 1U];
+    result.item_id = rom[kRoute1PotionGrantOffset + 2U];
+    if (result.quantity == 0U || result.item_id == 0U ||
+        !decode_item_name(
+            rom, result.item_id, result.item_name, error))
+        return false;
+
+    const std::array<std::pair<std::size_t, DecodedTextProgram*>, 4>
+        text_programs{{
+            {kRoute1MartSampleTextOffset, &result.sample},
+            {kRoute1GotPotionTextOffset, &result.got_item},
+            {kRoute1RepeatTextOffset, &result.repeat},
+            {kRoute1NoRoomTextOffset, &result.no_room},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(rom, 0x07U, offset, *text) ||
+            text->pages.empty()) {
+            error =
+                "Route 1 potion dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    resolve_item_name_buffer(
+        result.got_item, result.item_name);
     return true;
 }
 
@@ -2341,6 +2422,52 @@ GeneratedFile readable_pallet_reward_updates_source(
     };
 }
 
+GeneratedFile readable_route_1_potion_source(
+    const Route1PotionProgram& potion) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Route 1 actor program.\n"
+        << "; Check-and-set event, item tuple, capacity branch, name, and text are ROM-derived.\n\n"
+        << "campaign_program route_1_potion_sample\n"
+        << "    source bank_07 0x01cab9\n"
+        << "    trigger map route_1 actor_activation 1\n"
+        << "    absent_flag 0x" << std::hex
+        << potion.got_potion_sample_flag << std::dec << '\n'
+        << "    lock_input\n"
+        << "    set_flag 0x" << std::hex
+        << potion.got_potion_sample_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(potion.sample.pages, "        ")
+        << "    try_give_item " << source_quote(potion.item_name)
+        << " rom_id " << potion.item_id << " quantity "
+        << static_cast<unsigned>(potion.quantity) << '\n'
+        << "    if_item_grant_failed\n"
+        << "        say\n"
+        << page_source(potion.no_room.pages, "            ")
+        << "        unlock_input\n"
+        << "        end\n"
+        << "    say\n"
+        << page_source(potion.got_item.pages, "        ")
+        << "    unlock_input\n"
+        << "    end\n\n"
+        << "campaign_program route_1_after_potion_sample\n"
+        << "    trigger map route_1 actor_activation 1\n"
+        << "    required_flag 0x" << std::hex
+        << potion.got_potion_sample_flag << std::dec << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(potion.repeat.pages, "        ")
+        << "    unlock_input\n"
+        << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/route_1_potion.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -2481,6 +2608,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_pallet_reward_updates(
             rom, toggle_actors, oak_pokeballs,
             daisy_town_map, pallet_reward_updates, error))
+        return false;
+    Route1PotionProgram route_1_potion;
+    if (!decode_route_1_potion_program(
+            rom, route_1_potion, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -3169,7 +3300,64 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         pallet_reward_updates.pallet_after_pokeballs_2_flag,
         pallet_reward_updates.pallet_after_pokeballs_2_flag));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '9'};
+    Program potion_sample;
+    potion_sample.key = "route_1_potion_sample";
+    potion_sample.trigger_kind =
+        TriggerKind::actor_activation;
+    potion_sample.trigger_map = 12U;
+    potion_sample.trigger_x = 1U;
+    potion_sample.absent_flag =
+        route_1_potion.got_potion_sample_flag;
+    potion_sample.instructions.push_back(
+        operation(Opcode::lock_input));
+    potion_sample.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        route_1_potion.got_potion_sample_flag));
+    potion_sample.instructions.push_back(
+        dialogue(route_1_potion.sample.pages));
+    potion_sample.instructions.push_back(operation(
+        Opcode::try_give_item, route_1_potion.quantity,
+        0U, route_1_potion.item_id));
+    const std::size_t potion_full_jump =
+        potion_sample.instructions.size();
+    potion_sample.instructions.push_back(
+        operation(Opcode::jump_if_item_grant_failed));
+    potion_sample.instructions.push_back(
+        dialogue(route_1_potion.got_item.pages));
+    potion_sample.instructions.push_back(
+        operation(Opcode::unlock_input));
+    potion_sample.instructions.push_back(
+        operation(Opcode::end));
+    potion_sample.instructions[potion_full_jump].value =
+        static_cast<std::uint32_t>(
+            potion_sample.instructions.size());
+    potion_sample.instructions.push_back(
+        dialogue(route_1_potion.no_room.pages));
+    potion_sample.instructions.push_back(
+        operation(Opcode::unlock_input));
+    potion_sample.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(potion_sample));
+
+    Program potion_repeat;
+    potion_repeat.key = "route_1_after_potion_sample";
+    potion_repeat.trigger_kind =
+        TriggerKind::actor_activation;
+    potion_repeat.trigger_map = 12U;
+    potion_repeat.trigger_x = 1U;
+    potion_repeat.required_flag =
+        route_1_potion.got_potion_sample_flag;
+    potion_repeat.instructions.push_back(
+        operation(Opcode::lock_input));
+    potion_repeat.instructions.push_back(
+        dialogue(route_1_potion.repeat.pages));
+    potion_repeat.instructions.push_back(
+        operation(Opcode::unlock_input));
+    potion_repeat.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(potion_repeat));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'A'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u16(cache, programs.size());
@@ -3211,6 +3399,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_pallet_reward_updates_source(
             pallet_reward_updates));
+    result.files.push_back(
+        readable_route_1_potion_source(route_1_potion));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

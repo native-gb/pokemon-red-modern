@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first twenty-one imported story fibers are executable from the ordinary
+The first twenty-three imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -740,6 +740,11 @@ House records its entered flag, Pallet records both post-Poké-Ball flags, and
 returning after the Town Map sets Daisy's walking flag while replacing her
 sitting actor with the imported roaming actor.
 
+Route 1's Mart employee now runs his imported sample program: the cartridge
+check-and-set event, Potion item tuple, receipt text, full-bag response, and
+repeat Poké Ball advertisement all execute through the generic inventory
+branch operations.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -762,11 +767,13 @@ Map item, flag, and actor removal.
 
 The same fixture then services the guarded Blue's House/Pallet updates and
 verifies all three flags plus Daisy's actor swap.
+It finally activates the Route 1 clerk and verifies the imported Potion stack
+and event.
 
 This is not full-campaign completion. The next campaign blocker begins with
-systematic Route 1/Viridian Forest/Pewter campaign lifting. Every later map
-program still requires semantic lifting and the remaining acceptance gates
-above stay open.
+Viridian Forest item pickups and the Pewter Gym/Brock reward flow. Every later
+map program still requires semantic lifting and the remaining acceptance
+gates above stay open.
 
 ## Playable acceptance
 

@@ -151,7 +151,7 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
-twenty-one programs import Pallet Town's Oak interception, all three Oak's Lab
+twenty-three programs import Pallet Town's Oak interception, all three Oak's Lab
 starter-ball branches, all three first-rival battle branches, the Viridian
 Mart Oak's Parcel handoff, Oak's parcel-return/Pokédex request, and all three
 starter-dependent branches of the first Route 22 rival encounter. They also
@@ -204,6 +204,10 @@ Four guarded map-presence updates import the remaining opening bookkeeping:
 entering Blue's House, both post-Poké-Ball Pallet flags, and Daisy's
 sitting-to-walking transition. The actor swap uses the two ROM toggle records;
 it is not inferred from sprite identity or embedded in the world engine.
+Route 1's sample clerk adds two more fibers. They import the source
+check-and-set event, Potion ID/name/quantity, full-bag branch, receipt text,
+and repeat dialogue. The dynamic receipt buffer is resolved from the same
+item-name table used by the Town Map flow.
 The cache also initializes all 228 records from the cartridge toggleable-object
 table, including its 32 default-hidden actors. The readable accounting peer is
 `source/world/initial_actor_visibility.sexpr`; runtime initialization does not

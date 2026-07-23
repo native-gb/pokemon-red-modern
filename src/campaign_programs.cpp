@@ -261,7 +261,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '9'}) {
+        magic != std::array{'P', 'C', 'P', 'A'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
