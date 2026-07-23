@@ -57,7 +57,22 @@ WindowInput poll_window_events(HostWindow& window) {
     while (SDL_PollEvent(&event)) {
         gubsy_process_sdl_event(window.runtime, event);
         if (event.type == SDL_EVENT_QUIT) input.quit = true;
-        if (event.type != SDL_EVENT_KEY_DOWN || event.key.repeat) continue;
+        if (event.type != SDL_EVENT_KEY_DOWN) continue;
+        if (event.key.key == SDLK_A)
+            input.pan_map_left = true;
+        else if (event.key.key == SDLK_D)
+            input.pan_map_right = true;
+        else if (event.key.key == SDLK_W)
+            input.pan_map_up = true;
+        else if (event.key.key == SDLK_S)
+            input.pan_map_down = true;
+        else if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
+                 event.key.key == SDLK_KP_PLUS)
+            input.zoom_map_in = true;
+        else if (event.key.key == SDLK_MINUS ||
+                 event.key.key == SDLK_KP_MINUS)
+            input.zoom_map_out = true;
+        if (event.key.repeat) continue;
         if (event.key.key == SDLK_F1)
             input.toggle_player_tools = true;
         else if (event.key.key == SDLK_F2)
@@ -86,6 +101,10 @@ WindowInput poll_window_events(HostWindow& window) {
             input.reload_animation_sources = true;
         else if (event.key.key == SDLK_SPACE)
             input.toggle_animation_auto_advance = true;
+        else if (event.key.key == SDLK_TAB)
+            input.toggle_map_view = true;
+        else if (event.key.key == SDLK_0 || event.key.key == SDLK_KP_0)
+            input.reset_map_view = true;
         else if (event.key.key == SDLK_F11) {
             const bool fullscreen =
                 (SDL_GetWindowFlags(window.frame.window) & SDL_WINDOW_FULLSCREEN) != 0;

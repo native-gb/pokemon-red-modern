@@ -22,6 +22,14 @@ struct WindowInput {
     bool restart_animation{};
     bool reload_animation_sources{};
     bool toggle_animation_auto_advance{};
+    bool toggle_map_view{};
+    bool zoom_map_in{};
+    bool zoom_map_out{};
+    bool reset_map_view{};
+    bool pan_map_left{};
+    bool pan_map_right{};
+    bool pan_map_up{};
+    bool pan_map_down{};
 };
 
 struct HostWindow {

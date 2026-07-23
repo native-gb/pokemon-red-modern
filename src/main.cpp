@@ -137,6 +137,21 @@ int main(int argc, char** argv) {
             else
                 pokered::next_battle_animation_lab(animation_lab);
         }
+        if (game.mode == pokered::Mode::overworld) {
+            if (input.toggle_map_view) pokered::toggle_map_view(map_browser);
+            if (input.zoom_map_in) pokered::zoom_map_view(map_browser, 1.25F);
+            if (input.zoom_map_out) pokered::zoom_map_view(map_browser, 0.8F);
+            if (input.reset_map_view) pokered::reset_map_view(map_browser);
+            constexpr float pan_step = 48.0F;
+            if (input.pan_map_left)
+                pokered::pan_map_view(map_browser, pan_step, 0.0F);
+            if (input.pan_map_right)
+                pokered::pan_map_view(map_browser, -pan_step, 0.0F);
+            if (input.pan_map_up)
+                pokered::pan_map_view(map_browser, 0.0F, pan_step);
+            if (input.pan_map_down)
+                pokered::pan_map_view(map_browser, 0.0F, -pan_step);
+        }
         if (game.mode == pokered::Mode::battle && input.previous_species)
             pokered::previous_battle_species(animation_lab);
         if (game.mode == pokered::Mode::battle && input.next_species)
@@ -145,7 +160,8 @@ int main(int argc, char** argv) {
         if (input.previous_battle_ui_selection)
             pokered::previous_battle_ui_menu_selection(animation_lab);
         if (input.next_battle_ui_selection) pokered::next_battle_ui_menu_selection(animation_lab);
-        if (input.cycle_battle_status) pokered::cycle_battle_ui_status(animation_lab);
+        if (game.mode == pokered::Mode::battle && input.cycle_battle_status)
+            pokered::cycle_battle_ui_status(animation_lab);
         if (input.restart_animation) pokered::restart_battle_animation_lab(animation_lab);
         if (input.reload_animation_sources) {
             pokered::Diagnostics reload_diagnostics;

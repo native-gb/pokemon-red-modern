@@ -379,16 +379,16 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     if (defender != nullptr)
         draw_battler(renderer, scene_view, *defender, false, screen_palette, lab.imported_assets,
                      pokemon);
-    for (const AnimationEffect& effect : lab.animation.effects)
-        draw_effect(renderer, scene_view, effect, lab.imported_assets, screen_palette);
 
-    // Imported font and HUD tiles overlay only occupied tile-map cells.
+    // Draw the battle interface before transient effects so attacks can cross its region.
     if (!draw_battle_ui(renderer, scene_view, lab, screen_palette)) {
         set_draw_color(renderer, screen_palette, 54, 47, 58);
         fill_native_rect(renderer, scene_view, 0.0F, 96.0F, 160.0F, 48.0F);
         set_draw_color(renderer, screen_palette, 250, 247, 238);
         fill_native_rect(renderer, scene_view, 2.0F, 98.0F, 156.0F, 44.0F);
     }
+    for (const AnimationEffect& effect : lab.animation.effects)
+        draw_effect(renderer, scene_view, effect, lab.imported_assets, screen_palette);
     (void)SDL_SetRenderClipRect(renderer, nullptr);
 }
 

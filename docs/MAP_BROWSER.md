@@ -1,17 +1,15 @@
 # Map browser
 
-## First imported slice
+## Imported outdoor world
 
-The first world slice contains four connected outdoor maps:
+The importer discovers the 36 named outdoor maps in Red's Town Map table. This
+includes every city, town, surface route, sea route, and Indigo Plateau. It does
+not include interiors, caves, building floors, or dungeon floors; those are
+separate resident maps reached through warps.
 
-- Pallet Town, ROM map ID `0x00`;
-- Route 1, ROM map ID `0x0C`;
-- Viridian City, ROM map ID `0x01`;
-- Route 22, ROM map ID `0x21`.
-
-These maps all use tileset `0`. The importer reads their header-table entries,
-dimensions, block-grid pointers, block grids, tileset header, two-bit graphics,
-and required block definitions from the verified local ROM.
+The importer reads names, IDs, dimensions, block grids, tilesets, graphics, and
+connection transforms from the verified local ROM. The engine contains no list
+of campaign map names or placements.
 
 The importer expands every 4×4-tile block into a complete 8×8-tile layer.
 Runtime rendering does not interpret map blocks or cartridge graphics.
@@ -24,11 +22,11 @@ Readable generated records are written under:
 data/runtime/imports/pokemon_red_us_rev_0/source/world/
     maps/
         0_pallet_town.sexpr
-        12_route_1.sexpr
-        1_viridian_city.sexpr
-        33_route_22.sexpr
+        ...
+        35_route_25.sexpr
     tilesets/
-        tileset_00.sexpr
+        tileset_0.sexpr
+        tileset_23.sexpr
 ```
 
 The ignored runtime cache is:
@@ -37,27 +35,33 @@ The ignored runtime cache is:
 data/runtime/imports/pokemon_red_us_rev_0/compiled/map_browser.bin
 ```
 
-It contains the decoded tile atlas and complete tile-ID layer for each map.
+It contains decoded tilesets, complete tile-ID layers, and global origins
+resolved from the ROM connection graph.
 After loading, the renderer composes each complete map once and uploads it as
-one GPU texture. A frame draws the selected map with one texture operation.
+one GPU texture. It then composes those textures into a full-resolution world
+atlas on the GPU. A frame draws either the selected map or the whole outdoor
+world with one texture operation.
 
 ## Controls
 
 The map browser is the initial view when its local cache exists.
 
 - Left/Right selects the previous or next imported map.
+- `Tab` switches between the selected map and stitched world atlas.
+- `W/A/S/D` pans the camera.
+- `+` and `-` zoom without changing source resolution.
+- `0` resets pan and zoom to the fitted view.
 - `B` switches between the map browser and battle-animation lab.
-- `F2` shows the map ID, dimensions, tileset, and selection controls.
+- `F2` shows map provenance, global placement, camera controls, and selection.
 
-The whole map is centered and fit to the available window area. Integer scaling
-is used whenever the map fits at scale one or greater.
+Zoom is a multiplier over a fitted view and ranges from a broad overview to
+pixel-level inspection. The atlas retains every native map pixel; it is not a
+pre-shrunk overview texture.
 
 ## Deliberate omissions
 
-This first slice displays resident map geometry only. Connection seams are not
-stitched to adjacent maps, so open edges remain visible where the cartridge
-normally fills the scrolling border from a connected map.
-
-The next world passes will add connection transforms, collision cells, warps,
-background events, actor placements, and overworld sprite clips as independent
-debug overlays.
+This slice displays resident outdoor geometry only. Collision cells, warps,
+background events, actor placements, mutable blocks, and overworld sprite clips
+remain independent content domains. Persistent whole-zone NPC simulation will
+be built over the same global coordinate system rather than cartridge-style
+screen streaming.

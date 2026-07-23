@@ -2,6 +2,7 @@
 
 #include "../maps.hpp"
 
+#include <cstdint>
 #include <vector>
 
 struct SDL_Renderer;
@@ -11,6 +12,11 @@ namespace pokered::render {
 
 struct MapRenderResources {
     std::vector<SDL_Texture*> textures;
+    SDL_Texture* world_atlas{};
+    std::int32_t atlas_min_x_tiles{};
+    std::int32_t atlas_min_y_tiles{};
+    int atlas_width{};
+    int atlas_height{};
 };
 
 bool upload_map_textures(SDL_Renderer* renderer, const MapBrowser& browser,

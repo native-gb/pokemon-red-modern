@@ -47,6 +47,13 @@ bool read_u32(std::istream& input, std::uint32_t& result) {
     return true;
 }
 
+bool read_i32(std::istream& input, std::int32_t& result) {
+    std::uint32_t bits = 0;
+    if (!read_u32(input, bits)) return false;
+    result = static_cast<std::int32_t>(bits);
+    return true;
+}
+
 bool read_bytes(std::istream& input, std::size_t count,
                 std::vector<std::uint8_t>& result) {
     result.resize(count);
@@ -87,6 +94,7 @@ bool read_tilesets(std::istream& input, MapBrowser& browser, std::string& error)
 bool read_map(std::istream& input, const MapBrowser& browser, WorldMap& map,
               std::string& error) {
     std::uint8_t key_size = 0;
+    std::uint8_t name_size = 0;
     std::uint32_t tile_count = 0;
     if (!read_u8(input, map.id) || !read_u8(input, map.tileset_id) ||
         !read_u8(input, map.width_blocks) || !read_u8(input, map.height_blocks) ||
@@ -97,8 +105,18 @@ bool read_map(std::istream& input, const MapBrowser& browser, WorldMap& map,
     }
     map.key.resize(key_size);
     if (!input.read(map.key.data(), static_cast<std::streamsize>(map.key.size())) ||
-        !read_u32(input, tile_count)) {
+        !read_u8(input, name_size) || name_size == 0 || name_size > 63) {
         error = "map browser cache has a truncated map record";
+        return false;
+    }
+    map.display_name.resize(name_size);
+    if (!input.read(map.display_name.data(),
+                    static_cast<std::streamsize>(map.display_name.size())) ||
+        !read_i32(input, map.global_x_tiles) ||
+        !read_i32(input, map.global_y_tiles) ||
+        !read_u16(input, map.world_component) ||
+        !read_u32(input, tile_count)) {
+        error = "map browser cache has truncated map placement or tile data";
         return false;
     }
     const std::uint32_t expected =
@@ -129,7 +147,7 @@ bool load_map_browser(const std::filesystem::path& path, MapBrowser& result,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', '1'}) {
+        magic != std::array{'P', 'M', 'V', '3'}) {
         error = "map browser cache is missing or has an invalid header";
         return false;
     }
@@ -174,6 +192,27 @@ void previous_map(MapBrowser& browser) {
     browser.current = browser.current == 0 ? browser.maps.size() - 1U : browser.current - 1U;
 }
 
+void toggle_map_view(MapBrowser& browser) {
+    browser.view =
+        browser.view == MapView::selected ? MapView::world : MapView::selected;
+    reset_map_view(browser);
+}
+
+void zoom_map_view(MapBrowser& browser, float factor) {
+    browser.zoom = std::clamp(browser.zoom * factor, 0.05F, 64.0F);
+}
+
+void pan_map_view(MapBrowser& browser, float x, float y) {
+    browser.pan_x += x;
+    browser.pan_y += y;
+}
+
+void reset_map_view(MapBrowser& browser) {
+    browser.zoom = 1.0F;
+    browser.pan_x = 0.0F;
+    browser.pan_y = 0.0F;
+}
+
 const WorldMap* current_map(const MapBrowser& browser) {
     if (browser.maps.empty() || browser.current >= browser.maps.size()) return nullptr;
     return &browser.maps[browser.current];
@@ -188,7 +227,12 @@ const MapTileset* find_tileset(const MapBrowser& browser, std::uint8_t id) {
 
 std::string_view current_map_name(const MapBrowser& browser) {
     const WorldMap* map = current_map(browser);
-    return map == nullptr ? std::string_view("none") : std::string_view(map->key);
+    return map == nullptr ? std::string_view("none")
+                          : std::string_view(map->display_name);
+}
+
+std::string_view label(MapView view) {
+    return view == MapView::world ? "World atlas" : "Selected map";
 }
 
 } // namespace pokered

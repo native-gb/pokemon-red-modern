@@ -43,6 +43,7 @@ void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog)
         ImGui::BulletText("F11 toggles fullscreen");
         ImGui::BulletText("Game view keeps its native 10:9 aspect");
         ImGui::BulletText("GPU render target; no CPU framebuffer");
+        ImGui::BulletText("World view supports arbitrary pan and zoom");
         ImGui::Spacing();
         ImGui::TextUnformatted("Controls and accessibility settings will be added "
                                "with the first playable vertical slice.");
@@ -77,6 +78,8 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
                     current_map_name(maps).data());
         ImGui::Text("Map record: %zu / %zu", maps.maps.empty() ? 0 : maps.current + 1,
                     maps.maps.size());
+        ImGui::Text("View: %.*s", static_cast<int>(label(maps.view).size()),
+                    label(maps.view).data());
         if (map != nullptr) {
             ImGui::Text("ROM ID: 0x%02X", static_cast<unsigned>(map->id));
             ImGui::Text("Blocks: %u x %u", static_cast<unsigned>(map->width_blocks),
@@ -84,10 +87,21 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
             ImGui::Text("Tiles: %u x %u", static_cast<unsigned>(map->width_tiles),
                         static_cast<unsigned>(map->height_tiles));
             ImGui::Text("Tileset: %u", static_cast<unsigned>(map->tileset_id));
+            ImGui::Text("World origin: %d, %d tiles", map->global_x_tiles,
+                        map->global_y_tiles);
+            ImGui::Text("World component: %u",
+                        static_cast<unsigned>(map->world_component));
         }
         if (ImGui::Button("Previous Map")) previous_map(maps);
         ImGui::SameLine();
         if (ImGui::Button("Next Map")) next_map(maps);
+        if (ImGui::Button(maps.view == MapView::world ? "Show Selected Map"
+                                                       : "Show World Atlas"))
+            toggle_map_view(maps);
+        ImGui::SliderFloat("Zoom", &maps.zoom, 0.05F, 64.0F, "%.2fx",
+                           ImGuiSliderFlags_Logarithmic);
+        ImGui::DragFloat2("Pan", &maps.pan_x, 4.0F);
+        if (ImGui::Button("Reset Camera")) reset_map_view(maps);
         if (maps.loaded && lab.loaded && ImGui::Button("Toggle Map / Battle"))
             game.mode = game.mode == Mode::overworld ? Mode::battle : Mode::overworld;
         ImGui::Separator();
@@ -175,7 +189,8 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
             ImGui::Text("Map: %.*s", static_cast<int>(map.size()), map.data());
             ImGui::Separator();
             ImGui::TextUnformatted(
-                "Left/Right Map   B Battle Lab   F1/F2 Tools   F11 Fullscreen");
+                "Left/Right Map   Tab World/Map   WASD Pan   +/- Zoom   0 Reset   "
+                "B Battle Lab   F1/F2 Tools   F11 Fullscreen");
         } else {
             const std::string_view animation = battle_animation_lab_name(lab);
             ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()),

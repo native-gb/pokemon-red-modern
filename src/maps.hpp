@@ -23,7 +23,16 @@ struct WorldMap {
     std::uint16_t width_tiles{};
     std::uint16_t height_tiles{};
     std::string key;
+    std::string display_name;
+    std::int32_t global_x_tiles{};
+    std::int32_t global_y_tiles{};
+    std::uint16_t world_component{};
     std::vector<std::uint8_t> tiles;
+};
+
+enum class MapView {
+    selected,
+    world,
 };
 
 struct MapBrowser {
@@ -31,6 +40,10 @@ struct MapBrowser {
     std::vector<MapTileset> tilesets;
     std::vector<WorldMap> maps;
     std::size_t current{};
+    MapView view{MapView::world};
+    float zoom{1.0F};
+    float pan_x{};
+    float pan_y{};
     bool loaded{};
 };
 
@@ -38,8 +51,13 @@ bool load_map_browser(const std::filesystem::path& path, MapBrowser& result,
                       std::string& error);
 void next_map(MapBrowser& browser);
 void previous_map(MapBrowser& browser);
+void toggle_map_view(MapBrowser& browser);
+void zoom_map_view(MapBrowser& browser, float factor);
+void pan_map_view(MapBrowser& browser, float x, float y);
+void reset_map_view(MapBrowser& browser);
 const WorldMap* current_map(const MapBrowser& browser);
 const MapTileset* find_tileset(const MapBrowser& browser, std::uint8_t id);
 std::string_view current_map_name(const MapBrowser& browser);
+std::string_view label(MapView view);
 
 } // namespace pokered

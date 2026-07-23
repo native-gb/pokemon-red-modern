@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -21,23 +20,28 @@ constexpr std::size_t kMapHeaderBanksOffset = 0x0C23D;
 constexpr std::size_t kTilesetHeadersOffset = 0x0C7BE;
 constexpr std::size_t kTilesetHeaderSize = 12;
 constexpr std::size_t kTilesPerBlock = 16;
+constexpr std::size_t kTownMapExternalEntriesOffset = 0x71313;
+constexpr std::size_t kTownMapExternalEntryCount = 37;
+constexpr std::size_t kTownMapExternalEntrySize = 3;
+constexpr std::uint8_t kTownMapBank = 0x1C;
 
-struct MapProfile {
-    std::uint8_t id;
-    std::string_view key;
-    std::uint8_t width_blocks;
-    std::uint8_t height_blocks;
+struct MapIdentity {
+    std::uint8_t id{};
+    std::string key;
+    std::string display_name;
+    std::uint8_t town_x{};
+    std::uint8_t town_y{};
 };
 
-constexpr std::array<MapProfile, 4> kMapProfiles{{
-    {0x00, "pallet_town", 10, 9},
-    {0x0C, "route_1", 10, 18},
-    {0x01, "viridian_city", 20, 18},
-    {0x21, "route_22", 20, 9},
-}};
+struct ImportedConnection {
+    std::uint8_t direction{};
+    std::uint8_t target_map_id{};
+    std::int16_t player_x{};
+    std::int16_t player_y{};
+};
 
 struct ImportedMap {
-    const MapProfile* profile{};
+    MapIdentity identity;
     std::uint8_t header_bank{};
     std::uint8_t tileset_id{};
     std::uint8_t width_blocks{};
@@ -45,8 +49,13 @@ struct ImportedMap {
     std::uint16_t blocks_pointer{};
     std::size_t header_offset{};
     std::size_t blocks_offset{};
+    std::int32_t global_x_cells{};
+    std::int32_t global_y_cells{};
+    std::uint16_t component{};
+    bool placed{};
     std::vector<std::uint8_t> blocks;
     std::vector<std::uint8_t> tiles;
+    std::vector<ImportedConnection> connections;
 };
 
 struct ImportedTileset {
@@ -98,6 +107,11 @@ void write_u32(std::vector<std::uint8_t>& bytes, std::size_t value) {
     bytes.push_back(static_cast<std::uint8_t>((value >> 24U) & 0xFFU));
 }
 
+void write_i32(std::vector<std::uint8_t>& bytes, std::int32_t value) {
+    const auto bits = static_cast<std::uint32_t>(value);
+    write_u32(bytes, bits);
+}
+
 void add_text_file(MapImport& result, std::string path, std::string text) {
     GeneratedFile file;
     file.relative_path = std::move(path);
@@ -105,19 +119,109 @@ void add_text_file(MapImport& result, std::string path, std::string text) {
     result.files.push_back(std::move(file));
 }
 
-bool decode_map(std::span<const std::uint8_t> rom, const MapProfile& profile,
+bool append_map_name_character(std::uint8_t value, std::string& text) {
+    if (value >= 0x80 && value <= 0x99) {
+        text.push_back(static_cast<char>('A' + value - 0x80));
+        return true;
+    }
+    if (value >= 0xF6) {
+        text.push_back(static_cast<char>('0' + value - 0xF6));
+        return true;
+    }
+    if (value == 0x7F) {
+        text.push_back(' ');
+        return true;
+    }
+    if (value == 0xE3) {
+        text.push_back('-');
+        return true;
+    }
+    if (value == 0xE8) {
+        text.push_back('.');
+        return true;
+    }
+    return false;
+}
+
+bool decode_map_name(std::span<const std::uint8_t> rom, std::uint16_t pointer,
+                     std::string& result, std::string& error) {
+    std::size_t cursor = 0;
+    if (!bank_pointer_to_offset(rom, kTownMapBank, pointer, cursor)) {
+        error = "Town Map name pointer is outside its declared bank";
+        return false;
+    }
+    result.clear();
+    for (std::size_t count = 0; count < 32 && cursor < rom.size(); ++count) {
+        const std::uint8_t value = rom[cursor++];
+        if (value == 0x50) return !result.empty();
+        if (!append_map_name_character(value, result)) {
+            error = "Town Map name contains an unsupported character";
+            return false;
+        }
+    }
+    error = "Town Map name has no bounded terminator";
+    return false;
+}
+
+std::string make_map_key(std::string_view display_name, std::uint8_t id) {
+    std::string result;
+    for (const char character : display_name) {
+        if (character >= 'A' && character <= 'Z') {
+            result.push_back(static_cast<char>('a' + character - 'A'));
+        } else if (character >= '0' && character <= '9') {
+            result.push_back(character);
+        } else if (!result.empty() && result.back() != '_') {
+            result.push_back('_');
+        }
+    }
+    while (!result.empty() && result.back() == '_') result.pop_back();
+    if (!result.empty()) return result;
+    return "map_" + std::to_string(static_cast<unsigned>(id));
+}
+
+bool discover_outdoor_maps(std::span<const std::uint8_t> rom,
+                           std::vector<MapIdentity>& result, std::string& error) {
+    const std::size_t table_size =
+        kTownMapExternalEntryCount * kTownMapExternalEntrySize;
+    if (!has_range(rom, kTownMapExternalEntriesOffset, table_size)) {
+        error = "Town Map external-entry table extends outside the verified ROM";
+        return false;
+    }
+    for (std::size_t index = 0; index < kTownMapExternalEntryCount; ++index) {
+        const std::size_t offset =
+            kTownMapExternalEntriesOffset + index * kTownMapExternalEntrySize;
+        const std::uint8_t packed = rom[offset];
+        if (packed == 0) continue;
+        MapIdentity identity;
+        identity.id = static_cast<std::uint8_t>(index);
+        identity.town_x = static_cast<std::uint8_t>(packed & 0x0FU);
+        identity.town_y = static_cast<std::uint8_t>(packed >> 4U);
+        if (!decode_map_name(rom, read_u16(rom, offset + 1U),
+                             identity.display_name, error))
+            return false;
+        identity.key = make_map_key(identity.display_name, identity.id);
+        result.push_back(std::move(identity));
+    }
+    if (result.empty()) {
+        error = "Town Map table produced no outdoor maps";
+        return false;
+    }
+    return true;
+}
+
+bool decode_map(std::span<const std::uint8_t> rom, MapIdentity identity,
                 ImportedMap& result, std::string& error) {
     const std::size_t pointer_record =
-        kMapHeaderPointersOffset + static_cast<std::size_t>(profile.id) * 2U;
+        kMapHeaderPointersOffset + static_cast<std::size_t>(identity.id) * 2U;
     const std::size_t bank_record =
-        kMapHeaderBanksOffset + static_cast<std::size_t>(profile.id);
+        kMapHeaderBanksOffset + static_cast<std::size_t>(identity.id);
     if (!has_range(rom, pointer_record, 2) || !has_range(rom, bank_record, 1)) {
         error = "map lookup record extends outside the verified ROM";
         return false;
     }
 
     ImportedMap map;
-    map.profile = &profile;
+    map.identity = std::move(identity);
     map.header_bank = rom[bank_record];
     const std::uint16_t header_pointer = read_u16(rom, pointer_record);
     if (!bank_pointer_to_offset(rom, map.header_bank, header_pointer,
@@ -131,10 +235,44 @@ bool decode_map(std::span<const std::uint8_t> rom, const MapProfile& profile,
     map.height_blocks = rom[map.header_offset + 1U];
     map.width_blocks = rom[map.header_offset + 2U];
     map.blocks_pointer = read_u16(rom, map.header_offset + 3U);
-    if (map.width_blocks != profile.width_blocks ||
-        map.height_blocks != profile.height_blocks) {
-        error = "map dimensions do not match the verified profile";
+    if (map.tileset_id >= 24 || map.width_blocks == 0 ||
+        map.height_blocks == 0) {
+        error = "map header has invalid tileset or dimensions";
         return false;
+    }
+
+    // Decode the connection transform records following the fixed map header.
+    const std::uint8_t connection_mask = rom[map.header_offset + 9U];
+    if ((connection_mask & 0xF0U) != 0) {
+        error = "map header has an invalid connection mask";
+        return false;
+    }
+    std::size_t connection_cursor = map.header_offset + 10U;
+    constexpr std::array<std::uint8_t, 4> directions{8, 4, 2, 1};
+    for (const std::uint8_t direction : directions) {
+        if ((connection_mask & direction) == 0) continue;
+        if (!has_range(rom, connection_cursor, 11)) {
+            error = "map connection extends outside the verified ROM";
+            return false;
+        }
+        const auto signed_byte = [](std::uint8_t value) {
+            return value < 0x80
+                       ? static_cast<std::int16_t>(value)
+                       : static_cast<std::int16_t>(
+                             static_cast<std::int16_t>(value) - 0x100);
+        };
+        const std::uint8_t encoded_y = rom[connection_cursor + 7U];
+        const std::uint8_t encoded_x = rom[connection_cursor + 8U];
+        const bool vertical = direction == 8 || direction == 4;
+        map.connections.push_back({
+            .direction = direction,
+            .target_map_id = rom[connection_cursor],
+            .player_x = vertical ? signed_byte(encoded_x)
+                                 : static_cast<std::int16_t>(encoded_x),
+            .player_y = vertical ? static_cast<std::int16_t>(encoded_y)
+                                 : signed_byte(encoded_y),
+        });
+        connection_cursor += 11U;
     }
 
     const std::size_t block_count =
@@ -152,19 +290,77 @@ bool decode_map(std::span<const std::uint8_t> rom, const MapProfile& profile,
     return true;
 }
 
+ImportedMap* find_imported_map(std::vector<ImportedMap>& maps,
+                               std::uint8_t id) {
+    const auto found =
+        std::find_if(maps.begin(), maps.end(),
+                     [&](const ImportedMap& map) { return map.identity.id == id; });
+    return found == maps.end() ? nullptr : &*found;
+}
+
+void place_connection_target(const ImportedMap& source,
+                             const ImportedConnection& connection,
+                             std::int32_t& x, std::int32_t& y) {
+    const std::int32_t width =
+        static_cast<std::int32_t>(source.width_blocks) * 2;
+    const std::int32_t height =
+        static_cast<std::int32_t>(source.height_blocks) * 2;
+    if (connection.direction == 1) {
+        x = source.global_x_cells + width - connection.player_x;
+        y = source.global_y_cells - connection.player_y;
+    } else if (connection.direction == 2) {
+        x = source.global_x_cells - connection.player_x - 1;
+        y = source.global_y_cells - connection.player_y;
+    } else if (connection.direction == 4) {
+        x = source.global_x_cells - connection.player_x;
+        y = source.global_y_cells + height - connection.player_y;
+    } else {
+        x = source.global_x_cells - connection.player_x;
+        y = source.global_y_cells - connection.player_y - 1;
+    }
+}
+
+void place_global_maps(std::vector<ImportedMap>& maps) {
+    std::uint16_t component = 0;
+    for (ImportedMap& root : maps) {
+        if (root.placed) continue;
+        const std::int32_t width =
+            static_cast<std::int32_t>(root.width_blocks) * 2;
+        const std::int32_t height =
+            static_cast<std::int32_t>(root.height_blocks) * 2;
+        root.global_x_cells = static_cast<std::int32_t>(root.identity.town_x) * 10 -
+                              width / 2;
+        root.global_y_cells = static_cast<std::int32_t>(root.identity.town_y) * 9 -
+                              height / 2;
+        root.component = component;
+        root.placed = true;
+
+        std::vector<std::uint8_t> pending{root.identity.id};
+        for (std::size_t cursor = 0; cursor < pending.size(); ++cursor) {
+            ImportedMap* source = find_imported_map(maps, pending[cursor]);
+            if (source == nullptr) continue;
+            for (const ImportedConnection& connection : source->connections) {
+                ImportedMap* target =
+                    find_imported_map(maps, connection.target_map_id);
+                if (target == nullptr || target->placed) continue;
+                place_connection_target(*source, connection,
+                                        target->global_x_cells,
+                                        target->global_y_cells);
+                target->component = component;
+                target->placed = true;
+                pending.push_back(target->identity.id);
+            }
+        }
+        ++component;
+    }
+}
+
 bool decode_tileset(std::span<const std::uint8_t> rom,
-                    const std::vector<ImportedMap>& maps, ImportedTileset& result,
-                    std::string& error) {
+                    const std::vector<ImportedMap>& maps, std::uint8_t tileset_id,
+                    ImportedTileset& result, std::string& error) {
     if (maps.empty()) {
         error = "map slice contains no maps";
         return false;
-    }
-    const std::uint8_t tileset_id = maps.front().tileset_id;
-    for (const ImportedMap& map : maps) {
-        if (map.tileset_id != tileset_id) {
-            error = "initial map slice unexpectedly spans multiple tilesets";
-            return false;
-        }
     }
 
     ImportedTileset tileset;
@@ -200,9 +396,18 @@ bool decode_tileset(std::span<const std::uint8_t> rom,
     }
 
     std::uint8_t maximum_block = 0;
+    bool used = false;
     for (const ImportedMap& map : maps) {
+        if (map.tileset_id != tileset.id) continue;
         const auto found = std::max_element(map.blocks.begin(), map.blocks.end());
-        if (found != map.blocks.end()) maximum_block = std::max(maximum_block, *found);
+        if (found != map.blocks.end()) {
+            maximum_block = used ? std::max(maximum_block, *found) : *found;
+            used = true;
+        }
+    }
+    if (!used) {
+        error = "tileset has no map in the selected outdoor slice";
+        return false;
     }
     tileset.block_count = static_cast<std::size_t>(maximum_block) + 1U;
     const std::size_t block_bytes = tileset.block_count * kTilesPerBlock;
@@ -234,9 +439,20 @@ bool decode_tileset(std::span<const std::uint8_t> rom,
     return true;
 }
 
-bool expand_maps(const ImportedTileset& tileset, std::vector<ImportedMap>& maps,
+bool expand_maps(const std::vector<ImportedTileset>& tilesets,
+                 std::vector<ImportedMap>& maps,
                  std::string& error) {
     for (ImportedMap& map : maps) {
+        const auto found =
+            std::find_if(tilesets.begin(), tilesets.end(),
+                         [&](const ImportedTileset& value) {
+                             return value.id == map.tileset_id;
+                         });
+        if (found == tilesets.end()) {
+            error = "map has no decoded tileset";
+            return false;
+        }
+        const ImportedTileset& tileset = *found;
         const std::size_t width = static_cast<std::size_t>(map.width_blocks) * 4U;
         const std::size_t height = static_cast<std::size_t>(map.height_blocks) * 4U;
         map.tiles.resize(width * height);
@@ -265,21 +481,32 @@ bool expand_maps(const ImportedTileset& tileset, std::vector<ImportedMap>& maps,
     return true;
 }
 
-void emit_readable_source(const ImportedTileset& tileset,
+void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                           const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::ostringstream tileset_source;
-    tileset_source
-        << "; Locally decoded outdoor tileset used by the initial map browser.\n"
-        << "tileset tileset_" << static_cast<unsigned>(tileset.id) << '\n'
-        << "    rom_id " << static_cast<unsigned>(tileset.id) << '\n'
-        << "    tile_count " << tileset.pixels.size() / 64U << '\n'
-        << "    block_count " << tileset.block_count << '\n'
-        << "    graphics_source " << tileset.graphics_offset << ' '
-        << tileset.blocks_offset - tileset.graphics_offset << '\n'
-        << "    block_source " << tileset.blocks_offset << ' '
-        << tileset.block_tiles.size() << '\n';
-    add_text_file(result, "source/world/tilesets/tileset_00.sexpr",
-                  tileset_source.str());
+    const auto direction_name = [](std::uint8_t direction) {
+        if (direction == 8) return "north";
+        if (direction == 4) return "south";
+        if (direction == 2) return "west";
+        return "east";
+    };
+    for (const ImportedTileset& tileset : tilesets) {
+        std::ostringstream tileset_source;
+        tileset_source
+            << "; Locally decoded tileset used by the outdoor map browser.\n"
+            << "tileset tileset_" << static_cast<unsigned>(tileset.id) << '\n'
+            << "    rom_id " << static_cast<unsigned>(tileset.id) << '\n'
+            << "    tile_count " << tileset.pixels.size() / 64U << '\n'
+            << "    block_count " << tileset.block_count << '\n'
+            << "    graphics_source " << tileset.graphics_offset << ' '
+            << tileset.blocks_offset - tileset.graphics_offset << '\n'
+            << "    block_source " << tileset.blocks_offset << ' '
+            << tileset.block_tiles.size() << '\n';
+        add_text_file(result,
+                      "source/world/tilesets/tileset_" +
+                          std::to_string(static_cast<unsigned>(tileset.id)) +
+                          ".sexpr",
+                      tileset_source.str());
+    }
 
     for (const ImportedMap& map : maps) {
         const std::size_t width_tiles =
@@ -288,17 +515,30 @@ void emit_readable_source(const ImportedTileset& tileset,
             static_cast<std::size_t>(map.height_blocks) * 4U;
         std::ostringstream source;
         source << "; Complete block grid retained for readable local inspection.\n"
-               << "map " << map.profile->key << '\n'
-               << "    rom_id " << static_cast<unsigned>(map.profile->id) << '\n'
+               << "map " << map.identity.key << '\n'
+               << "    rom_id " << static_cast<unsigned>(map.identity.id) << '\n'
+               << "    name \"" << map.identity.display_name << "\"\n"
+               << "    town_map_position "
+               << static_cast<unsigned>(map.identity.town_x) << ' '
+               << static_cast<unsigned>(map.identity.town_y) << '\n'
                << "    tileset tileset_" << static_cast<unsigned>(map.tileset_id)
                << '\n'
                << "    size_blocks " << static_cast<unsigned>(map.width_blocks) << ' '
                << static_cast<unsigned>(map.height_blocks) << '\n'
                << "    size_tiles " << width_tiles << ' ' << height_tiles << '\n'
+               << "    world_origin_cells " << map.global_x_cells << ' '
+               << map.global_y_cells << '\n'
+               << "    world_component " << map.component << '\n'
                << "    header_source " << map.header_offset << '\n'
                << "    block_source " << map.blocks_offset << ' '
-               << map.blocks.size() << '\n'
-               << "    blocks\n";
+               << map.blocks.size() << '\n';
+        for (const ImportedConnection& connection : map.connections) {
+            source << "    connection " << direction_name(connection.direction)
+                   << " map_" << static_cast<unsigned>(connection.target_map_id)
+                   << " player_offset " << connection.player_x << ' '
+                   << connection.player_y << '\n';
+        }
+        source << "    blocks\n";
         for (std::size_t y = 0; y < map.height_blocks; ++y) {
             source << "        row";
             for (std::size_t x = 0; x < map.width_blocks; ++x)
@@ -308,25 +548,28 @@ void emit_readable_source(const ImportedTileset& tileset,
         }
         add_text_file(result,
                       "source/world/maps/" +
-                          std::to_string(static_cast<unsigned>(map.profile->id)) +
-                          "_" + std::string(map.profile->key) + ".sexpr",
+                          std::to_string(static_cast<unsigned>(map.identity.id)) +
+                          "_" + map.identity.key + ".sexpr",
                       source.str());
     }
 }
 
-void emit_runtime_cache(const ImportedTileset& tileset,
+void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '1'};
-    write_u16(bytes, 1);
-    bytes.push_back(tileset.id);
-    write_u16(bytes, tileset.pixels.size() / 64U);
-    write_u32(bytes, tileset.pixels.size());
-    bytes.insert(bytes.end(), tileset.pixels.begin(), tileset.pixels.end());
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '3'};
+    write_u16(bytes, tilesets.size());
+    for (const ImportedTileset& tileset : tilesets) {
+        bytes.push_back(tileset.id);
+        write_u16(bytes, tileset.pixels.size() / 64U);
+        write_u32(bytes, tileset.pixels.size());
+        bytes.insert(bytes.end(), tileset.pixels.begin(), tileset.pixels.end());
+    }
 
     write_u16(bytes, maps.size());
     for (const ImportedMap& map : maps) {
-        const std::string_view key = map.profile->key;
-        bytes.push_back(map.profile->id);
+        const std::string_view key = map.identity.key;
+        const std::string_view name = map.identity.display_name;
+        bytes.push_back(map.identity.id);
         bytes.push_back(map.tileset_id);
         bytes.push_back(map.width_blocks);
         bytes.push_back(map.height_blocks);
@@ -334,6 +577,11 @@ void emit_runtime_cache(const ImportedTileset& tileset,
         write_u16(bytes, static_cast<std::size_t>(map.height_blocks) * 4U);
         bytes.push_back(static_cast<std::uint8_t>(key.size()));
         bytes.insert(bytes.end(), key.begin(), key.end());
+        bytes.push_back(static_cast<std::uint8_t>(name.size()));
+        bytes.insert(bytes.end(), name.begin(), name.end());
+        write_i32(bytes, map.global_x_cells * 2);
+        write_i32(bytes, map.global_y_cells * 2);
+        write_u16(bytes, map.component);
         write_u32(bytes, map.tiles.size());
         bytes.insert(bytes.end(), map.tiles.begin(), map.tiles.end());
     }
@@ -347,26 +595,40 @@ bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result,
     result = {};
     if (!verify_pokemon_red_us_rev_0(rom, error)) return false;
 
+    std::vector<MapIdentity> identities;
+    if (!discover_outdoor_maps(rom, identities, error)) return false;
     std::vector<ImportedMap> maps;
-    maps.reserve(kMapProfiles.size());
-    for (const MapProfile& profile : kMapProfiles) {
+    maps.reserve(identities.size());
+    for (MapIdentity& identity : identities) {
         ImportedMap map;
-        if (!decode_map(rom, profile, map, error)) {
-            error = std::string(profile.key) + ": " + error;
+        const std::string key = identity.key;
+        if (!decode_map(rom, std::move(identity), map, error)) {
+            error = key + ": " + error;
             return false;
         }
         maps.push_back(std::move(map));
     }
+    place_global_maps(maps);
 
-    ImportedTileset tileset;
-    if (!decode_tileset(rom, maps, tileset, error) ||
-        !expand_maps(tileset, maps, error))
-        return false;
+    std::vector<std::uint8_t> tileset_ids;
+    for (const ImportedMap& map : maps) {
+        if (std::find(tileset_ids.begin(), tileset_ids.end(), map.tileset_id) ==
+            tileset_ids.end())
+            tileset_ids.push_back(map.tileset_id);
+    }
+    std::vector<ImportedTileset> tilesets;
+    tilesets.reserve(tileset_ids.size());
+    for (const std::uint8_t id : tileset_ids) {
+        ImportedTileset tileset;
+        if (!decode_tileset(rom, maps, id, tileset, error)) return false;
+        tilesets.push_back(std::move(tileset));
+    }
+    if (!expand_maps(tilesets, maps, error)) return false;
 
-    emit_readable_source(tileset, maps, result);
-    emit_runtime_cache(tileset, maps, result);
+    emit_readable_source(tilesets, maps, result);
+    emit_runtime_cache(tilesets, maps, result);
     result.maps = maps.size();
-    result.tilesets = 1;
+    result.tilesets = tilesets.size();
     for (const ImportedMap& map : maps) result.expanded_tiles += map.tiles.size();
     return true;
 }
