@@ -19,6 +19,7 @@ enum class CampaignTriggerKind : std::uint8_t {
     actor_activation,
     map_entry,
     player_rectangle,
+    map_presence,
 };
 
 enum class CampaignOpcode : std::uint8_t {

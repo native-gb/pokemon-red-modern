@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first seventeen imported story fibers are executable from the ordinary
+The first twenty-one imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -735,6 +735,11 @@ Blue's House now has all three Daisy states needed for this opening:
   leaves the event and actor untouched so the player can retry;
 - after receipt, she presents the imported Town Map usage text.
 
+Guarded map-presence programs now complete the opening bookkeeping. Blue's
+House records its entered flag, Pallet records both post-Poké-Ball flags, and
+returning after the Town Map sets Daisy's walking flag while replacing her
+sitting actor with the imported roaming actor.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -755,11 +760,13 @@ verifies the five-Poké-Ball stack, then fills the imported bag to capacity,
 verifies Daisy's failure branch, frees space, retries, and verifies the Town
 Map item, flag, and actor removal.
 
+The same fixture then services the guarded Blue's House/Pallet updates and
+verifies all three flags plus Daisy's actor swap.
+
 This is not full-campaign completion. The next campaign blocker begins with
-Pallet's post-reward per-map flag updates and Daisy sitting-to-walking actor
-transition, followed by systematic Route 1/Viridian Forest/Pewter campaign
-lifting. Every later map program still requires
-semantic lifting and the remaining acceptance gates above stay open.
+systematic Route 1/Viridian Forest/Pewter campaign lifting. Every later map
+program still requires semantic lifting and the remaining acceptance gates
+above stay open.
 
 ## Playable acceptance
 

@@ -1771,7 +1771,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 14> source_names{
+    constexpr std::array<std::string_view, 15> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1786,6 +1786,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "route_22_first_rival_after_bulbasaur.sexpr",
         "oaks_lab_pokeballs.sexpr",
         "blues_house_daisy_town_map.sexpr",
+        "pallet_reward_updates.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2405,6 +2406,30 @@ void test_local_pallet_campaign_program(TestState& state) {
                   campaign.inventory, 5U) == 1U &&
               !actor_visible(39U, 3U),
           "Daisy grants the imported Town Map and hides its world actor");
+
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              pokered::campaign_flag(campaign, 0x6BA51U),
+          "Blue's House map presence records its imported entry flag");
+    check(state,
+          pokered::enter_world_at(world, 0U, 12, 12, error),
+          "campaign fixture returns to Pallet after its rewards");
+    for (std::size_t update = 0U; update < 4U; ++update)
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Pallet reward state update advances");
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BA3EU) &&
+              pokered::campaign_flag(campaign, 0x6BA52U) &&
+              pokered::campaign_flag(campaign, 0x6BA5EU) &&
+              !actor_visible(39U, 1U) &&
+              actor_visible(39U, 2U),
+          "Pallet updates both reward flags and swaps Daisy to her walking actor");
 }
 
 } // namespace

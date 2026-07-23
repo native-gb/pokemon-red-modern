@@ -101,6 +101,14 @@ constexpr std::size_t kBluesHouseOfferMapTextOffset = 0x019BAFU;
 constexpr std::size_t kBluesHouseGotMapTextOffset = 0x019BB4U;
 constexpr std::size_t kBluesHouseBagFullTextOffset = 0x019BBAU;
 constexpr std::size_t kBluesHouseUseMapTextOffset = 0x019BBFU;
+constexpr std::size_t kBluesHouseEnteredFlagOffset = 0x019B4BU;
+constexpr std::size_t kPalletGotPokeballsCheckOffset = 0x018E5BU;
+constexpr std::size_t kPalletAfterPokeballsFlagOffset = 0x018E62U;
+constexpr std::size_t kPalletDaisyWalkingCheckOffset = 0x018F56U;
+constexpr std::size_t kPalletDaisyWalkingFlagOffset = 0x018F63U;
+constexpr std::size_t kPalletDaisySittingToggleOffset = 0x018F68U;
+constexpr std::size_t kPalletDaisyWalkingToggleOffset = 0x018F72U;
+constexpr std::size_t kPalletAfterPokeballs2FlagOffset = 0x018F82U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -120,6 +128,7 @@ enum class TriggerKind : std::uint8_t {
     actor_activation,
     map_entry,
     player_rectangle,
+    map_presence,
 };
 
 enum class Opcode : std::uint8_t {
@@ -295,6 +304,17 @@ struct DaisyTownMapProgram {
     DecodedTextProgram got_map;
     DecodedTextProgram bag_full;
     DecodedTextProgram use_map;
+};
+
+struct PalletRewardUpdates {
+    std::uint32_t entered_blues_house_flag{};
+    std::uint32_t got_pokeballs_flag{};
+    std::uint32_t pallet_after_pokeballs_flag{};
+    std::uint32_t got_town_map_flag{};
+    std::uint32_t daisy_walking_flag{};
+    std::uint32_t pallet_after_pokeballs_2_flag{};
+    ToggleActor daisy_sitting;
+    ToggleActor daisy_walking;
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -924,17 +944,19 @@ bool decode_toggle_operation(
     std::span<const std::uint8_t> rom, std::size_t offset,
     std::uint8_t expected_action,
     const std::vector<ToggleActor>& toggle_actors,
-    ToggleActor& result, std::string& error) {
+    ToggleActor& result, std::string& error,
+    bool tail_jump = false) {
     constexpr std::array<std::uint8_t, 3> store_toggle{
         0xEAU, 0x4DU, 0xCCU};
-    constexpr std::array<std::uint8_t, 3> invoke_toggle{
-        0xCDU, 0x6DU, 0x3EU};
     if (offset > rom.size() || 10U > rom.size() - offset ||
         rom[offset] != 0x3EU ||
         !has_bytes(rom, offset + 2U, store_toggle) ||
         rom[offset + 5U] != 0x3EU ||
         rom[offset + 6U] != expected_action ||
-        !has_bytes(rom, offset + 7U, invoke_toggle) ||
+        rom[offset + 7U] !=
+            (tail_jump ? 0xC3U : 0xCDU) ||
+        rom[offset + 8U] != 0x6DU ||
+        rom[offset + 9U] != 0x3EU ||
         rom[offset + 1U] >= toggle_actors.size()) {
         error =
             "campaign toggle operation does not match the verified ROM";
@@ -1487,6 +1509,68 @@ bool decode_daisy_town_map_program(
             page.replace(position, end - position + 1U,
                          replacement);
         }
+    }
+    return true;
+}
+
+bool decode_pallet_reward_updates(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ToggleActor>& toggle_actors,
+    const OakPokeballProgram& oak,
+    const DaisyTownMapProgram& daisy,
+    PalletRewardUpdates& result, std::string& error) {
+    result = {};
+    if (!decode_set_event(
+            rom, kBluesHouseEnteredFlagOffset,
+            result.entered_blues_house_flag, error) ||
+        !decode_checked_event(
+            rom, kPalletGotPokeballsCheckOffset,
+            result.got_pokeballs_flag, error) ||
+        !decode_set_event(
+            rom, kPalletAfterPokeballsFlagOffset,
+            result.pallet_after_pokeballs_flag, error) ||
+        !decode_checked_event(
+            rom, kPalletDaisyWalkingCheckOffset,
+            result.daisy_walking_flag, error) ||
+        !decode_set_event(
+            rom, kPalletDaisyWalkingFlagOffset,
+            result.daisy_walking_flag, error) ||
+        !decode_set_event(
+            rom, kPalletAfterPokeballs2FlagOffset,
+            result.pallet_after_pokeballs_2_flag,
+            error)) {
+        if (error.empty())
+            error =
+                "Pallet reward updates do not match the verified ROM";
+        return false;
+    }
+    constexpr std::array<std::uint8_t, 4> both_events{
+        0xE6U, 0x03U, 0xFEU, 0x03U};
+    if (!has_bytes(
+            rom, kPalletDaisyWalkingCheckOffset + 7U,
+            both_events) ||
+        result.got_pokeballs_flag !=
+            oak.got_pokeballs_flag) {
+        error =
+            "Pallet reward predicates disagree with imported rewards";
+        return false;
+    }
+    result.got_town_map_flag =
+        daisy.got_town_map_flag;
+    if (!decode_toggle_operation(
+            rom, kPalletDaisySittingToggleOffset, 0x11U,
+            toggle_actors, result.daisy_sitting, error) ||
+        !decode_toggle_operation(
+            rom, kPalletDaisyWalkingToggleOffset, 0x15U,
+            toggle_actors, result.daisy_walking, error, true))
+        return false;
+    if (result.daisy_sitting.map_id !=
+            result.daisy_walking.map_id ||
+        result.daisy_sitting.map_id !=
+            daisy.town_map_actor.map_id) {
+        error =
+            "Pallet Daisy transition has inconsistent actor owners";
+        return false;
     }
     return true;
 }
@@ -2200,6 +2284,63 @@ GeneratedFile readable_daisy_town_map_source(
     };
 }
 
+GeneratedFile readable_pallet_reward_updates_source(
+    const PalletRewardUpdates& updates) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Pallet and Blue's House map programs.\n"
+        << "; These guarded map-presence updates preserve source flags and Daisy's actor transition.\n\n"
+        << "campaign_program blues_house_record_entry\n"
+        << "    trigger map blues_house map_presence\n"
+        << "    absent_flag 0x" << std::hex
+        << updates.entered_blues_house_flag << '\n'
+        << "    set_flag 0x"
+        << updates.entered_blues_house_flag << "\n    end\n\n"
+        << "campaign_program pallet_after_pokeballs\n"
+        << "    trigger map pallet_town map_presence\n"
+        << "    required_flag 0x"
+        << updates.got_pokeballs_flag << '\n'
+        << "    absent_flag 0x"
+        << updates.pallet_after_pokeballs_flag << '\n'
+        << "    set_flag 0x"
+        << updates.pallet_after_pokeballs_flag
+        << "\n    end\n\n"
+        << "campaign_program pallet_daisy_starts_walking\n"
+        << "    trigger map pallet_town map_presence\n"
+        << "    required_flag 0x"
+        << updates.got_town_map_flag << '\n'
+        << "    absent_flag 0x"
+        << updates.daisy_walking_flag << '\n'
+        << "    set_flag 0x" << updates.daisy_walking_flag
+        << std::dec << '\n'
+        << "    hide_actor map_"
+        << static_cast<unsigned>(updates.daisy_sitting.map_id)
+        << " actor "
+        << static_cast<unsigned>(updates.daisy_sitting.actor_index)
+        << '\n'
+        << "    show_actor map_"
+        << static_cast<unsigned>(updates.daisy_walking.map_id)
+        << " actor "
+        << static_cast<unsigned>(updates.daisy_walking.actor_index)
+        << "\n    end\n\n"
+        << "campaign_program pallet_after_pokeballs_2\n"
+        << "    trigger map pallet_town map_presence\n"
+        << "    required_flag 0x" << std::hex
+        << updates.got_pokeballs_flag << '\n'
+        << "    absent_flag 0x"
+        << updates.pallet_after_pokeballs_2_flag << '\n'
+        << "    set_flag 0x"
+        << updates.pallet_after_pokeballs_2_flag
+        << std::dec << "\n    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/pallet_reward_updates.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -2335,6 +2476,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_daisy_town_map_program(
             rom, toggle_actors, oak_return, daisy_town_map,
             error))
+        return false;
+    PalletRewardUpdates pallet_reward_updates;
+    if (!decode_pallet_reward_updates(
+            rom, toggle_actors, oak_pokeballs,
+            daisy_town_map, pallet_reward_updates, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -2968,7 +3114,62 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     daisy_after.instructions.push_back(operation(Opcode::end));
     programs.push_back(std::move(daisy_after));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '8'};
+    const auto map_flag_update =
+        [&](std::string key, std::uint8_t map_id,
+            std::uint32_t required_flag,
+            std::uint32_t absent_flag,
+            std::uint32_t set_flag) {
+            Program program;
+            program.key = std::move(key);
+            program.trigger_kind = TriggerKind::map_presence;
+            program.trigger_map = map_id;
+            program.required_flag = required_flag;
+            program.absent_flag = absent_flag;
+            program.instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U, set_flag));
+            program.instructions.push_back(
+                operation(Opcode::end));
+            return program;
+        };
+    programs.push_back(map_flag_update(
+        "blues_house_record_entry", 39U, 0xFFFFFFFFU,
+        pallet_reward_updates.entered_blues_house_flag,
+        pallet_reward_updates.entered_blues_house_flag));
+    programs.push_back(map_flag_update(
+        "pallet_after_pokeballs", 0U,
+        pallet_reward_updates.got_pokeballs_flag,
+        pallet_reward_updates.pallet_after_pokeballs_flag,
+        pallet_reward_updates.pallet_after_pokeballs_flag));
+
+    Program daisy_walks;
+    daisy_walks.key = "pallet_daisy_starts_walking";
+    daisy_walks.trigger_kind = TriggerKind::map_presence;
+    daisy_walks.trigger_map = 0U;
+    daisy_walks.required_flag =
+        pallet_reward_updates.got_town_map_flag;
+    daisy_walks.absent_flag =
+        pallet_reward_updates.daisy_walking_flag;
+    daisy_walks.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        pallet_reward_updates.daisy_walking_flag));
+    daisy_walks.instructions.push_back(operation(
+        Opcode::hide_actor,
+        pallet_reward_updates.daisy_sitting.actor_index,
+        0U, pallet_reward_updates.daisy_sitting.map_id));
+    daisy_walks.instructions.push_back(operation(
+        Opcode::show_actor,
+        pallet_reward_updates.daisy_walking.actor_index,
+        0U, pallet_reward_updates.daisy_walking.map_id));
+    daisy_walks.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(daisy_walks));
+
+    programs.push_back(map_flag_update(
+        "pallet_after_pokeballs_2", 0U,
+        pallet_reward_updates.got_pokeballs_flag,
+        pallet_reward_updates.pallet_after_pokeballs_2_flag,
+        pallet_reward_updates.pallet_after_pokeballs_2_flag));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '9'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u16(cache, programs.size());
@@ -3007,6 +3208,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         readable_oak_pokeball_source(oak_pokeballs));
     result.files.push_back(
         readable_daisy_town_map_source(daisy_town_map));
+    result.files.push_back(
+        readable_pallet_reward_updates_source(
+            pallet_reward_updates));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

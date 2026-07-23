@@ -214,6 +214,11 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
                world.player.y <
                    static_cast<std::int32_t>(program.trigger_y) +
                        program.trigger_height;
+    if (program.trigger_kind ==
+        CampaignTriggerKind::map_presence)
+        return world.player.map_index < world.maps.size() &&
+               world.maps[world.player.map_index].id ==
+                   program.trigger_map_id;
     return world.player.map_index < world.maps.size() &&
            world.maps[world.player.map_index].id ==
                program.trigger_map_id &&
@@ -256,7 +261,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '8'}) {
+        magic != std::array{'P', 'C', 'P', '9'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -297,7 +302,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
             !read_u8(input, trigger_kind) ||
             trigger_kind >
                 static_cast<std::uint8_t>(
-                    CampaignTriggerKind::player_rectangle) ||
+                    CampaignTriggerKind::map_presence) ||
             !read_u8(input, program.trigger_map_id) ||
             !read_u8(input, program.trigger_x) ||
             !read_u8(input, program.trigger_y) ||
