@@ -745,6 +745,14 @@ check-and-set event, Potion item tuple, receipt text, full-bag response, and
 repeat Poké Ball advertisement all execute through the generic inventory
 branch operations.
 
+Loose world items are no longer an unresolved dynamic-native interaction.
+The campaign pack contains every imported ordinary item name, semantic TM/HM
+names, and the cartridge's shared found-item and full-bag pages. A generic
+runtime transaction reads the activated actor's imported item ID, grants one,
+hides the actor on success, and leaves it available when the imported bag
+capacity rejects a new stack. This covers all three Viridian Forest items and
+is the same path later maps use.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -766,13 +774,16 @@ verifies Daisy's failure branch, frees space, retries, and verifies the Town
 Map item, flag, and actor removal.
 
 The same fixture then services the guarded Blue's House/Pallet updates and
-verifies all three flags plus Daisy's actor swap.
-It finally activates the Route 1 clerk and verifies the imported Potion stack
-and event.
+verifies all three flags plus Daisy's actor swap. It activates the Route 1
+clerk and verifies the imported Potion stack and event, then checks all three
+Viridian Forest loose items, including full-bag retention followed by a
+successful retry, name substitution, inventory stacking, and actor removal.
+The Forest's three trainer actors are also required to resolve to imported
+trainer-interaction records.
 
 This is not full-campaign completion. The next campaign blocker begins with
-Viridian Forest item pickups and the Pewter Gym/Brock reward flow. Every later
-map program still requires semantic lifting and the remaining acceptance
+Pewter Gym/Brock's reward flow and Pewter City's progression gates. Every
+later map program still requires semantic lifting and the remaining acceptance
 gates above stay open.
 
 ## Playable acceptance

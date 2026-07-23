@@ -1732,11 +1732,29 @@ void test_local_pallet_campaign_program(TestState& state) {
                                      interactions, error),
           "campaign fixture loads imported interactions");
     check(state,
+          pokered::find_trainer_interaction(
+              interactions, 51U, 2U) != nullptr &&
+              pokered::find_trainer_interaction(
+                  interactions, 51U, 3U) != nullptr &&
+              pokered::find_trainer_interaction(
+                  interactions, 51U, 4U) != nullptr,
+          "Viridian Forest's three trainer actors retain imported battle interactions");
+    check(state,
           pokered::load_campaign_programs(program_path, programs, error),
           "campaign fixture loads imported programs");
     check(state,
           programs.naming.maximum_length == 10U &&
               programs.inventory_stack_capacity == 20U &&
+              programs.item_names.size() == 138U &&
+              programs.item_names.front().item_id == 1U &&
+              programs.item_names.front().name == "MASTER BALL" &&
+              programs.item_names.back().item_id == 0xFAU &&
+              programs.item_names.back().name == "TM50" &&
+              !programs.found_item_pages.empty() &&
+              programs.found_item_pages.front().find(
+                  "\n{item_name}") !=
+                  std::string::npos &&
+              !programs.no_item_room_pages.empty() &&
               programs.naming.uppercase.front() == "A" &&
               programs.naming.lowercase.front() == "a" &&
               programs.naming.uppercase.back() == "END" &&
@@ -2461,6 +2479,90 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::inventory_item_quantity(
                   campaign.inventory, 20U) == 1U,
           "Route 1 clerk grants the ROM-derived Potion sample");
+
+    // Every ordinary loose Poké Ball actor uses the same runtime transaction:
+    // its imported actor parameter supplies the item ID, and imported shared
+    // text supplies success/full-bag presentation.
+    check(state,
+          pokered::enter_world_at(world, 51U, 25, 12, error),
+          "campaign fixture reaches Viridian Forest loose items");
+    for (std::uint16_t item_id = 100U; item_id < 117U; ++item_id)
+        check(state,
+              pokered::give_inventory_item(
+                  campaign.inventory, item_id, 1U),
+              "campaign fixture fills one bag stack");
+    world.last_actor_activation = {
+        .map_id = 51U,
+        .actor_index = 5U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "full bag services a generic loose item");
+    check(state,
+          error.empty() &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 11U) == 0U &&
+              actor_visible(51U, 5U) && world.dialogue.open &&
+              world.dialogue.pages.front().find("No more room") !=
+                  std::string::npos,
+          "full bag leaves the imported Antidote actor available");
+    world.dialogue = {};
+    for (std::uint16_t item_id = 100U; item_id < 117U; ++item_id)
+        check(state,
+              pokered::take_inventory_item(
+                  campaign.inventory, item_id, 1U),
+              "campaign fixture frees one bag stack");
+
+    world.last_actor_activation = {
+        .map_id = 51U,
+        .actor_index = 5U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "generic Antidote pickup succeeds after freeing room");
+    check(state,
+          error.empty() &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 11U) == 1U &&
+              !actor_visible(51U, 5U) && world.dialogue.open &&
+              world.dialogue.pages.front().find("ANTIDOTE") !=
+                  std::string::npos,
+          "generic pickup grants, names, and hides the imported actor");
+    world.dialogue = {};
+
+    world.last_actor_activation = {
+        .map_id = 51U,
+        .actor_index = 6U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 20U) == 2U &&
+              !actor_visible(51U, 6U),
+          "generic Forest Potion pickup stacks and hides");
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 51U,
+        .actor_index = 7U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 4U) == 6U &&
+              !actor_visible(51U, 7U),
+          "generic Forest Poké Ball pickup stacks and hides");
 }
 
 } // namespace

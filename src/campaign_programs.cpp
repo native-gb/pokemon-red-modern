@@ -6,6 +6,7 @@
 #include "rules.hpp"
 #include "state.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -252,6 +253,64 @@ void open_program_dialogue(WorldState& world,
     open_world_dialogue(world, campaign, pages);
 }
 
+const CampaignItemName* find_item_name(
+    const CampaignProgramCatalog& programs, std::uint16_t item_id) {
+    const auto found = std::ranges::find_if(
+        programs.item_names,
+        [item_id](const CampaignItemName& item) {
+            return item.item_id == item_id;
+        });
+    return found == programs.item_names.end() ? nullptr : &*found;
+}
+
+bool service_loose_item_pickup(
+    const CampaignProgramCatalog& programs, WorldState& world,
+    CampaignState& campaign, bool& handled, std::string& error) {
+    handled = false;
+    if (!world.last_actor_activation.occurred) return true;
+
+    WorldActorState* actor_state = nullptr;
+    const WorldActorSpawn* actor_spawn = nullptr;
+    for (WorldActorState& actor : world.actors) {
+        const WorldMap& map = world.maps[actor.map_index];
+        const WorldActorSpawn& spawn = map.actors[actor.spawn_index];
+        if (map.id == world.last_actor_activation.map_id &&
+            spawn.index == world.last_actor_activation.actor_index) {
+            actor_state = &actor;
+            actor_spawn = &spawn;
+            break;
+        }
+    }
+    if (actor_state == nullptr || actor_spawn == nullptr ||
+        actor_spawn->kind != WorldActorKind::item)
+        return true;
+
+    handled = true;
+    world.last_actor_activation = {};
+    const CampaignItemName* item =
+        find_item_name(programs, actor_spawn->parameter_a);
+    if (item == nullptr) {
+        error = "loose item actor references an unavailable imported item name";
+        return false;
+    }
+
+    std::vector<std::string> pages;
+    if (give_inventory_item(campaign.inventory, actor_spawn->parameter_a, 1U)) {
+        if (!set_world_actor_visible(
+                world, world.maps[actor_state->map_index].id,
+                actor_spawn->index, false, error))
+            return false;
+        pages = programs.found_item_pages;
+        for (std::string& page : pages)
+            replace_all(page, "{item_name}", item->name);
+    } else {
+        pages = programs.no_item_room_pages;
+    }
+    open_world_dialogue(world, campaign, pages);
+    error.clear();
+    return true;
+}
+
 } // namespace
 
 bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCatalog& result,
@@ -261,7 +320,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'A'}) {
+        magic != std::array{'P', 'C', 'P', 'B'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -277,6 +336,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
             error = "campaign naming profile is truncated";
             return false;
         }
+    std::uint16_t item_name_count = 0U;
     if (!read_string(input, loaded.naming.uppercase_action) ||
         !read_string(input, loaded.naming.lowercase_action) ||
         !read_u8(input, loaded.naming.maximum_length) ||
@@ -285,6 +345,33 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
         loaded.inventory_stack_capacity == 0U ||
         !valid_naming_profile(loaded.naming)) {
         error = "campaign metadata is invalid";
+        return false;
+    }
+    if (!read_u16(input, item_name_count) || item_name_count == 0U ||
+        item_name_count > 256U) {
+        error = "campaign item-name catalogue is invalid";
+        return false;
+    }
+    loaded.item_names.reserve(item_name_count);
+    for (std::uint16_t index = 0U; index < item_name_count; ++index) {
+        CampaignItemName item;
+        if (!read_u16(input, item.item_id) || item.item_id == 0U ||
+            !read_string(input, item.name) ||
+            std::ranges::any_of(
+                loaded.item_names,
+                [&item](const CampaignItemName& existing) {
+                    return existing.item_id == item.item_id;
+                })) {
+            error = "campaign item-name catalogue contains an invalid record";
+            return false;
+        }
+        loaded.item_names.push_back(std::move(item));
+    }
+    if (!read_pages(input, loaded.found_item_pages) ||
+        loaded.found_item_pages.empty() ||
+        !read_pages(input, loaded.no_item_room_pages) ||
+        loaded.no_item_room_pages.empty()) {
+        error = "campaign loose-item presentation is invalid";
         return false;
     }
     if (!read_u16(input, program_count) || program_count == 0U ||
@@ -429,6 +516,12 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
 
     CampaignFiberState& fiber = campaign.fiber;
     if (!fiber.active) {
+        bool handled_item = false;
+        if (!service_loose_item_pickup(
+                programs, world, campaign, handled_item, error))
+            return false;
+        if (handled_item) return true;
+
         for (std::size_t index = 0U; index < programs.programs.size(); ++index) {
             if (!trigger_ready(programs.programs[index], world, campaign)) continue;
             fiber = {

@@ -93,11 +93,19 @@ struct CampaignProgram {
     std::vector<CampaignInstruction> instructions;
 };
 
+struct CampaignItemName {
+    std::uint16_t item_id{};
+    std::string name;
+};
+
 struct CampaignProgramCatalog {
     std::filesystem::path source;
     NamingProfile naming;
     std::string nickname_heading;
     std::uint16_t inventory_stack_capacity{};
+    std::vector<CampaignItemName> item_names;
+    std::vector<std::string> found_item_pages;
+    std::vector<std::string> no_item_room_pages;
     std::vector<CampaignProgram> programs;
     bool loaded{};
 };

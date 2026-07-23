@@ -208,6 +208,14 @@ Route 1's sample clerk adds two more fibers. They import the source
 check-and-set event, Potion ID/name/quantity, full-bag branch, receipt text,
 and repeat dialogue. The dynamic receipt buffer is resolved from the same
 item-name table used by the Town Map flow.
+The cache now owns the complete 83-entry ordinary item-name table, semantic
+names for all five HMs and fifty TMs, and the shared loose-item success and
+full-bag text decoded from the cartridge. Any imported world actor whose map
+record identifies it as an item runs one generic transaction: use the actor's
+imported item ID, attempt quantity one, hide that exact actor only on success,
+substitute its imported name into the shared receipt text, and leave it present
+on capacity failure. The readable peer is
+`source/scripts/campaign/loose_item_pickup.sexpr`.
 The cache also initializes all 228 records from the cartridge toggleable-object
 table, including its 32 default-hidden actors. The readable accounting peer is
 `source/world/initial_actor_visibility.sexpr`; runtime initialization does not

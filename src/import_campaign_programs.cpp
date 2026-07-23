@@ -87,6 +87,13 @@ constexpr std::size_t kRoute22DefeatedTextOffset = 0x0511B7U;
 constexpr std::size_t kRoute22VictoryTextOffset = 0x0511BCU;
 constexpr std::size_t kBagInventoryCapacityOffset = 0x00CE19U;
 constexpr std::size_t kItemNamesOffset = 0x00472BU;
+constexpr std::size_t kFoundItemTextOffset = 0x080119U;
+constexpr std::size_t kNoItemRoomTextOffset = 0x08012AU;
+constexpr std::uint16_t kOrdinaryItemCount = 83U;
+constexpr std::uint16_t kFirstHiddenMachine = 0xC4U;
+constexpr std::uint16_t kHiddenMachineCount = 5U;
+constexpr std::uint16_t kFirstTechnicalMachine = 0xC9U;
+constexpr std::uint16_t kTechnicalMachineCount = 50U;
 constexpr std::size_t kOakLabRoute22BeatCheckOffset = 0x01D280U;
 constexpr std::size_t kOakLabPokeballGrantFlagOffset = 0x01D2D0U;
 constexpr std::size_t kOakLabPokeballGrantOffset = 0x01D2D9U;
@@ -536,6 +543,93 @@ bool decode_item_name(std::span<const std::uint8_t> rom,
                 "item name table contains an invalid entry";
             return false;
         }
+    }
+    return true;
+}
+
+struct ImportedItemName {
+    std::uint16_t item_id{};
+    std::string name;
+};
+
+std::string machine_name(std::string_view prefix, std::uint16_t number) {
+    std::string result(prefix);
+    result.push_back(static_cast<char>('0' + number / 10U));
+    result.push_back(static_cast<char>('0' + number % 10U));
+    return result;
+}
+
+bool decode_item_names(
+    std::span<const std::uint8_t> rom,
+    std::vector<ImportedItemName>& result, std::string& error) {
+    result.clear();
+    result.reserve(
+        kOrdinaryItemCount + kHiddenMachineCount +
+        kTechnicalMachineCount);
+    for (std::uint16_t item_id = 1U; item_id <= kOrdinaryItemCount;
+         ++item_id) {
+        std::string name;
+        if (!decode_item_name(rom, item_id, name, error))
+            return false;
+        result.push_back({item_id, std::move(name)});
+    }
+    for (std::uint16_t index = 0U; index < kHiddenMachineCount; ++index)
+        result.push_back({
+            static_cast<std::uint16_t>(kFirstHiddenMachine + index),
+            machine_name("HM", static_cast<std::uint16_t>(index + 1U)),
+        });
+    for (std::uint16_t index = 0U; index < kTechnicalMachineCount; ++index)
+        result.push_back({
+            static_cast<std::uint16_t>(kFirstTechnicalMachine + index),
+            machine_name("TM", static_cast<std::uint16_t>(index + 1U)),
+        });
+    return true;
+}
+
+void replace_all(std::string& text, std::string_view token,
+                 std::string_view value) {
+    std::size_t position = 0U;
+    while ((position = text.find(token, position)) != std::string::npos) {
+        text.replace(position, token.size(), value);
+        position += value.size();
+    }
+}
+
+bool decode_loose_item_presentation(
+    std::span<const std::uint8_t> rom,
+    DecodedTextProgram& found, DecodedTextProgram& no_room,
+    std::string& error) {
+    constexpr std::array<std::uint8_t, 5> line_then_item_slot{
+        0x4FU, 0x50U, 0x01U, 0x4BU, 0xCFU};
+    if (!decode_text_program(
+            rom, 0x20U, kFoundItemTextOffset, found) ||
+        !found.complete || found.pages.empty() ||
+        !decode_text_program(
+            rom, 0x20U, kNoItemRoomTextOffset, no_room) ||
+        !no_room.complete || no_room.pages.empty() ||
+        !has_bytes(
+            rom, kFoundItemTextOffset + 8U,
+            line_then_item_slot)) {
+        error =
+            "loose-item presentation could not be decoded from the pinned ROM";
+        return false;
+    }
+    bool owns_item_slot = false;
+    for (std::string& page : found.pages) {
+        const std::size_t item_slot = page.find("{ram_cf4b}");
+        if (item_slot != std::string::npos) {
+            owns_item_slot = true;
+            // The source string ends with LINE immediately before the
+            // separate text_ram command. Preserve that imported cursor
+            // operation when lowering the transient string slot.
+            page.insert(item_slot, "\n");
+        }
+        replace_all(page, "{ram_cf4b}", "{item_name}");
+    }
+    if (!owns_item_slot) {
+        error =
+            "loose-item presentation is missing its imported item-name slot";
+        return false;
     }
     return true;
 }
@@ -2468,6 +2562,37 @@ GeneratedFile readable_route_1_potion_source(
     };
 }
 
+GeneratedFile readable_loose_item_source(
+    const std::vector<ImportedItemName>& item_names,
+    const DecodedTextProgram& found,
+    const DecodedTextProgram& no_room) {
+    std::ostringstream source;
+    source
+        << "; Generic loose-item semantics assembled from verified Pokemon Red US rev 0 data.\n"
+        << "; Actor item IDs come from each imported map object; names and both result texts come from ROM tables.\n\n"
+        << "loose_item_pickup\n"
+        << "    item_id actor_parameter_a\n"
+        << "    quantity 1\n"
+        << "    if_inventory_accepts\n"
+        << "        hide_activated_actor\n"
+        << "        say\n"
+        << page_source(found.pages, "            ")
+        << "    else\n"
+        << "        say\n"
+        << page_source(no_room.pages, "            ")
+        << "\nitem_names\n";
+    for (const ImportedItemName& item : item_names)
+        source << "    item " << item.item_id << ' '
+               << source_quote(item.name) << '\n';
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/loose_item_pickup.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -2481,6 +2606,13 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     std::uint16_t inventory_stack_capacity = 0U;
     if (!decode_inventory_stack_capacity(
             rom, inventory_stack_capacity, error))
+        return false;
+    std::vector<ImportedItemName> item_names;
+    DecodedTextProgram found_item;
+    DecodedTextProgram no_item_room;
+    if (!decode_item_names(rom, item_names, error) ||
+        !decode_loose_item_presentation(
+            rom, found_item, no_item_room, error))
         return false;
 
     NamingProfile naming_profile;
@@ -3357,9 +3489,16 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(potion_repeat));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'A'};
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'B'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
+    write_u16(cache, item_names.size());
+    for (const ImportedItemName& item : item_names) {
+        write_u16(cache, item.item_id);
+        write_string(cache, item.name);
+    }
+    write_pages(cache, found_item.pages);
+    write_pages(cache, no_item_room.pages);
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
 
@@ -3401,6 +3540,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             pallet_reward_updates));
     result.files.push_back(
         readable_route_1_potion_source(route_1_potion));
+    result.files.push_back(
+        readable_loose_item_source(
+            item_names, found_item, no_item_room));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
