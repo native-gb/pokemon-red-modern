@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -62,36 +63,46 @@ bool read_bytes(std::istream& input, std::size_t count,
         .good();
 }
 
-bool read_tilesets(std::istream& input, MapBrowser& browser, std::string& error) {
+bool read_tilesets(std::istream& input, WorldState& world, std::string& error) {
     std::uint16_t count = 0;
     if (!read_u16(input, count) || count == 0 || count > 24) {
-        error = "map browser cache has an invalid tileset count";
+        error = "world map cache has an invalid tileset count";
         return false;
     }
-    browser.tilesets.reserve(count);
+    world.tilesets.reserve(count);
     for (std::uint16_t index = 0; index < count; ++index) {
         MapTileset tileset;
         std::uint32_t pixel_count = 0;
+        std::uint32_t animation_pixel_count = 0;
         if (!read_u8(input, tileset.id) || !read_u16(input, tileset.tile_count) ||
+            !read_u8(input, tileset.animation_mode) ||
+            tileset.animation_mode > 2 ||
             !read_u32(input, pixel_count) || tileset.tile_count == 0 ||
             pixel_count != static_cast<std::uint32_t>(tileset.tile_count) * 64U ||
-            !read_bytes(input, pixel_count, tileset.pixels)) {
-            error = "map browser cache has an invalid tileset record";
+            !read_bytes(input, pixel_count, tileset.pixels) ||
+            !read_u32(input, animation_pixel_count) ||
+            animation_pixel_count !=
+                (tileset.animation_mode == 0
+                     ? 0U
+                     : tileset.animation_mode == 1 ? 8U * 64U : 11U * 64U) ||
+            !read_bytes(input, animation_pixel_count,
+                        tileset.animation_pixels)) {
+            error = "world map cache has an invalid tileset record";
             return false;
         }
         const auto duplicate =
-            std::find_if(browser.tilesets.begin(), browser.tilesets.end(),
+            std::find_if(world.tilesets.begin(), world.tilesets.end(),
                          [&](const MapTileset& value) { return value.id == tileset.id; });
-        if (duplicate != browser.tilesets.end()) {
-            error = "map browser cache repeats a tileset ID";
+        if (duplicate != world.tilesets.end()) {
+            error = "world map cache repeats a tileset ID";
             return false;
         }
-        browser.tilesets.push_back(std::move(tileset));
+        world.tilesets.push_back(std::move(tileset));
     }
     return true;
 }
 
-bool read_map(std::istream& input, const MapBrowser& browser, WorldMap& map,
+bool read_map(std::istream& input, const WorldState& world, WorldMap& map,
               std::string& error) {
     std::uint8_t key_size = 0;
     std::uint8_t name_size = 0;
@@ -100,13 +111,13 @@ bool read_map(std::istream& input, const MapBrowser& browser, WorldMap& map,
         !read_u8(input, map.width_blocks) || !read_u8(input, map.height_blocks) ||
         !read_u16(input, map.width_tiles) || !read_u16(input, map.height_tiles) ||
         !read_u8(input, key_size) || key_size == 0 || key_size > 63) {
-        error = "map browser cache has an invalid map header";
+        error = "world map cache has an invalid map header";
         return false;
     }
     map.key.resize(key_size);
     if (!input.read(map.key.data(), static_cast<std::streamsize>(map.key.size())) ||
         !read_u8(input, name_size) || name_size == 0 || name_size > 63) {
-        error = "map browser cache has a truncated map record";
+        error = "world map cache has a truncated map record";
         return false;
     }
     map.display_name.resize(name_size);
@@ -116,7 +127,7 @@ bool read_map(std::istream& input, const MapBrowser& browser, WorldMap& map,
         !read_i32(input, map.global_y_tiles) ||
         !read_u16(input, map.world_component) ||
         !read_u32(input, tile_count)) {
-        error = "map browser cache has truncated map placement or tile data";
+        error = "world map cache has truncated map placement or tile data";
         return false;
     }
     const std::uint32_t expected =
@@ -124,40 +135,71 @@ bool read_map(std::istream& input, const MapBrowser& browser, WorldMap& map,
     if (map.width_blocks == 0 || map.height_blocks == 0 ||
         map.width_tiles != static_cast<std::uint16_t>(map.width_blocks * 4U) ||
         map.height_tiles != static_cast<std::uint16_t>(map.height_blocks * 4U) ||
-        tile_count != expected || find_tileset(browser, map.tileset_id) == nullptr ||
+        tile_count != expected || find_tileset(world, map.tileset_id) == nullptr ||
         !read_bytes(input, tile_count, map.tiles)) {
-        error = "map browser cache has invalid map dimensions or tile data";
+        error = "world map cache has invalid map dimensions or tile data";
         return false;
     }
-    const MapTileset* tileset = find_tileset(browser, map.tileset_id);
+    const MapTileset* tileset = find_tileset(world, map.tileset_id);
     const auto invalid_tile =
         std::find_if(map.tiles.begin(), map.tiles.end(),
                      [&](std::uint8_t tile) { return tile >= tileset->tile_count; });
     if (invalid_tile != map.tiles.end()) {
-        error = "map browser cache references a tile outside its tileset";
+        error = "world map cache references a tile outside its tileset";
         return false;
     }
     return true;
 }
 
+void selected_view_bounds(const WorldState& world, float& left, float& top,
+                          float& right, float& bottom) {
+    const WorldMap* map = selected_map(world);
+    if (map == nullptr) {
+        left = top = right = bottom = 0.0F;
+        return;
+    }
+    left = static_cast<float>(map->global_x_tiles) * 8.0F;
+    top = static_cast<float>(map->global_y_tiles) * 8.0F;
+    right = left + static_cast<float>(map->width_tiles) * 8.0F;
+    bottom = top + static_cast<float>(map->height_tiles) * 8.0F;
+}
+
+void world_view_bounds(const WorldState& world, float& left, float& top,
+                       float& right, float& bottom) {
+    selected_view_bounds(world, left, top, right, bottom);
+    if (world.maps.empty()) return;
+    for (const WorldMap& map : world.maps) {
+        const float map_left =
+            static_cast<float>(map.global_x_tiles) * 8.0F;
+        const float map_top =
+            static_cast<float>(map.global_y_tiles) * 8.0F;
+        left = std::min(left, map_left);
+        top = std::min(top, map_top);
+        right = std::max(
+            right, map_left + static_cast<float>(map.width_tiles) * 8.0F);
+        bottom = std::max(
+            bottom, map_top + static_cast<float>(map.height_tiles) * 8.0F);
+    }
+}
+
 } // namespace
 
-bool load_map_browser(const std::filesystem::path& path, MapBrowser& result,
+bool load_world(const std::filesystem::path& path, WorldState& result,
                       std::string& error) {
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', '3'}) {
-        error = "map browser cache is missing or has an invalid header";
+        magic != std::array{'P', 'M', 'V', '4'}) {
+        error = "world map cache is missing or has an invalid header";
         return false;
     }
 
-    MapBrowser loaded;
+    WorldState loaded;
     loaded.source = path;
     if (!read_tilesets(input, loaded, error)) return false;
     std::uint16_t map_count = 0;
     if (!read_u16(input, map_count) || map_count == 0 || map_count > 248) {
-        error = "map browser cache has an invalid map count";
+        error = "world map cache has an invalid map count";
         return false;
     }
     loaded.maps.reserve(map_count);
@@ -168,71 +210,107 @@ bool load_map_browser(const std::filesystem::path& path, MapBrowser& result,
             std::find_if(loaded.maps.begin(), loaded.maps.end(),
                          [&](const WorldMap& value) { return value.id == map.id; });
         if (duplicate != loaded.maps.end()) {
-            error = "map browser cache repeats a map ID";
+            error = "world map cache repeats a map ID";
             return false;
         }
         loaded.maps.push_back(std::move(map));
     }
     if (input.peek() != std::char_traits<char>::eof()) {
-        error = "map browser cache contains trailing data";
+        error = "world map cache contains trailing data";
         return false;
     }
     loaded.loaded = true;
     result = std::move(loaded);
+    reset_world_view(result);
     error.clear();
     return true;
 }
 
-void next_map(MapBrowser& browser) {
-    if (!browser.maps.empty()) browser.current = (browser.current + 1U) % browser.maps.size();
+void select_next_map(WorldState& world) {
+    if (!world.maps.empty()) world.current = (world.current + 1U) % world.maps.size();
+    if (world.view == WorldView::selected) reset_world_view(world);
 }
 
-void previous_map(MapBrowser& browser) {
-    if (browser.maps.empty()) return;
-    browser.current = browser.current == 0 ? browser.maps.size() - 1U : browser.current - 1U;
+void select_previous_map(WorldState& world) {
+    if (world.maps.empty()) return;
+    world.current = world.current == 0 ? world.maps.size() - 1U : world.current - 1U;
+    if (world.view == WorldView::selected) reset_world_view(world);
 }
 
-void toggle_map_view(MapBrowser& browser) {
-    browser.view =
-        browser.view == MapView::selected ? MapView::world : MapView::selected;
-    reset_map_view(browser);
+void toggle_world_view(WorldState& world) {
+    world.view =
+        world.view == WorldView::selected ? WorldView::world : WorldView::selected;
+    reset_world_view(world);
 }
 
-void zoom_map_view(MapBrowser& browser, float factor) {
-    browser.zoom = std::clamp(browser.zoom * factor, 0.05F, 64.0F);
+void zoom_world_view(WorldState& world, float factor) {
+    world.target_zoom =
+        std::clamp(world.target_zoom * factor, 0.05F, 64.0F);
 }
 
-void pan_map_view(MapBrowser& browser, float x, float y) {
-    browser.pan_x += x;
-    browser.pan_y += y;
+void pan_world_view(WorldState& world, float x, float y) {
+    const float scale = std::max(world.target_zoom, 0.05F);
+    world.target_camera_x += x / scale;
+    world.target_camera_y += y / scale;
 }
 
-void reset_map_view(MapBrowser& browser) {
-    browser.zoom = 1.0F;
-    browser.pan_x = 0.0F;
-    browser.pan_y = 0.0F;
+void reset_world_view(WorldState& world) {
+    float left = 0.0F;
+    float top = 0.0F;
+    float right = 0.0F;
+    float bottom = 0.0F;
+    if (world.view == WorldView::world)
+        world_view_bounds(world, left, top, right, bottom);
+    else
+        selected_view_bounds(world, left, top, right, bottom);
+    world.target_camera_x = (left + right) * 0.5F;
+    world.target_camera_y = (top + bottom) * 0.5F;
+    world.target_zoom = 1.0F;
+    if (!world.camera_initialized) {
+        world.camera_x = world.target_camera_x;
+        world.camera_y = world.target_camera_y;
+        world.zoom = world.target_zoom;
+        world.camera_initialized = true;
+    }
 }
 
-const WorldMap* current_map(const MapBrowser& browser) {
-    if (browser.maps.empty() || browser.current >= browser.maps.size()) return nullptr;
-    return &browser.maps[browser.current];
+void update_world_view(WorldState& world, double elapsed_seconds) {
+    const double bounded = std::clamp(elapsed_seconds, 0.0, 0.1);
+    const float response =
+        1.0F - std::exp(static_cast<float>(-12.0 * bounded));
+    world.camera_x +=
+        (world.target_camera_x - world.camera_x) * response;
+    world.camera_y +=
+        (world.target_camera_y - world.camera_y) * response;
+    const float ratio =
+        world.target_zoom / std::max(world.zoom, 0.0001F);
+    world.zoom *= std::exp(std::log(ratio) * response);
 }
 
-const MapTileset* find_tileset(const MapBrowser& browser, std::uint8_t id) {
+void step_world_animation(WorldState& world) {
+    ++world.animation_tick;
+}
+
+const WorldMap* selected_map(const WorldState& world) {
+    if (world.maps.empty() || world.current >= world.maps.size()) return nullptr;
+    return &world.maps[world.current];
+}
+
+const MapTileset* find_tileset(const WorldState& world, std::uint8_t id) {
     const auto found =
-        std::find_if(browser.tilesets.begin(), browser.tilesets.end(),
+        std::find_if(world.tilesets.begin(), world.tilesets.end(),
                      [&](const MapTileset& tileset) { return tileset.id == id; });
-    return found == browser.tilesets.end() ? nullptr : &*found;
+    return found == world.tilesets.end() ? nullptr : &*found;
 }
 
-std::string_view current_map_name(const MapBrowser& browser) {
-    const WorldMap* map = current_map(browser);
+std::string_view selected_map_name(const WorldState& world) {
+    const WorldMap* map = selected_map(world);
     return map == nullptr ? std::string_view("none")
                           : std::string_view(map->display_name);
 }
 
-std::string_view label(MapView view) {
-    return view == MapView::world ? "World atlas" : "Selected map";
+std::string_view label(WorldView view) {
+    return view == WorldView::world ? "Connected world" : "Selected map";
 }
 
 } // namespace pokered

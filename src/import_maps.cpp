@@ -24,6 +24,10 @@ constexpr std::size_t kTownMapExternalEntriesOffset = 0x71313;
 constexpr std::size_t kTownMapExternalEntryCount = 37;
 constexpr std::size_t kTownMapExternalEntrySize = 3;
 constexpr std::uint8_t kTownMapBank = 0x1C;
+constexpr std::size_t kFlowerAnimationFramesOffset = 0x1F19;
+constexpr std::size_t kAnimationTileBytes = 16;
+constexpr std::size_t kWaterAnimationFrameCount = 8;
+constexpr std::size_t kFlowerAnimationFrameCount = 3;
 
 struct MapIdentity {
     std::uint8_t id{};
@@ -67,8 +71,10 @@ struct ImportedTileset {
     std::size_t blocks_offset{};
     std::size_t graphics_offset{};
     std::size_t block_count{};
+    std::uint8_t animation_mode{};
     std::vector<std::uint8_t> block_tiles;
     std::vector<std::uint8_t> pixels;
+    std::vector<std::uint8_t> animation_pixels;
 };
 
 bool has_range(std::span<const std::uint8_t> rom, std::size_t offset,
@@ -374,6 +380,11 @@ bool decode_tileset(std::span<const std::uint8_t> rom,
     tileset.bank = rom[tileset.header_offset];
     tileset.blocks_pointer = read_u16(rom, tileset.header_offset + 1U);
     tileset.graphics_pointer = read_u16(rom, tileset.header_offset + 3U);
+    tileset.animation_mode = rom[tileset.header_offset + 11U];
+    if (tileset.animation_mode > 2) {
+        error = "tileset has an invalid background-animation mode";
+        return false;
+    }
     if (!bank_pointer_to_offset(rom, tileset.bank, tileset.blocks_pointer,
                                 tileset.blocks_offset) ||
         !bank_pointer_to_offset(rom, tileset.bank, tileset.graphics_pointer,
@@ -435,6 +446,68 @@ bool decode_tileset(std::span<const std::uint8_t> rom,
             }
         }
     }
+
+    // Materialize the cartridge's water rotation and flower replacement frames.
+    if (tileset.animation_mode != 0) {
+        constexpr std::size_t water_tile = 0x14;
+        const std::size_t water_source =
+            tileset.graphics_offset + water_tile * kAnimationTileBytes;
+        if (!has_range(rom, water_source, kAnimationTileBytes)) {
+            error = "tileset water-animation tile is outside its graphics";
+            return false;
+        }
+        std::array<std::uint8_t, kAnimationTileBytes> encoded{};
+        std::copy_n(rom.begin() + static_cast<std::ptrdiff_t>(water_source),
+                    kAnimationTileBytes, encoded.begin());
+        std::uint8_t counter = 0;
+        for (std::size_t frame = 0; frame < kWaterAnimationFrameCount; ++frame) {
+            counter = static_cast<std::uint8_t>((counter + 1U) & 7U);
+            for (std::uint8_t& byte : encoded) {
+                if ((counter & 4U) == 0)
+                    byte = static_cast<std::uint8_t>(
+                        static_cast<std::uint8_t>(byte >> 1U) |
+                        static_cast<std::uint8_t>(byte << 7U));
+                else
+                    byte = static_cast<std::uint8_t>(
+                        static_cast<std::uint8_t>(byte << 1U) |
+                        static_cast<std::uint8_t>(byte >> 7U));
+            }
+            for (std::size_t y = 0; y < 8; ++y) {
+                const std::uint8_t low = encoded[y * 2U];
+                const std::uint8_t high = encoded[y * 2U + 1U];
+                for (std::size_t x = 0; x < 8; ++x) {
+                    const unsigned bit = static_cast<unsigned>(7U - x);
+                    tileset.animation_pixels.push_back(
+                        static_cast<std::uint8_t>(
+                            ((high >> bit) & 1U) << 1U |
+                            ((low >> bit) & 1U)));
+                }
+            }
+        }
+    }
+    if (tileset.animation_mode == 2) {
+        const std::size_t flower_bytes =
+            kFlowerAnimationFrameCount * kAnimationTileBytes;
+        if (!has_range(rom, kFlowerAnimationFramesOffset, flower_bytes)) {
+            error = "flower-animation frames extend outside the verified ROM";
+            return false;
+        }
+        for (std::size_t frame = 0; frame < kFlowerAnimationFrameCount; ++frame) {
+            const std::size_t source =
+                kFlowerAnimationFramesOffset + frame * kAnimationTileBytes;
+            for (std::size_t y = 0; y < 8; ++y) {
+                const std::uint8_t low = rom[source + y * 2U];
+                const std::uint8_t high = rom[source + y * 2U + 1U];
+                for (std::size_t x = 0; x < 8; ++x) {
+                    const unsigned bit = static_cast<unsigned>(7U - x);
+                    tileset.animation_pixels.push_back(
+                        static_cast<std::uint8_t>(
+                            ((high >> bit) & 1U) << 1U |
+                            ((low >> bit) & 1U)));
+                }
+            }
+        }
+    }
     result = std::move(tileset);
     return true;
 }
@@ -492,11 +565,15 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
     for (const ImportedTileset& tileset : tilesets) {
         std::ostringstream tileset_source;
         tileset_source
-            << "; Locally decoded tileset used by the outdoor map browser.\n"
+            << "; Locally decoded tileset used by the connected world renderer.\n"
             << "tileset tileset_" << static_cast<unsigned>(tileset.id) << '\n'
             << "    rom_id " << static_cast<unsigned>(tileset.id) << '\n'
             << "    tile_count " << tileset.pixels.size() / 64U << '\n'
             << "    block_count " << tileset.block_count << '\n'
+            << "    animation_mode "
+            << static_cast<unsigned>(tileset.animation_mode) << '\n'
+            << "    animation_frames "
+            << tileset.animation_pixels.size() / 64U << '\n'
             << "    graphics_source " << tileset.graphics_offset << ' '
             << tileset.blocks_offset - tileset.graphics_offset << '\n'
             << "    block_source " << tileset.blocks_offset << ' '
@@ -556,13 +633,17 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
 
 void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '3'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', '4'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
         write_u16(bytes, tileset.pixels.size() / 64U);
+        bytes.push_back(tileset.animation_mode);
         write_u32(bytes, tileset.pixels.size());
         bytes.insert(bytes.end(), tileset.pixels.begin(), tileset.pixels.end());
+        write_u32(bytes, tileset.animation_pixels.size());
+        bytes.insert(bytes.end(), tileset.animation_pixels.begin(),
+                     tileset.animation_pixels.end());
     }
 
     write_u16(bytes, maps.size());
@@ -585,7 +666,7 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
         write_u32(bytes, map.tiles.size());
         bytes.insert(bytes.end(), map.tiles.begin(), map.tiles.end());
     }
-    result.files.push_back({"compiled/map_browser.bin", std::move(bytes)});
+    result.files.push_back({"compiled/world_maps.bin", std::move(bytes)});
 }
 
 } // namespace

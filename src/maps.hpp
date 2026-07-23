@@ -12,7 +12,9 @@ namespace pokered {
 struct MapTileset {
     std::uint8_t id{};
     std::uint16_t tile_count{};
+    std::uint8_t animation_mode{};
     std::vector<std::uint8_t> pixels;
+    std::vector<std::uint8_t> animation_pixels;
 };
 
 struct WorldMap {
@@ -30,34 +32,41 @@ struct WorldMap {
     std::vector<std::uint8_t> tiles;
 };
 
-enum class MapView {
+enum class WorldView {
     selected,
     world,
 };
 
-struct MapBrowser {
+struct WorldState {
     std::filesystem::path source;
     std::vector<MapTileset> tilesets;
     std::vector<WorldMap> maps;
     std::size_t current{};
-    MapView view{MapView::world};
+    WorldView view{WorldView::world};
     float zoom{1.0F};
-    float pan_x{};
-    float pan_y{};
+    float target_zoom{1.0F};
+    float camera_x{};
+    float camera_y{};
+    float target_camera_x{};
+    float target_camera_y{};
+    std::uint64_t animation_tick{};
+    bool camera_initialized{};
     bool loaded{};
 };
 
-bool load_map_browser(const std::filesystem::path& path, MapBrowser& result,
-                      std::string& error);
-void next_map(MapBrowser& browser);
-void previous_map(MapBrowser& browser);
-void toggle_map_view(MapBrowser& browser);
-void zoom_map_view(MapBrowser& browser, float factor);
-void pan_map_view(MapBrowser& browser, float x, float y);
-void reset_map_view(MapBrowser& browser);
-const WorldMap* current_map(const MapBrowser& browser);
-const MapTileset* find_tileset(const MapBrowser& browser, std::uint8_t id);
-std::string_view current_map_name(const MapBrowser& browser);
-std::string_view label(MapView view);
+bool load_world(const std::filesystem::path& path, WorldState& result,
+                std::string& error);
+void select_next_map(WorldState& world);
+void select_previous_map(WorldState& world);
+void toggle_world_view(WorldState& world);
+void zoom_world_view(WorldState& world, float factor);
+void pan_world_view(WorldState& world, float x, float y);
+void reset_world_view(WorldState& world);
+void update_world_view(WorldState& world, double elapsed_seconds);
+void step_world_animation(WorldState& world);
+const WorldMap* selected_map(const WorldState& world);
+const MapTileset* find_tileset(const WorldState& world, std::uint8_t id);
+std::string_view selected_map_name(const WorldState& world);
+std::string_view label(WorldView view);
 
 } // namespace pokered

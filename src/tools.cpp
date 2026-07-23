@@ -52,7 +52,7 @@ void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog)
 }
 
 void draw_developer_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                          BattleAnimationLab& lab, MapBrowser& maps,
+                          BattleAnimationLab& lab, WorldState& maps,
                           const char* renderer_name) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     constexpr float margin = 12.0F;
@@ -73,9 +73,9 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Text("Renderer: %s", renderer_name);
         ImGui::TextUnformatted("Fixed simulation: 60 Hz");
         ImGui::Separator();
-        const WorldMap* map = current_map(maps);
-        ImGui::Text("Map: %.*s", static_cast<int>(current_map_name(maps).size()),
-                    current_map_name(maps).data());
+        const WorldMap* map = selected_map(maps);
+        ImGui::Text("Map: %.*s", static_cast<int>(selected_map_name(maps).size()),
+                    selected_map_name(maps).data());
         ImGui::Text("Map record: %zu / %zu", maps.maps.empty() ? 0 : maps.current + 1,
                     maps.maps.size());
         ImGui::Text("View: %.*s", static_cast<int>(label(maps.view).size()),
@@ -92,16 +92,17 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
             ImGui::Text("World component: %u",
                         static_cast<unsigned>(map->world_component));
         }
-        if (ImGui::Button("Previous Map")) previous_map(maps);
+        if (ImGui::Button("Previous Map")) select_previous_map(maps);
         ImGui::SameLine();
-        if (ImGui::Button("Next Map")) next_map(maps);
-        if (ImGui::Button(maps.view == MapView::world ? "Show Selected Map"
-                                                       : "Show World Atlas"))
-            toggle_map_view(maps);
-        ImGui::SliderFloat("Zoom", &maps.zoom, 0.05F, 64.0F, "%.2fx",
+        if (ImGui::Button("Next Map")) select_next_map(maps);
+        if (ImGui::Button(maps.view == WorldView::world ? "Show Selected Map"
+                                                       : "Show Connected World"))
+            toggle_world_view(maps);
+        ImGui::Text("Current zoom: %.2fx", maps.zoom);
+        ImGui::SliderFloat("Target zoom", &maps.target_zoom, 0.05F, 64.0F, "%.2fx",
                            ImGuiSliderFlags_Logarithmic);
-        ImGui::DragFloat2("Pan", &maps.pan_x, 4.0F);
-        if (ImGui::Button("Reset Camera")) reset_map_view(maps);
+        ImGui::DragFloat2("Camera target", &maps.target_camera_x, 8.0F);
+        if (ImGui::Button("Reset Camera")) reset_world_view(maps);
         if (maps.loaded && lab.loaded && ImGui::Button("Toggle Map / Battle"))
             game.mode = game.mode == Mode::overworld ? Mode::battle : Mode::overworld;
         ImGui::Separator();
@@ -180,12 +181,12 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 }
 
 void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                BattleAnimationLab& lab, MapBrowser& maps, const char* renderer_name) {
+                BattleAnimationLab& lab, WorldState& maps, const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
         if (game.mode == Mode::overworld) {
-            const std::string_view map = current_map_name(maps);
+            const std::string_view map = selected_map_name(maps);
             ImGui::Text("Map: %.*s", static_cast<int>(map.size()), map.data());
             ImGui::Separator();
             ImGui::TextUnformatted(

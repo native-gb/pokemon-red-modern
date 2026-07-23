@@ -71,6 +71,6 @@ int main(int argc, char** argv) {
     std::cout << "Battle UI cache: " << output_root / "compiled" / "battle_ui_tiles.bin" << '\n';
     std::cout << "Imported " << maps.maps << " maps through " << maps.tilesets
               << " tileset into " << maps.expanded_tiles << " expanded tiles\n";
-    std::cout << "Map browser cache: " << output_root / "compiled" / "map_browser.bin" << '\n';
+    std::cout << "World map cache: " << output_root / "compiled" / "world_maps.bin" << '\n';
     return 0;
 }

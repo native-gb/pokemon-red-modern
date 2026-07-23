@@ -417,8 +417,8 @@ ViewLayout layout_view(int output_width, int output_height) {
 
 bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width, int output_height,
                   const GameState& game, const content::CatalogSummary& catalog,
-                  const BattleAnimationLab& lab, const MapBrowser& maps,
-                  const MapRenderResources& map_resources) {
+                  const BattleAnimationLab& lab, const WorldState& maps,
+                  const WorldRenderResources& world_resources) {
     if (renderer == nullptr || target == nullptr) return false;
     if (!SDL_SetRenderTarget(renderer, target)) return false;
 
@@ -426,7 +426,7 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
     if (!SDL_RenderClear(renderer)) return false;
 
     if (game.mode == Mode::overworld && maps.loaded)
-        return draw_map_browser(renderer, output_width, output_height, maps, map_resources);
+        return draw_world(renderer, output_width, output_height, maps, world_resources);
 
     const ViewLayout view = layout_view(output_width, output_height);
     const SDL_FRect shadow{view.x - 8.0F, view.y - 8.0F, view.width + 16.0F, view.height + 16.0F};

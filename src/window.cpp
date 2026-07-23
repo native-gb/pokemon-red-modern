@@ -59,19 +59,19 @@ WindowInput poll_window_events(HostWindow& window) {
         if (event.type == SDL_EVENT_QUIT) input.quit = true;
         if (event.type != SDL_EVENT_KEY_DOWN) continue;
         if (event.key.key == SDLK_A)
-            input.pan_map_left = true;
+            input.pan_world_left = true;
         else if (event.key.key == SDLK_D)
-            input.pan_map_right = true;
+            input.pan_world_right = true;
         else if (event.key.key == SDLK_W)
-            input.pan_map_up = true;
+            input.pan_world_up = true;
         else if (event.key.key == SDLK_S)
-            input.pan_map_down = true;
+            input.pan_world_down = true;
         else if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
                  event.key.key == SDLK_KP_PLUS)
-            input.zoom_map_in = true;
+            input.zoom_world_in = true;
         else if (event.key.key == SDLK_MINUS ||
                  event.key.key == SDLK_KP_MINUS)
-            input.zoom_map_out = true;
+            input.zoom_world_out = true;
         if (event.key.repeat) continue;
         if (event.key.key == SDLK_F1)
             input.toggle_player_tools = true;
@@ -102,15 +102,24 @@ WindowInput poll_window_events(HostWindow& window) {
         else if (event.key.key == SDLK_SPACE)
             input.toggle_animation_auto_advance = true;
         else if (event.key.key == SDLK_TAB)
-            input.toggle_map_view = true;
+            input.toggle_world_view = true;
         else if (event.key.key == SDLK_0 || event.key.key == SDLK_KP_0)
-            input.reset_map_view = true;
+            input.reset_world_view = true;
         else if (event.key.key == SDLK_F11) {
             const bool fullscreen =
                 (SDL_GetWindowFlags(window.frame.window) & SDL_WINDOW_FULLSCREEN) != 0;
             (void)SDL_SetWindowFullscreen(window.frame.window, !fullscreen);
         }
     }
+    const bool* keyboard = SDL_GetKeyboardState(nullptr);
+    input.pan_world_left = keyboard[SDL_SCANCODE_A];
+    input.pan_world_right = keyboard[SDL_SCANCODE_D];
+    input.pan_world_up = keyboard[SDL_SCANCODE_W];
+    input.pan_world_down = keyboard[SDL_SCANCODE_S];
+    input.zoom_world_in =
+        keyboard[SDL_SCANCODE_EQUALS] || keyboard[SDL_SCANCODE_KP_PLUS];
+    input.zoom_world_out =
+        keyboard[SDL_SCANCODE_MINUS] || keyboard[SDL_SCANCODE_KP_MINUS];
     return input;
 }
 

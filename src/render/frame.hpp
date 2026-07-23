@@ -22,7 +22,7 @@ struct ViewLayout {
 ViewLayout layout_view(int output_width, int output_height);
 bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width, int output_height,
                   const GameState& game, const content::CatalogSummary& catalog,
-                  const BattleAnimationLab& lab, const MapBrowser& maps,
-                  const MapRenderResources& map_resources);
+                  const BattleAnimationLab& lab, const WorldState& maps,
+                  const WorldRenderResources& world_resources);
 
 } // namespace pokered::render
