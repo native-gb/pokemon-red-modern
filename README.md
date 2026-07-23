@@ -24,6 +24,8 @@ The repository currently provides:
 - deterministic package `define`/`override` resolution with field provenance;
 - a hot-reloadable, isolated battle-animation lab with two placeholder
   battlers and readable source fixtures;
+- a portable C++ Pokemon Red battle-animation importer shared by the native
+  command-line tool and future WebAssembly file import;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.

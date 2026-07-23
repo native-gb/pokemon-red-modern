@@ -31,6 +31,17 @@ user selects supported ROM
 The source ROM is read-only. A failed import leaves the previous valid pack
 untouched.
 
+The import implementation has two layers:
+
+- a portable C++ core accepts ROM bytes and returns relative paths and byte
+  buffers entirely in memory;
+- host adapters obtain the ROM bytes and persist the returned files.
+
+The desktop adapter is a separate command-line executable and performs a
+transactional directory replacement. The WebAssembly host calls the same core
+inside the game process after the browser supplies a selected file. Python and
+runtime code generation are not part of either path.
+
 ## Local directory layout
 
 Generated data is ignored by Git:

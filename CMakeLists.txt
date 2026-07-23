@@ -60,6 +60,23 @@ else()
     set(POKERED_MODERN_GUBSY_DIR "${gubsy_SOURCE_DIR}")
 endif()
 
+add_library(pokered-modern-import-core STATIC
+    src/import_battle_animations.cpp
+)
+target_include_directories(pokered-modern-import-core PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src")
+pokered_modern_target_defaults(pokered-modern-import-core)
+
+add_executable(native-gb-pokemon-red-modern-import
+    src/import_battle_animations_io.cpp
+    src/import_battle_animations_main.cpp
+)
+target_include_directories(native-gb-pokemon-red-modern-import PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(native-gb-pokemon-red-modern-import PRIVATE
+    pokered-modern-import-core)
+pokered_modern_target_defaults(native-gb-pokemon-red-modern-import)
+
 add_executable(native-gb-pokemon-red-modern
     src/animations.cpp
     src/battle_animation_lab.cpp
@@ -86,7 +103,7 @@ target_compile_definitions(native-gb-pokemon-red-modern PRIVATE
     POKERED_MODERN_SOURCE_DIR="${POKERED_MODERN_RUNTIME_PROJECT_ROOT}"
     POKERED_MODERN_GUBSY_ASSETS_DIR="${POKERED_MODERN_GUBSY_DIR}/src/assets")
 target_link_libraries(native-gb-pokemon-red-modern PRIVATE
-    gubsy::engine SDL3::SDL3)
+    gubsy::engine SDL3::SDL3 pokered-modern-import-core)
 pokered_modern_target_defaults(native-gb-pokemon-red-modern)
 
 if(BUILD_TESTING)

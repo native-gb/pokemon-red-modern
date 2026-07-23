@@ -30,6 +30,20 @@ small manifest and loads the compiled pack.
 There is no all-purpose application context. Dependencies are parameters or
 small domain-owned handles. Shutdown follows the visible ownership order.
 
+### Importer boundary
+
+Importers are C++ and split at the I/O boundary. A shared import core accepts a
+read-only byte span and returns deterministic generated files as relative path
+strings plus byte buffers. It does not open files, start processes, or assume a
+desktop filesystem.
+
+The native importer executable is a thin adapter which reads the selected ROM,
+calls the shared core, and transactionally installs its output. A WebAssembly
+host supplies browser-selected ROM bytes to that same core and stores the
+returned files in browser persistence. Import logic is not duplicated between
+native and web builds, and the normal game startup path never invokes an
+external importer process.
+
 ## Source layout
 
 Keep the top-level code flat until a module has enough concrete files to earn a

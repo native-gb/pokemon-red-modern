@@ -72,6 +72,12 @@ data/runtime/imports/pokemon_red_us_rev_0/
     compiled/battle_animation_frames.bin
 ```
 
+The decoder is a shared, byte-in/byte-buffers-out C++ module linked into the
+game and the standalone native importer. The shell command builds and invokes
+that small native adapter. A WebAssembly build can pass browser-selected ROM
+bytes to the same decoder without Python, a subprocess, or native filesystem
+access.
+
 Normal runs prefer these imported programs when the directory exists and
 otherwise use the committed fixtures. Every ROM special-effect command is
 retained by name in generated source. Common battler movement, visibility, and
