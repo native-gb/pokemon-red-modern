@@ -7,6 +7,10 @@ campaign content is imported locally from a supported cartridge. The engine
 must also be suitable for original campaigns and mods without cartridge-era
 rendering or memory constraints.
 
+The authoritative content, controller, world-space, warp, debugging,
+compatibility, enhancement, and playability acceptance criteria are in
+[docs/FULL_CAMPAIGN_IMPLEMENTATION.md](docs/FULL_CAMPAIGN_IMPLEMENTATION.md).
+
 ## Milestone 0 — foundation
 
 - [x] Independent repository and incremental build.
@@ -17,6 +21,9 @@ rendering or memory constraints.
 - [x] Architecture, code-style, distribution, and extraction plans.
 
 ## Milestone 1 — reproducible content pack
+
+- Port the persistent semantic controller profiles, hot-plug assignment,
+  rescan diagnostics, and binding editor used by the sibling modern projects.
 
 - [x] Define symbols, typed IDs, dense indexes, catalog records, and source
   diagnostics.
@@ -76,7 +83,7 @@ and reachable-content audits passing.
 ## Milestone 5 — modern enhancements
 
 - Color and animation profiles.
-- Rebindable controls, independent text/game speeds, accessibility.
+- Independent text/game speeds and accessibility.
 - Optional bug fixes and compatibility presets.
 - Expanded availability/no-exclusive rules behind explicit settings.
 - Original mod packages compiled into the same typed indexes.

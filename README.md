@@ -38,7 +38,9 @@ The repository currently provides:
   visible-chunk culling, smooth pan/zoom, and ROM-derived water and flower
   animation;
 - all 72 ROM-decoded overworld sprite sheets, 245 authored outdoor actor
-  spawns, 143 outdoor warps, and an F3 map/actor/warp annotation overlay;
+  spawns, 143 outdoor warps, mutable resident actors, imported terrain
+  collision, scheduled roaming, faced-cell dialogue, and an F3
+  map/actor/warp annotation overlay;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.
@@ -57,6 +59,8 @@ To replace original development fixtures with locally imported Red content:
 ```
 
 See [PLAN.md](PLAN.md) for the implementation order and
+[the full campaign implementation contract](docs/FULL_CAMPAIGN_IMPLEMENTATION.md)
+for the user-visible completion criteria. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ownership model. The
 campaign coroutine design is in
 [docs/SCRIPT_LANGUAGE.md](docs/SCRIPT_LANGUAGE.md). Detailed contracts:
