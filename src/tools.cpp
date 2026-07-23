@@ -23,8 +23,7 @@ void place(float x, float y, float width, float height, bool arrange) {
 }
 
 void draw_player_tools(ToolState& tools, GubsyRuntime& runtime,
-                       const content::CatalogSummary& catalog,
-                       PresentationSettings& presentation) {
+                       const content::CatalogSummary& catalog, PresentationSettings& presentation) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     constexpr float margin = 16.0F;
     constexpr float top = 42.0F;
@@ -39,8 +38,12 @@ void draw_player_tools(ToolState& tools, GubsyRuntime& runtime,
         ImGui::Text("Content pack: %s", content::label(catalog.state));
         ImGui::TextWrapped("%.*s", static_cast<int>(catalog.source.size()), catalog.source.data());
         ImGui::Spacing();
-        ImGui::TextWrapped("The engine opens without a cartridge. Import and campaign selection "
-                           "will live here once the typed content pipeline is connected.");
+        ImGui::Text("Maps: %zu", catalog.maps);
+        ImGui::Text("Species: %zu", catalog.species);
+        ImGui::Text("Moves: %zu", catalog.moves);
+        ImGui::TextWrapped(
+            "The local development pack now supplies world and immutable Pokemon rules. "
+            "Campaign scripts, complete battle programs, UI, and audio remain in progress.");
     }
     ImGui::End();
 
@@ -52,10 +55,10 @@ void draw_player_tools(ToolState& tools, GubsyRuntime& runtime,
                 ImGui::Checkbox("Motion interpolation", &presentation.motion_interpolation);
                 ImGui::Checkbox("Show FPS overlay", &presentation.show_fps);
                 constexpr std::array render_rates{60, 120, 144, 165, 240};
-                int selected_rate = static_cast<int>(
-                    std::find(render_rates.begin(), render_rates.end(),
-                              presentation.render_rate_limit) -
-                    render_rates.begin());
+                int selected_rate =
+                    static_cast<int>(std::find(render_rates.begin(), render_rates.end(),
+                                               presentation.render_rate_limit) -
+                                     render_rates.begin());
                 if (selected_rate >= static_cast<int>(render_rates.size())) selected_rate = 2;
                 if (ImGui::Combo("Frame limit", &selected_rate,
                                  "60 Hz\0"
@@ -75,8 +78,7 @@ void draw_player_tools(ToolState& tools, GubsyRuntime& runtime,
             if (ImGui::BeginTabItem("Speed")) {
                 ImGui::Checkbox("Enable fast-forward", &presentation.fast_forward_enabled);
                 ImGui::Checkbox("Toggle instead of hold", &presentation.fast_forward_toggle);
-                ImGui::SliderInt("Game speed", &presentation.fast_forward_multiplier, 2, 8,
-                                 "%dx");
+                ImGui::SliderInt("Game speed", &presentation.fast_forward_multiplier, 2, 8, "%dx");
                 ImGui::TextWrapped(
                     "Left trigger or the bound fast-forward control accelerates simulation. "
                     "Presentation, audio, music, and real play time remain unscaled.");
@@ -93,7 +95,7 @@ void draw_player_tools(ToolState& tools, GubsyRuntime& runtime,
 }
 
 void draw_developer_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                          BattleAnimationLab& lab, WorldState& maps,
+                          BattleAnimationLab& lab, WorldState& maps, const RuleCatalog& rules,
                           PresentationSettings& presentation, const GameClocks& clocks,
                           const char* renderer_name) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -150,12 +152,11 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         if (maps.player.initialized) {
             ImGui::Text("Player map index: %zu", maps.player.map_index);
             ImGui::Text("Player cell: %d, %d", maps.player.x, maps.player.y);
-            const std::size_t resident_actors =
-                static_cast<std::size_t>(std::count_if(
-                    maps.actors.begin(), maps.actors.end(), [&](const WorldActorState& actor) {
-                        return actor.map_index < maps.maps.size() &&
-                               maps.maps[actor.map_index].world_space == maps.current_space;
-                    }));
+            const std::size_t resident_actors = static_cast<std::size_t>(std::count_if(
+                maps.actors.begin(), maps.actors.end(), [&](const WorldActorState& actor) {
+                    return actor.map_index < maps.maps.size() &&
+                           maps.maps[actor.map_index].world_space == maps.current_space;
+                }));
             ImGui::Text("Resident actors: %zu / %zu", resident_actors, maps.actors.size());
             ImGui::Text("Spatial map indexes: %zu", maps.spatial.size());
             ImGui::Text("Dialogue: %s", maps.dialogue.open ? "open" : "closed");
@@ -238,6 +239,12 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Text("Species          %zu", catalog.species);
         ImGui::Text("Moves            %zu", catalog.moves);
         ImGui::Text("Items            %zu", catalog.items);
+        ImGui::Text("Types            %zu", rules.types.size());
+        ImGui::Text("Type interactions %zu", rules.type_interactions.size());
+        ImGui::Text("Learnset entries %zu", rules.learnsets.size());
+        ImGui::Text("Evolutions       %zu", rules.evolutions.size());
+        ImGui::Text("Growth curves    %zu", rules.growth_curves.size());
+        ImGui::Text("Machines         %zu", rules.machines.size());
         ImGui::Separator();
         ImGui::Text("Pokemon fronts   %zu", lab.imported_assets.pokemon.size());
         ImGui::Text("Pokemon backs    %zu", lab.imported_assets.pokemon.size());
@@ -362,18 +369,16 @@ void draw_world_annotations(const WorldState& world) {
         for (std::size_t spawn_index = 0; spawn_index < map.actors.size(); ++spawn_index) {
             const WorldActorSpawn& actor = map.actors[spawn_index];
             const auto state = std::find_if(
-                world.actors.begin(), world.actors.end(),
-                [&](const WorldActorState& value) {
-                    return value.map_index ==
-                               static_cast<std::size_t>(&map - world.maps.data()) &&
+                world.actors.begin(), world.actors.end(), [&](const WorldActorState& value) {
+                    return value.map_index == static_cast<std::size_t>(&map - world.maps.data()) &&
                            value.spawn_index == spawn_index;
                 });
-            const float actor_x =
-                state == world.actors.end() ? map_x + static_cast<float>(actor.x) * 16.0F
-                                            : state->visual_global_x * 16.0F;
-            const float actor_y =
-                state == world.actors.end() ? map_y + static_cast<float>(actor.y) * 16.0F
-                                            : state->visual_global_y * 16.0F;
+            const float actor_x = state == world.actors.end()
+                                      ? map_x + static_cast<float>(actor.x) * 16.0F
+                                      : state->visual_global_x * 16.0F;
+            const float actor_y = state == world.actors.end()
+                                      ? map_y + static_cast<float>(actor.y) * 16.0F
+                                      : state->visual_global_y * 16.0F;
             const ImVec2 center = screen_point(actor_x + 8.0F, actor_y + 8.0F);
             const ImU32 color = actor.kind == WorldActorKind::item ? IM_COL32(255, 206, 64, 255)
                                 : actor.kind == WorldActorKind::trainer_or_pokemon
@@ -417,8 +422,8 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 
 void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
                 const content::CatalogSummary& catalog, BattleAnimationLab& lab, WorldState& maps,
-                PresentationSettings& presentation, const GameClocks& clocks,
-                const char* renderer_name) {
+                const RuleCatalog& rules, PresentationSettings& presentation,
+                const GameClocks& clocks, const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
@@ -426,10 +431,9 @@ void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
             const std::string_view map = selected_map_name(maps);
             ImGui::Text("Map: %.*s", static_cast<int>(map.size()), map.data());
             ImGui::Separator();
-            ImGui::TextUnformatted(
-                "WASD/Arrows Move   E/Z/X/Enter Talk   [] Map   Tab World/Map   "
-                "IJKL Pan   +/- Zoom   0 Reset   "
-                "F3 Annotations   B Battle Lab   F1/F2 Tools   F11 Fullscreen");
+            ImGui::TextUnformatted("WASD/Arrows Move   E/Z/X/Enter Talk   [] Map   Tab World/Map   "
+                                   "IJKL Pan   +/- Zoom   0 Reset   "
+                                   "F3 Annotations   B Battle Lab   F1/F2 Tools   F11 Fullscreen");
         } else {
             const std::string_view animation = battle_animation_lab_name(lab);
             ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()), animation.data());
@@ -452,7 +456,7 @@ void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
     if (tools.layout == ToolLayout::player)
         draw_player_tools(tools, runtime, catalog, presentation);
     else if (tools.layout == ToolLayout::developer)
-        draw_developer_tools(tools, game, catalog, lab, maps, presentation, clocks,
+        draw_developer_tools(tools, game, catalog, lab, maps, rules, presentation, clocks,
                              renderer_name);
 
     if (game.mode == Mode::overworld) draw_world_annotations(maps);

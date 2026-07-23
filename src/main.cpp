@@ -7,9 +7,10 @@
 #include "render/dialogue.hpp"
 #include "render/frame.hpp"
 #include "render/maps.hpp"
+#include "rules.hpp"
+#include "settings.hpp"
 #include "src/imgui_layer.hpp"
 #include "state.hpp"
-#include "settings.hpp"
 #include "tools.hpp"
 #include "window.hpp"
 
@@ -78,8 +79,7 @@ int main(int argc, char** argv) {
     const std::filesystem::path settings_path = data_root / "settings.cfg";
     pokered::PresentationSettings presentation;
     std::string settings_error;
-    bool settings_writable =
-        pokered::load_settings(settings_path, presentation, settings_error);
+    bool settings_writable = pokered::load_settings(settings_path, presentation, settings_error);
     if (!settings_writable)
         std::fprintf(stderr, "could not load settings: %s\n", settings_error.c_str());
     pokered::PresentationSettings saved_presentation = presentation;
@@ -101,6 +101,7 @@ int main(int argc, char** argv) {
     }
 
     pokered::WorldState world;
+    pokered::RuleCatalog rules;
     pokered::InteractionCatalog interactions;
     std::string map_error;
     const std::filesystem::path map_cache =
@@ -108,14 +109,27 @@ int main(int argc, char** argv) {
     if (!pokered::load_world(map_cache, world, map_error))
         std::fprintf(stderr, "%s\n", map_error.c_str());
     const std::filesystem::path interaction_cache =
-        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" /
-        "world_interactions.bin";
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "world_interactions.bin";
     std::string interaction_error;
     if (!pokered::load_interactions(interaction_cache, interactions, interaction_error))
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
+    const std::filesystem::path rule_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "pokemon_rules.bin";
+    std::string rule_error;
+    if (!pokered::load_rules(rule_cache, rules, rule_error))
+        std::fprintf(stderr, "%s\n", rule_error.c_str());
     if (world.loaded && interactions.loaded &&
         !pokered::initialize_world_runtime(world, interactions, interaction_error))
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
+    if (world.loaded && interactions.loaded && rules.loaded) {
+        catalog.state = pokered::content::PackState::partial;
+        catalog.campaign = "Pokemon Red";
+        catalog.source = "Compiled local campaign pack";
+        catalog.maps = world.maps.size();
+        catalog.scripts = interactions.maps.size();
+        catalog.species = rules.species.size();
+        catalog.moves = rules.moves.size();
+    }
 
     pokered::HostWindow window;
     if (!pokered::initialize_window(window, data_root, presentation.control_profile)) return 1;
@@ -194,18 +208,15 @@ int main(int argc, char** argv) {
 
         // Fast-forward scales deterministic game work only. Real,
         // presentation, audio, and future music clocks remain wall-clock based.
-        const bool fast_forward_pressed =
-            controls.fast_forward && !previous_controls.fast_forward;
+        const bool fast_forward_pressed = controls.fast_forward && !previous_controls.fast_forward;
         if (!presentation.fast_forward_enabled) {
             fast_forward_toggle_active = false;
-        } else if (presentation.fast_forward_toggle && !tools_own_input &&
-                   fast_forward_pressed) {
+        } else if (presentation.fast_forward_toggle && !tools_own_input && fast_forward_pressed) {
             fast_forward_toggle_active = !fast_forward_toggle_active;
         }
         const bool fast_forward =
             presentation.fast_forward_enabled && !tools_own_input &&
-            (presentation.fast_forward_toggle ? fast_forward_toggle_active
-                                              : controls.fast_forward);
+            (presentation.fast_forward_toggle ? fast_forward_toggle_active : controls.fast_forward);
         clocks.fast_forward = fast_forward;
 
         if (input.toggle_lab_view && world.loaded && animation_lab.loaded)
@@ -270,15 +281,14 @@ int main(int argc, char** argv) {
                 pokered::advance_game_clock(clocks, step_seconds);
             }
             if (!game.paused && !tools_own_input && game.mode == pokered::Mode::overworld) {
-                pokered::step_world(
-                    world, interactions,
-                    {
-                        .left = controls.left,
-                        .right = controls.right,
-                        .up = controls.up,
-                        .down = controls.down,
-                        .activate = pending_world_activation,
-                    });
+                pokered::step_world(world, interactions,
+                                    {
+                                        .left = controls.left,
+                                        .right = controls.right,
+                                        .up = controls.up,
+                                        .down = controls.down,
+                                        .activate = pending_world_activation,
+                                    });
                 pending_world_activation = false;
             }
             if (!game.paused && game.mode == pokered::Mode::battle)
@@ -297,7 +307,7 @@ int main(int argc, char** argv) {
             break;
         }
 
-        pokered::draw_tools(tools, window.runtime, game, catalog, animation_lab, world,
+        pokered::draw_tools(tools, window.runtime, game, catalog, animation_lab, world, rules,
                             presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_dialogue_overlay(world);
@@ -316,8 +326,7 @@ int main(int argc, char** argv) {
 
         // Persist settings at the point of change. Smoke checks remain
         // side-effect free, and a failed destination is not hammered per frame.
-        if (!options.render_smoke && settings_writable &&
-            presentation != saved_presentation) {
+        if (!options.render_smoke && settings_writable && presentation != saved_presentation) {
             if (pokered::save_settings(settings_path, presentation, settings_error))
                 saved_presentation = presentation;
             else {

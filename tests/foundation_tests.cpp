@@ -7,10 +7,12 @@
 #include "maps.hpp"
 #include "overlays.hpp"
 #include "predicates.hpp"
-#include "sexpr.hpp"
+#include "rules.hpp"
 #include "settings.hpp"
+#include "sexpr.hpp"
 #include "symbols.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <filesystem>
@@ -285,9 +287,8 @@ void test_animations(TestState& state) {
 
 void test_battle_animation_lab(TestState& state) {
     // Load the same readable source tree used by the visual development view.
-    const std::filesystem::path source_root =
-        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "tests" / "fixtures" /
-        "battle_animations";
+    const std::filesystem::path source_root = std::filesystem::path(POKERED_MODERN_SOURCE_DIR) /
+                                              "tests" / "fixtures" / "battle_animations";
     pokered::Diagnostics diagnostics;
     pokered::BattleAnimationLab lab;
     check(state, pokered::load_battle_animation_lab(source_root, lab, diagnostics),
@@ -360,8 +361,9 @@ void test_host_settings_and_clocks(TestState& state) {
     pokered::GameClocks clocks;
     pokered::advance_unscaled_clocks(clocks, 0.5);
     pokered::advance_game_clock(clocks, 1.0 / 60.0);
-    check(state, clocks.real_time == 0.25 && clocks.presentation_time == 0.25 &&
-                     clocks.audio_time == 0.25 && clocks.music_time == 0.25,
+    check(state,
+          clocks.real_time == 0.25 && clocks.presentation_time == 0.25 &&
+              clocks.audio_time == 0.25 && clocks.music_time == 0.25,
           "host clocks advance together with bounded unscaled time");
     check(state, clocks.game_steps == 1 && clocks.game_time == 1.0 / 60.0,
           "game clock advances only on deterministic steps");
@@ -397,11 +399,8 @@ void test_world_spaces_and_warps(TestState& state) {
         .global_y_tiles = 0,
         .world_space = 0,
         .tiles = std::vector<std::uint8_t>(16U, 0),
-        .warps = {{.index = 1,
-                   .x = 1,
-                   .y = 0,
-                   .destination_map_id = 37,
-                   .destination_warp_index = 0}},
+        .warps =
+            {{.index = 1, .x = 1, .y = 0, .destination_map_id = 37, .destination_warp_index = 0}},
         .actors = {},
     };
     pokered::WorldMap house{
@@ -417,11 +416,8 @@ void test_world_spaces_and_warps(TestState& state) {
         .global_y_tiles = 0,
         .world_space = 1,
         .tiles = std::vector<std::uint8_t>(16U, 0),
-        .warps = {{.index = 1,
-                   .x = 0,
-                   .y = 1,
-                   .destination_map_id = 0xFF,
-                   .destination_warp_index = 0}},
+        .warps =
+            {{.index = 1, .x = 0, .y = 1, .destination_map_id = 0xFF, .destination_warp_index = 0}},
         .actors = {},
     };
     world.maps = {std::move(surface), std::move(house)};
@@ -439,8 +435,9 @@ void test_world_spaces_and_warps(TestState& state) {
           world.player.map_index == 1 && world.current_space == 1 && world.player.x == 0 &&
               world.player.y == 1,
           "direct warp enters its destination world space");
-    check(state, world.last_warp.occurred && world.last_warp.source_map_id == 0 &&
-                     world.last_warp.destination_map_id == 37,
+    check(state,
+          world.last_warp.occurred && world.last_warp.source_map_id == 0 &&
+              world.last_warp.destination_map_id == 37,
           "direct warp records diagnostics");
 
     world.player.x = 0;
@@ -451,6 +448,46 @@ void test_world_spaces_and_warps(TestState& state) {
           world.player.map_index == 0 && world.current_space == 0 && world.player.x == 1 &&
               world.player.y == 0,
           "LAST_MAP warp returns through the remembered outdoor endpoint");
+}
+
+void test_local_rule_cache(TestState& state) {
+    // A locally imported cartridge cache is optional in clean source builds.
+    // When present, pin the exhaustive immutable-domain joins used by gameplay.
+    const std::filesystem::path path = std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" /
+                                       "runtime" / "imports" / "pokemon_red_us_rev_0" / "compiled" /
+                                       "pokemon_rules.bin";
+    if (!std::filesystem::exists(path)) {
+        std::puts("rule cache test skipped: no local imported campaign");
+        return;
+    }
+    pokered::RuleCatalog rules;
+    std::string error;
+    check(state, pokered::load_rules(path, rules, error), "local Pokemon rule cache loads");
+    if (!rules.loaded) return;
+    check(state, rules.types.size() == 27 && rules.type_interactions.size() == 82,
+          "complete type slots and interaction chart load");
+    check(state, rules.species.size() == 151 && rules.moves.size() == 165,
+          "complete species and move tables load");
+    check(state,
+          rules.learnsets.size() == 728 && rules.evolutions.size() == 72 &&
+              rules.growth_curves.size() == 6 && rules.machines.size() == 55,
+          "complete progression and machine tables load");
+
+    const pokered::SpeciesRule* bulbasaur = pokered::find_species(rules, 1);
+    check(state,
+          bulbasaur != nullptr && bulbasaur->key == "bulbasaur" && bulbasaur->internal_id == 153 &&
+              bulbasaur->base_hp == 45 && bulbasaur->type_ids == std::array<std::uint8_t, 2>{22, 3},
+          "Bulbasaur joins internal identity, stats, and types");
+    check(state,
+          bulbasaur != nullptr &&
+              pokered::experience_for_level(rules, bulbasaur->growth_curve_id, 5) == 135,
+          "materialized growth curve resolves level-five experience");
+    const bool fire_beats_grass = std::ranges::any_of(
+        rules.type_interactions, [](const pokered::TypeInteractionRule& interaction) {
+            return interaction.attacking_type == 20U && interaction.defending_type == 22U &&
+                   interaction.multiplier_tenths == 20U;
+        });
+    check(state, fire_beats_grass, "type chart retains Fire versus Grass");
 }
 
 } // namespace
@@ -467,6 +504,7 @@ int main() {
     test_battle_ui(state);
     test_host_settings_and_clocks(state);
     test_world_spaces_and_warps(state);
+    test_local_rule_cache(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

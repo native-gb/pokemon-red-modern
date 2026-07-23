@@ -2,6 +2,7 @@
 #include "import_battle_animations_io.hpp"
 #include "import_maps.hpp"
 #include "import_pictures.hpp"
+#include "import_rules.hpp"
 #include "import_scripts.hpp"
 
 #include <algorithm>
@@ -44,11 +45,13 @@ int main(int argc, char** argv) {
     pokered::import::BattleAnimationImport imported;
     pokered::import::MapImport maps;
     pokered::import::PictureImport pictures;
+    pokered::import::RuleImport rules;
     pokered::import::ScriptImport scripts;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
         !pokered::import::decode_picture_import(rom, pictures, error) ||
         !pokered::import::decode_map_import(rom, maps, error) ||
+        !pokered::import::decode_rule_import(rom, rules, error) ||
         !pokered::import::decode_script_import(rom, scripts, error)) {
         std::cerr << error << '\n';
         return 1;
@@ -57,6 +60,8 @@ int main(int argc, char** argv) {
                           std::make_move_iterator(pictures.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(maps.files.begin()),
                           std::make_move_iterator(maps.files.end()));
+    imported.files.insert(imported.files.end(), std::make_move_iterator(rules.files.begin()),
+                          std::make_move_iterator(rules.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(scripts.files.begin()),
                           std::make_move_iterator(scripts.files.end()));
     const auto manifest =
@@ -77,6 +82,16 @@ int main(int argc, char** argv) {
                     << "unused_map_slots " << maps.unused_map_slots << '\n'
                     << "world_spaces " << maps.world_spaces << '\n'
                     << "overworld_sprites " << maps.sprites << '\n'
+                    << "rule_importer_version 1\n"
+                    << "types " << rules.types << '\n'
+                    << "type_interactions " << rules.type_interactions << '\n'
+                    << "species " << rules.species << '\n'
+                    << "internal_species_slots " << rules.internal_species_slots << '\n'
+                    << "moves " << rules.moves << '\n'
+                    << "learnset_entries " << rules.learnset_entries << '\n'
+                    << "evolutions " << rules.evolutions << '\n'
+                    << "growth_curves " << rules.growth_curves << '\n'
+                    << "machines " << rules.machines << '\n'
                     << "map_program_importer_version 3\n"
                     << "map_slots " << scripts.map_slots << '\n'
                     << "decoded_map_programs " << scripts.decoded_maps << '\n'
@@ -113,6 +128,11 @@ int main(int argc, char** argv) {
               << " overworld sprites, " << maps.actors << " actor spawns, and " << maps.warps
               << " warps\n";
     std::cout << "World map cache: " << output_root / "compiled" / "world_maps.bin" << '\n';
+    std::cout << "Imported " << rules.types << " types, " << rules.type_interactions
+              << " type interactions, " << rules.species << " species, " << rules.moves
+              << " moves, " << rules.learnset_entries << " learnset entries, " << rules.evolutions
+              << " evolutions, and " << rules.machines << " machines\n";
+    std::cout << "Pokemon rule cache: " << output_root / "compiled" / "pokemon_rules.bin" << '\n';
     std::cout << "Indexed " << scripts.script_entry_points << " map script entry points, "
               << scripts.owned_map_entries << " owned map-table entries, "
               << scripts.background_interactions << " background interactions, and "

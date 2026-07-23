@@ -5,6 +5,7 @@
 #include "clocks.hpp"
 #include "maps.hpp"
 #include "render/maps.hpp"
+#include "rules.hpp"
 #include "state.hpp"
 #include "window.hpp"
 
@@ -28,7 +29,7 @@ struct ToolState {
 void apply_tool_shortcuts(ToolState& tools, const WindowInput& input);
 void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
                 const content::CatalogSummary& catalog, BattleAnimationLab& lab, WorldState& maps,
-                PresentationSettings& presentation, const GameClocks& clocks,
-                const char* renderer_name);
+                const RuleCatalog& rules, PresentationSettings& presentation,
+                const GameClocks& clocks, const char* renderer_name);
 
 } // namespace pokered

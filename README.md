@@ -46,6 +46,9 @@ The repository currently provides:
   warps including ordinary and `LAST_MAP` traversal, current-space resident
   actors, imported terrain collision, scheduled roaming, faced-cell dialogue,
   and an F3 map/actor/warp annotation overlay;
+- a compiled immutable rule pack containing all 27 type slots, 82 type
+  interactions, 151 species joined through 190 internal slots, 165 moves, 728
+  learnset entries, 72 evolutions, six growth curves, and 55 machines;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.
@@ -79,3 +82,5 @@ The current visual development entry point is the
 [battle animation lab](docs/BATTLE_ANIMATION_LAB.md).
 The connected terrain and camera design is documented in
 [the world renderer contract](docs/WORLD_RENDERER.md).
+The imported Pokemon, move, type, and progression tables are documented in
+[the rule import contract](docs/RULE_IMPORT.md).

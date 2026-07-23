@@ -23,6 +23,8 @@ const char* label(PackState state) {
         return "Not imported";
     case PackState::importing:
         return "Importing";
+    case PackState::partial:
+        return "Partial development pack";
     case PackState::ready:
         return "Ready";
     case PackState::incompatible:
