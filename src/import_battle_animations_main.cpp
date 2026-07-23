@@ -94,6 +94,8 @@ int main(int argc, char** argv) {
                     << battle_rules.capture_formulas << '\n'
                     << "experience_formula_programs "
                     << battle_rules.experience_formulas << '\n'
+                    << "stat_formula_programs "
+                    << battle_rules.stat_formulas << '\n'
                     << "boot_importer_version 1\n"
                     << "boot_images " << boot.images << '\n'
                     << "boot_title_species " << boot.title_species << '\n'
@@ -147,7 +149,9 @@ int main(int argc, char** argv) {
               << battle_rules.capture_formulas
               << " capture formula and "
               << battle_rules.experience_formulas
-              << " experience formula\n";
+              << " experience formula and "
+              << battle_rules.stat_formulas
+              << " stat formula\n";
     std::cout << "Battle rule cache: "
               << output_root / "compiled" / "battle_rules.bin" << '\n';
     std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"

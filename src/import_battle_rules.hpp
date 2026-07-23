@@ -16,6 +16,7 @@ struct BattleRuleImport {
     std::size_t critical_hit_programs{};
     std::size_t capture_formulas{};
     std::size_t experience_formulas{};
+    std::size_t stat_formulas{};
 };
 
 // Lift the verified cartridge's battle calculation routines into semantic,

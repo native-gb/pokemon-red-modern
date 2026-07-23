@@ -9,6 +9,7 @@
 #include "maps.hpp"
 #include "overlays.hpp"
 #include "predicates.hpp"
+#include "pokemon.hpp"
 #include "rules.hpp"
 #include "settings.hpp"
 #include "sexpr.hpp"
@@ -743,21 +744,22 @@ void test_local_rule_cache(TestState& state) {
               experience->instructions.size() == 5U,
           "original experience formula resolves by imported ruleset binding");
     if (experience != nullptr) {
-        const pokered::SpeciesRule* squirtle =
+        const pokered::SpeciesRule* defeated_species =
             pokered::find_species(rules, 7U);
         pokered::ExperienceFormulaResult boosted;
         check(state,
-              squirtle != nullptr &&
+              defeated_species != nullptr &&
                   pokered::execute_experience_formula(
                       *experience,
                       {
-                          .base_experience = squirtle->experience_yield,
+                          .base_experience =
+                              defeated_species->experience_yield,
                           .base_stats = {
-                              squirtle->base_hp,
-                              squirtle->base_attack,
-                              squirtle->base_defense,
-                              squirtle->base_speed,
-                              squirtle->base_special,
+                              defeated_species->base_hp,
+                              defeated_species->base_attack,
+                              defeated_species->base_defense,
+                              defeated_species->base_speed,
+                              defeated_species->base_special,
                           },
                           .defeated_level = 5U,
                           .base_value_divisor = 1U,
@@ -775,17 +777,18 @@ void test_local_rule_cache(TestState& state) {
 
         pokered::ExperienceFormulaResult divided;
         check(state,
-              squirtle != nullptr &&
+              defeated_species != nullptr &&
                   pokered::execute_experience_formula(
                       *experience,
                       {
-                          .base_experience = squirtle->experience_yield,
+                          .base_experience =
+                              defeated_species->experience_yield,
                           .base_stats = {
-                              squirtle->base_hp,
-                              squirtle->base_attack,
-                              squirtle->base_defense,
-                              squirtle->base_speed,
-                              squirtle->base_special,
+                              defeated_species->base_hp,
+                              defeated_species->base_attack,
+                              defeated_species->base_defense,
+                              defeated_species->base_speed,
+                              defeated_species->base_special,
                           },
                           .defeated_level = 5U,
                           .base_value_divisor = 2U,
@@ -800,6 +803,103 @@ void test_local_rule_cache(TestState& state) {
                           11U, 12U, 16U, 10U, 12U},
               "experience executor preserves sequential Exp. All and "
               "participant division floors");
+    }
+
+    const pokered::StatFormulaProgram* stats =
+        pokered::find_stat_formula(
+            battle_rules, battle_rules.original_stat_formula);
+    check(state,
+          stats != nullptr && stats->key == "gen_1_original_stats" &&
+              stats->instructions.size() == 7U,
+          "original owned-Pokemon stat formula resolves by imported binding");
+    if (stats != nullptr) {
+        const pokered::SpeciesRule* squirtle_species =
+            pokered::find_species(rules, 7U);
+        pokered::StatFormulaResult level_five;
+        check(state,
+              squirtle_species != nullptr &&
+                  pokered::execute_stat_formula(
+                      *stats,
+                      {
+                          .base_stats = {
+                              squirtle_species->base_hp,
+                              squirtle_species->base_attack,
+                              squirtle_species->base_defense,
+                              squirtle_species->base_speed,
+                              squirtle_species->base_special,
+                          },
+                          .dvs = {15U, 15U, 15U, 15U},
+                          .stat_experience = {},
+                          .level = 5U,
+                      },
+                      level_five, error) &&
+                  level_five.hp_dv == 15U &&
+                  level_five.stats ==
+                      std::array<std::uint16_t, 5>{
+                          20U, 11U, 13U, 10U, 11U},
+              "stat executor derives HP DV and all five level-five stats");
+
+        pokered::StatFormulaResult effort_rounding;
+        check(state,
+              squirtle_species != nullptr &&
+                  pokered::execute_stat_formula(
+                      *stats,
+                      {
+                          .base_stats = {
+                              squirtle_species->base_hp,
+                              squirtle_species->base_attack,
+                              squirtle_species->base_defense,
+                              squirtle_species->base_speed,
+                              squirtle_species->base_special,
+                          },
+                          .dvs = {},
+                          .stat_experience = {
+                              10U, 10U, 10U, 10U, 10U},
+                          .level = 100U,
+                      },
+                      effort_rounding, error) &&
+                  effort_rounding.stats ==
+                      std::array<std::uint16_t, 5>{
+                          199U, 102U, 136U, 92U, 106U},
+              "stat executor preserves the cartridge's ceiling-square-root "
+              "effort rounding");
+
+        pokered::PokemonState owned_squirtle;
+        check(state,
+              pokered::build_pokemon(
+                  rules, *stats, 7U, 5U,
+                  {15U, 15U, 15U, 15U}, 0x1234U, "RED",
+                  owned_squirtle, error) &&
+                  owned_squirtle.nickname == "SQUIRTLE" &&
+                  owned_squirtle.current_hp == 20U &&
+                  owned_squirtle.moves[0].move_id == 33U &&
+                  owned_squirtle.moves[1].move_id == 39U &&
+                  owned_squirtle.moves[2].move_id == 0U,
+              "owned Pokemon construction consumes imported species, moves, "
+              "growth, and stat rules");
+
+        pokered::PokemonState recipient;
+        pokered::ExperienceAwardResult progress;
+        check(state,
+              experience != nullptr &&
+                  pokered::build_pokemon(
+                      rules, *stats, 1U, 6U,
+                      {15U, 15U, 15U, 15U}, 0x1234U, "RED",
+                      recipient, error) &&
+                  pokered::award_pokemon_experience(
+                      rules, *experience, *stats, owned_squirtle, true,
+                      0x1234U, 1U, recipient, progress, error) &&
+                  progress.experience_gained == 70U &&
+                  progress.old_level == 6U && progress.new_level == 7U &&
+                  progress.learned_moves ==
+                      std::vector<std::uint8_t>{73U} &&
+                  progress.pending_moves.empty() &&
+                  recipient.level == 7U &&
+                  recipient.stat_experience ==
+                      std::array<std::uint16_t, 5>{
+                          44U, 48U, 65U, 43U, 50U},
+              "owned Pokemon progression applies imported experience, "
+              "learnset, and stat programs end to end");
     }
 }
 

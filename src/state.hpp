@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pokemon.hpp"
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -27,6 +29,7 @@ struct CampaignState {
     std::string player_name;
     std::string rival_name;
     std::array<std::uint8_t, 3> options{};
+    PartyState party;
     std::vector<std::uint8_t> flags;
     std::vector<std::uint16_t> variables;
     std::uint64_t play_steps{};

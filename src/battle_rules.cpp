@@ -113,6 +113,25 @@ bool valid_instruction(const ExperienceFormulaInstruction& instruction) {
     return false;
 }
 
+bool valid_instruction(const StatFormulaInstruction& instruction) {
+    const auto& value = instruction.operands;
+    switch (instruction.opcode) {
+    case StatFormulaOpcode::derive_hp_dv:
+        return value[0] != 0U && value[1] != 0U &&
+               value[2] != 0U && value[3] != 0U;
+    case StatFormulaOpcode::calculate_effort_bonus:
+        return value[0] != 0U && value[1] != 0U;
+    case StatFormulaOpcode::combine_base_and_dv:
+    case StatFormulaOpcode::scale_by_level:
+    case StatFormulaOpcode::add_other_bonus:
+    case StatFormulaOpcode::cap_stats:
+        return value[0] != 0U;
+    case StatFormulaOpcode::add_hp_bonus:
+        return value[0] != 0U && value[1] != 0U;
+    }
+    return false;
+}
+
 std::uint16_t interaction_multiplier(const RuleCatalog& rules,
                                      std::uint8_t attacking,
                                      std::uint8_t defending) {
@@ -139,7 +158,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '4'}) {
+        magic != std::array{'P', 'B', 'R', '5'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -393,6 +412,52 @@ bool load_battle_rules(const std::filesystem::path& path,
             program.instructions.push_back(instruction);
         }
         loaded.experience_formulas.push_back(std::move(program));
+    }
+
+    std::uint16_t stat_count = 0;
+    if (!read_u16(input, stat_count) || stat_count == 0U ||
+        stat_count > 64U ||
+        !read_u16(input, loaded.original_stat_formula) ||
+        loaded.original_stat_formula >= stat_count) {
+        error = "battle rule cache has an invalid stat formula index";
+        return false;
+    }
+    loaded.stat_formulas.reserve(stat_count);
+    keys.clear();
+    for (std::uint16_t index = 0; index < stat_count; ++index) {
+        StatFormulaProgram program;
+        std::uint16_t instruction_count = 0;
+        if (!read_string(input, program.key) ||
+            !keys.insert(program.key).second ||
+            !read_u16(input, instruction_count) ||
+            instruction_count == 0U || instruction_count > 64U) {
+            error = "battle rule cache has an invalid stat formula";
+            return false;
+        }
+        program.instructions.reserve(instruction_count);
+        for (std::uint16_t instruction_index = 0;
+             instruction_index < instruction_count; ++instruction_index) {
+            StatFormulaInstruction instruction;
+            std::uint8_t opcode = 0;
+            if (!read_u8(input, opcode) ||
+                opcode > static_cast<std::uint8_t>(
+                             StatFormulaOpcode::cap_stats)) {
+                error = "battle rule cache has an unknown stat opcode";
+                return false;
+            }
+            instruction.opcode = static_cast<StatFormulaOpcode>(opcode);
+            for (std::uint16_t& operand : instruction.operands)
+                if (!read_u16(input, operand)) {
+                    error = "battle rule cache has truncated stat operands";
+                    return false;
+                }
+            if (!valid_instruction(instruction)) {
+                error = "battle rule cache has invalid stat operands";
+                return false;
+            }
+            program.instructions.push_back(instruction);
+        }
+        loaded.stat_formulas.push_back(std::move(program));
     }
 
     if (input.peek() != std::char_traits<char>::eof()) {

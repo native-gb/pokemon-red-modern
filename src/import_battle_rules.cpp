@@ -57,6 +57,13 @@ ExperienceFormulaInstruction experience_instruction(
     return {.opcode = opcode, .operands = {a, b, c, d}};
 }
 
+StatFormulaInstruction stat_instruction(
+    StatFormulaOpcode opcode, std::uint16_t a = 0U,
+    std::uint16_t b = 0U, std::uint16_t c = 0U,
+    std::uint16_t d = 0U) {
+    return {.opcode = opcode, .operands = {a, b, c, d}};
+}
+
 DamageFormulaProgram lift_original_damage_formula() {
     DamageFormulaProgram program;
     program.key = "gen_1_original_damage";
@@ -148,6 +155,74 @@ bool lift_original_experience_formula(
                                3U, 2U),
         experience_instruction(ExperienceFormulaOpcode::boost_if_trainer,
                                3U, 2U),
+    };
+    return true;
+}
+
+bool lift_original_stat_formula(
+    std::span<const std::uint8_t> rom, StatFormulaProgram& program,
+    std::string& error) {
+    std::uint8_t maximum_effort_root = 0;
+    std::uint8_t level_divisor = 0;
+    std::uint8_t other_stat_add = 0;
+    std::uint8_t hp_add = 0;
+    std::uint8_t cap_high = 0;
+    std::uint8_t cap_low = 0;
+    if (!read_immediate(rom, 0x003968U, 0xFEU,
+                        maximum_effort_root, error) ||
+        !read_immediate(rom, 0x003A07U, 0x3EU, level_divisor, error) ||
+        !read_immediate(rom, 0x003A14U, 0x3EU, other_stat_add, error) ||
+        !read_immediate(rom, 0x003A28U, 0x3EU, hp_add, error) ||
+        !read_immediate(rom, 0x003A47U, 0x3EU, cap_high, error) ||
+        !read_immediate(rom, 0x003A4BU, 0x3EU, cap_low, error)) {
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 34> hp_dv_sequence{
+        0x7EU, 0xCBU, 0x37U, 0xE6U, 0x01U, 0xCBU, 0x27U,
+        0xCBU, 0x27U, 0xCBU, 0x27U, 0x47U, 0x2AU, 0xE6U,
+        0x01U, 0xCBU, 0x27U, 0xCBU, 0x27U, 0x80U, 0x47U,
+        0x7EU, 0xCBU, 0x37U, 0xE6U, 0x01U, 0xCBU, 0x27U,
+        0x80U, 0x47U, 0x7EU, 0xE6U, 0x01U, 0x80U};
+    constexpr std::array<std::uint8_t, 4> base_multiplier_sequence{
+        0xCBU, 0x23U, 0xCBU, 0x12U};
+    constexpr std::array<std::uint8_t, 4> effort_divisor_sequence{
+        0xCBU, 0x38U, 0xCBU, 0x38U};
+    constexpr std::array<std::uint8_t, 7> hp_level_sequence{
+        0xFAU, 0x27U, 0xD1U, 0x47U, 0xF0U, 0x98U, 0x80U};
+    if (!std::equal(hp_dv_sequence.begin(), hp_dv_sequence.end(),
+                    rom.begin() + 0x00399AU) ||
+        !std::equal(base_multiplier_sequence.begin(),
+                    base_multiplier_sequence.end(),
+                    rom.begin() + 0x0039DEU) ||
+        !std::equal(effort_divisor_sequence.begin(),
+                    effort_divisor_sequence.end(),
+                    rom.begin() + 0x0039E2U) ||
+        !std::equal(hp_level_sequence.begin(), hp_level_sequence.end(),
+                    rom.begin() + 0x003A18U)) {
+        error = "stat calculation is not the verified cartridge routine";
+        return false;
+    }
+
+    constexpr std::uint16_t base_multiplier =
+        1U << (base_multiplier_sequence.size() / 2U - 1U);
+    constexpr std::uint16_t effort_divisor =
+        1U << (effort_divisor_sequence.size() / 2U);
+    constexpr std::uint16_t hp_level_multiplier = 1U;
+    const std::uint16_t stat_cap = static_cast<std::uint16_t>(
+        static_cast<std::uint16_t>(cap_high) * 256U + cap_low);
+    program.key = "gen_1_original_stats";
+    program.instructions = {
+        stat_instruction(StatFormulaOpcode::derive_hp_dv, 8U, 4U, 2U, 1U),
+        stat_instruction(StatFormulaOpcode::calculate_effort_bonus,
+                         effort_divisor, maximum_effort_root),
+        stat_instruction(StatFormulaOpcode::combine_base_and_dv,
+                         base_multiplier),
+        stat_instruction(StatFormulaOpcode::scale_by_level, level_divisor),
+        stat_instruction(StatFormulaOpcode::add_hp_bonus,
+                         hp_level_multiplier, hp_add),
+        stat_instruction(StatFormulaOpcode::add_other_bonus, other_stat_add),
+        stat_instruction(StatFormulaOpcode::cap_stats, stat_cap),
     };
     return true;
 }
@@ -297,6 +372,7 @@ void emit_source(const DamageFormulaProgram& program,
                  const CriticalHitProgram& critical,
                  const CaptureFormulaProgram& capture,
                  const ExperienceFormulaProgram& experience,
+                 const StatFormulaProgram& stats,
                  BattleRuleImport& result) {
     std::ostringstream source;
     source << "; Semantic lift from the verified cartridge's damage routines.\n"
@@ -429,6 +505,47 @@ void emit_source(const DamageFormulaProgram& program,
     add_text_file(result, "source/battle_effects/experience.sexpr",
                   experience_source.str());
 
+    std::ostringstream stat_source;
+    stat_source
+        << "; Semantic lift of the verified cartridge stat calculation at\n"
+        << "; 0x003936..0x003a50. Inputs are immutable species values and\n"
+        << "; owned-Pokemon level, DVs, and stat experience.\n\n"
+        << "stat_formula " << stats.key << '\n';
+    for (const StatFormulaInstruction& instruction : stats.instructions) {
+        const auto& value = instruction.operands;
+        switch (instruction.opcode) {
+        case StatFormulaOpcode::derive_hp_dv:
+            stat_source << "    derive_hp_dv "
+                        << value[0] << ' ' << value[1] << ' '
+                        << value[2] << ' ' << value[3] << '\n';
+            break;
+        case StatFormulaOpcode::calculate_effort_bonus:
+            stat_source << "    calculate_effort_bonus\n"
+                        << "        root_divisor " << value[0] << '\n'
+                        << "        maximum_root " << value[1] << '\n';
+            break;
+        case StatFormulaOpcode::combine_base_and_dv:
+            stat_source << "    combine_base_and_dv " << value[0] << '\n';
+            break;
+        case StatFormulaOpcode::scale_by_level:
+            stat_source << "    scale_by_level " << value[0] << '\n';
+            break;
+        case StatFormulaOpcode::add_hp_bonus:
+            stat_source << "    add_hp_bonus\n"
+                        << "        level_multiplier " << value[0] << '\n'
+                        << "        constant " << value[1] << '\n';
+            break;
+        case StatFormulaOpcode::add_other_bonus:
+            stat_source << "    add_other_bonus " << value[0] << '\n';
+            break;
+        case StatFormulaOpcode::cap_stats:
+            stat_source << "    cap_stats " << value[0] << '\n';
+            break;
+        }
+    }
+    add_text_file(result, "source/battle_effects/stats.sexpr",
+                  stat_source.str());
+
     std::ostringstream report;
     report << "Pokemon Red semantic battle-rule import\n"
            << "damage_formula_programs 1\n"
@@ -437,11 +554,12 @@ void emit_source(const DamageFormulaProgram& program,
            << "capture_formula_programs 1\n"
            << "critical_hit_programs 1\n"
            << "experience_formula_programs 1\n"
+           << "stat_formula_programs 1\n"
            << "move_effect_programs 0\n"
            << "status_programs 0\n"
-           << "coverage_note damage, critical-hit, capture, and experience "
-              "calculations are executable; remaining battle program "
-              "domains stay explicitly incomplete\n";
+           << "coverage_note damage, critical-hit, capture, experience, and "
+              "owned-Pokemon stat calculations are executable; remaining "
+              "battle program domains stay explicitly incomplete\n";
     add_text_file(result, "reports/battle_rule_import_summary.txt",
                   report.str());
 }
@@ -450,8 +568,9 @@ void emit_cache(const DamageFormulaProgram& program,
                 const CriticalHitProgram& critical,
                 const CaptureFormulaProgram& capture,
                 const ExperienceFormulaProgram& experience,
+                const StatFormulaProgram& stats,
                 BattleRuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '4'};
+    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '5'};
     write_u16(bytes, 1U);
     write_u16(bytes, 0U);
     write_string(bytes, program.key);
@@ -516,6 +635,17 @@ void emit_cache(const DamageFormulaProgram& program,
         for (const std::uint16_t operand : value.operands)
             write_u16(bytes, operand);
     }
+
+    write_u16(bytes, 1U);
+    write_u16(bytes, 0U);
+    write_string(bytes, stats.key);
+    write_u16(bytes,
+              static_cast<std::uint16_t>(stats.instructions.size()));
+    for (const StatFormulaInstruction& value : stats.instructions) {
+        bytes.push_back(static_cast<std::uint8_t>(value.opcode));
+        for (const std::uint16_t operand : value.operands)
+            write_u16(bytes, operand);
+    }
     result.files.push_back(
         {"compiled/battle_rules.bin", std::move(bytes)});
 }
@@ -541,12 +671,15 @@ bool decode_battle_rule_import(std::span<const std::uint8_t> rom,
     ExperienceFormulaProgram experience;
     if (!lift_original_experience_formula(rom, experience, error))
         return false;
-    emit_source(program, critical, capture, experience, result);
-    emit_cache(program, critical, capture, experience, result);
+    StatFormulaProgram stats;
+    if (!lift_original_stat_formula(rom, stats, error)) return false;
+    emit_source(program, critical, capture, experience, stats, result);
+    emit_cache(program, critical, capture, experience, stats, result);
     result.damage_formulas = 1U;
     result.critical_hit_programs = 1U;
     result.capture_formulas = 1U;
     result.experience_formulas = 1U;
+    result.stat_formulas = 1U;
     error.clear();
     return true;
 }

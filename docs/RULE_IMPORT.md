@@ -115,6 +115,25 @@ The future battle owner will schedule participants and Exp. All recipients;
 the generic formula executor receives those divisors without knowing Red party
 rules or item identities.
 
+Owned-Pokemon stat calculation is executable as a fifth imported semantic
+program:
+
+```text
+source/battle_effects/stats.sexpr
+```
+
+The importer validates HP-DV bit construction, effort-root division, base/DV
+combination, level scaling, HP and ordinary-stat additions, and the stat cap
+against the verified cartridge routine. The executor consumes the ordered
+program and deliberately preserves Gen I's ceiling-square-root effort
+rounding.
+
+`PokemonState` and `PartyState` now own mutable identity, trainer provenance,
+level/experience, DVs, stat experience, calculated stats, HP, status, and
+move/PP state. Construction and experience progression join those instances
+to imported species, growth, move, learnset, evolution, experience, and stat
+programs. They do not contain Red species or move switches.
+
 The import report separately keeps status and move-effect program counts at
 zero until those domains are genuinely executable.
 

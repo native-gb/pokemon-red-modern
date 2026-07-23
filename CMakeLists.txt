@@ -99,6 +99,7 @@ add_executable(native-gb-pokemon-red-modern
     src/maps.cpp
     src/overlays.cpp
     src/predicates.cpp
+    src/pokemon.cpp
     src/rules.cpp
     src/render/frame.cpp
     src/render/boot.cpp
@@ -108,6 +109,7 @@ add_executable(native-gb-pokemon-red-modern
     src/source_loader.cpp
     src/state.cpp
     src/settings.cpp
+    src/stat_rules.cpp
     src/symbols.cpp
     src/tools.cpp
     src/window.cpp
@@ -142,11 +144,13 @@ if(BUILD_TESTING)
         src/maps.cpp
         src/overlays.cpp
         src/predicates.cpp
+        src/pokemon.cpp
         src/rules.cpp
         src/sexpr.cpp
         src/source_loader.cpp
         src/state.cpp
         src/settings.cpp
+        src/stat_rules.cpp
         src/symbols.cpp
     )
     target_include_directories(pokered-modern-foundation-tests PRIVATE
