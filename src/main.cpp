@@ -1,5 +1,7 @@
 #include "battle_animation_lab.hpp"
 #include "catalog.hpp"
+#include "clocks.hpp"
+#include "controls.hpp"
 #include "interactions.hpp"
 #include "maps.hpp"
 #include "render/dialogue.hpp"
@@ -7,6 +9,7 @@
 #include "render/maps.hpp"
 #include "src/imgui_layer.hpp"
 #include "state.hpp"
+#include "settings.hpp"
 #include "tools.hpp"
 #include "window.hpp"
 
@@ -70,6 +73,17 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Host choices load before platform initialization because the selected
+    // control profile must be active for the first input frame.
+    const std::filesystem::path settings_path = data_root / "settings.cfg";
+    pokered::PresentationSettings presentation;
+    std::string settings_error;
+    bool settings_writable =
+        pokered::load_settings(settings_path, presentation, settings_error);
+    if (!settings_writable)
+        std::fprintf(stderr, "could not load settings: %s\n", settings_error.c_str());
+    pokered::PresentationSettings saved_presentation = presentation;
+
     pokered::content::CatalogSummary catalog;
     pokered::GameState game;
     pokered::BattleAnimationLab animation_lab;
@@ -104,7 +118,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "%s\n", interaction_error.c_str());
 
     pokered::HostWindow window;
-    if (!pokered::initialize_window(window, data_root)) return 1;
+    if (!pokered::initialize_window(window, data_root, presentation.control_profile)) return 1;
     pokered::render::WorldRenderResources world_resources;
     if (world.loaded) {
         if (!pokered::render::upload_world_textures(window.frame.renderer, world,
@@ -123,8 +137,9 @@ int main(int argc, char** argv) {
         .layout =
             options.developer_tools ? pokered::ToolLayout::developer : pokered::ToolLayout::closed,
         .arrange = options.developer_tools,
+        .controller_navigation = false,
+        .control_status = {},
     };
-    pokered::PresentationSettings presentation;
     const char* renderer_name = SDL_GetRendererName(window.frame.renderer);
     std::printf("SDL renderer: %s\n", renderer_name != nullptr ? renderer_name : "unknown");
     using Clock = std::chrono::steady_clock;
@@ -135,6 +150,10 @@ int main(int argc, char** argv) {
     bool running = true;
     bool render_failed = false;
     bool pending_world_activation = false;
+    pokered::ControlButtons previous_controls;
+    pokered::GameClocks clocks;
+    bool fast_forward_toggle_active = false;
+    bool tools_chord_down = false;
 
     while (running) {
         const std::uint64_t frame_started = SDL_GetTicksNS();
@@ -146,12 +165,49 @@ int main(int argc, char** argv) {
         const auto now = Clock::now();
         const double elapsed = std::chrono::duration<double>(now - previous).count();
         previous = now;
-        const float frame_seconds = static_cast<float>(std::clamp(elapsed, 0.0, 0.1));
+        const double bounded_elapsed = std::clamp(elapsed, 0.0, 0.1);
+        const float frame_seconds = static_cast<float>(bounded_elapsed);
+        pokered::advance_unscaled_clocks(clocks, elapsed);
 
         const pokered::WindowInput input = pokered::poll_window_events(window);
         if (input.quit) break;
-        pending_world_activation = pending_world_activation || input.activate_world;
+        pokered::update_window(window, bounded_elapsed);
         pokered::apply_tool_shortcuts(tools, input);
+
+        // Semantic controls are shared by keyboard and every assigned
+        // controller. Menu and Start+Select provide controller-only tool access.
+        const pokered::ControlButtons controls = pokered::read_controls(window.runtime);
+        const bool menu_pressed = controls.menu && !previous_controls.menu;
+        const bool tools_chord = controls.start && controls.select;
+        const bool tools_chord_pressed = tools_chord && !tools_chord_down;
+        if (menu_pressed || tools_chord_pressed) {
+            tools.layout = tools.layout == pokered::ToolLayout::player
+                               ? pokered::ToolLayout::closed
+                               : pokered::ToolLayout::player;
+            tools.arrange = tools.layout != pokered::ToolLayout::closed;
+        }
+        tools_chord_down = tools_chord;
+        if (controls.quit) break;
+        const bool tools_own_input = tools.layout != pokered::ToolLayout::closed;
+        const bool confirm_pressed = controls.confirm && !previous_controls.confirm;
+        if (!tools_own_input) pending_world_activation |= confirm_pressed;
+
+        // Fast-forward scales deterministic game work only. Real,
+        // presentation, audio, and future music clocks remain wall-clock based.
+        const bool fast_forward_pressed =
+            controls.fast_forward && !previous_controls.fast_forward;
+        if (!presentation.fast_forward_enabled) {
+            fast_forward_toggle_active = false;
+        } else if (presentation.fast_forward_toggle && !tools_own_input &&
+                   fast_forward_pressed) {
+            fast_forward_toggle_active = !fast_forward_toggle_active;
+        }
+        const bool fast_forward =
+            presentation.fast_forward_enabled && !tools_own_input &&
+            (presentation.fast_forward_toggle ? fast_forward_toggle_active
+                                              : controls.fast_forward);
+        clocks.fast_forward = fast_forward;
+
         if (input.toggle_lab_view && world.loaded && animation_lab.loaded)
             game.mode = game.mode == pokered::Mode::overworld ? pokered::Mode::battle
                                                               : pokered::Mode::overworld;
@@ -204,18 +260,23 @@ int main(int argc, char** argv) {
         if (input.toggle_animation_auto_advance)
             animation_lab.auto_advance = !animation_lab.auto_advance;
 
-        accumulator = std::min(accumulator + elapsed, 0.25);
+        const double game_elapsed =
+            bounded_elapsed * (fast_forward ? presentation.fast_forward_multiplier : 1);
+        accumulator = std::min(accumulator + game_elapsed, 1.0);
         while (accumulator >= step_seconds) {
-            pokered::step_game(game);
-            pokered::step_world_animation(world);
-            if (!game.paused && game.mode == pokered::Mode::overworld) {
+            if (!game.paused) {
+                pokered::step_game(game);
+                pokered::step_world_animation(world);
+                pokered::advance_game_clock(clocks, step_seconds);
+            }
+            if (!game.paused && !tools_own_input && game.mode == pokered::Mode::overworld) {
                 pokered::step_world(
                     world, interactions,
                     {
-                        .left = input.move_player_left,
-                        .right = input.move_player_right,
-                        .up = input.move_player_up,
-                        .down = input.move_player_down,
+                        .left = controls.left,
+                        .right = controls.right,
+                        .up = controls.up,
+                        .down = controls.down,
                         .activate = pending_world_activation,
                     });
                 pending_world_activation = false;
@@ -225,8 +286,7 @@ int main(int argc, char** argv) {
             accumulator -= step_seconds;
         }
 
-        pokered::update_window(window, elapsed);
-        pokered::update_world_view(world, elapsed);
+        pokered::update_world_view(world, bounded_elapsed);
         imgui_new_frame();
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
                                            window.frame.render_width, window.frame.render_height,
@@ -237,8 +297,9 @@ int main(int argc, char** argv) {
             break;
         }
 
-        pokered::draw_tools(tools, game, catalog, animation_lab, world, presentation,
-                            world_resources, renderer_name != nullptr ? renderer_name : "unknown");
+        pokered::draw_tools(tools, window.runtime, game, catalog, animation_lab, world,
+                            presentation, clocks, world_resources,
+                            renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_dialogue_overlay(world);
         imgui_render_layer();
         pokered::present_window(window);
@@ -252,9 +313,25 @@ int main(int argc, char** argv) {
 
         ++rendered_frames;
         if (options.render_smoke && rendered_frames >= 3) running = false;
+
+        // Persist settings at the point of change. Smoke checks remain
+        // side-effect free, and a failed destination is not hammered per frame.
+        if (!options.render_smoke && settings_writable &&
+            presentation != saved_presentation) {
+            if (pokered::save_settings(settings_path, presentation, settings_error))
+                saved_presentation = presentation;
+            else {
+                std::fprintf(stderr, "could not save settings: %s\n", settings_error.c_str());
+                settings_writable = false;
+            }
+        }
+        previous_controls = controls;
     }
 
     pokered::render::destroy_world_textures(world_resources);
     pokered::shutdown_window(window);
+    if (!options.render_smoke && settings_writable && presentation != saved_presentation &&
+        !pokered::save_settings(settings_path, presentation, settings_error))
+        std::fprintf(stderr, "could not save final settings: %s\n", settings_error.c_str());
     return render_failed ? 1 : 0;
 }

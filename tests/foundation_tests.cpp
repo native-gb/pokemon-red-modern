@@ -1,10 +1,12 @@
 #include "animations.hpp"
 #include "battle_animation_lab.hpp"
 #include "catalog.hpp"
+#include "clocks.hpp"
 #include "content_index.hpp"
 #include "overlays.hpp"
 #include "predicates.hpp"
 #include "sexpr.hpp"
+#include "settings.hpp"
 #include "symbols.hpp"
 
 #include <array>
@@ -329,6 +331,40 @@ void test_battle_ui(TestState& state) {
     check(state, tiles[9U * 20U + 18U] == 0, "Safari layout omits the player HUD");
 }
 
+void test_host_settings_and_clocks(TestState& state) {
+    // Host settings round-trip without involving SDL or campaign state.
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "pokered_modern_settings_test.cfg";
+    std::error_code filesystem_error;
+    std::filesystem::remove(path, filesystem_error);
+    pokered::PresentationSettings expected;
+    expected.vsync = false;
+    expected.motion_interpolation = false;
+    expected.show_fps = false;
+    expected.render_rate_limit = 240;
+    expected.control_profile = 1;
+    expected.fast_forward_enabled = true;
+    expected.fast_forward_toggle = true;
+    expected.fast_forward_multiplier = 8;
+    std::string error;
+    check(state, pokered::save_settings(path, expected, error), "host settings save");
+    pokered::PresentationSettings loaded;
+    check(state, pokered::load_settings(path, loaded, error), "host settings load");
+    check(state, loaded == expected, "host settings round-trip");
+    std::filesystem::remove(path, filesystem_error);
+
+    // Fast-forward affects how often game steps are requested by the host; it
+    // never scales the independent wall-clock domains.
+    pokered::GameClocks clocks;
+    pokered::advance_unscaled_clocks(clocks, 0.5);
+    pokered::advance_game_clock(clocks, 1.0 / 60.0);
+    check(state, clocks.real_time == 0.25 && clocks.presentation_time == 0.25 &&
+                     clocks.audio_time == 0.25 && clocks.music_time == 0.25,
+          "host clocks advance together with bounded unscaled time");
+    check(state, clocks.game_steps == 1 && clocks.game_time == 1.0 / 60.0,
+          "game clock advances only on deterministic steps");
+}
+
 } // namespace
 
 int main() {
@@ -341,6 +377,7 @@ int main() {
     test_animations(state);
     test_battle_animation_lab(state);
     test_battle_ui(state);
+    test_host_settings_and_clocks(state);
     if (state.failures == 0) std::puts("foundation tests passed");
     return state.failures == 0 ? 0 : 1;
 }

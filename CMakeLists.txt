@@ -82,6 +82,9 @@ add_executable(native-gb-pokemon-red-modern
     src/battle_animation_lab.cpp
     src/battle_ui.cpp
     src/catalog.cpp
+    src/clocks.cpp
+    src/controls.cpp
+    src/controls_menu.cpp
     src/diagnostics.cpp
     src/interactions.cpp
     src/main.cpp
@@ -94,6 +97,7 @@ add_executable(native-gb-pokemon-red-modern
     src/sexpr.cpp
     src/source_loader.cpp
     src/state.cpp
+    src/settings.cpp
     src/symbols.cpp
     src/tools.cpp
     src/window.cpp
@@ -118,11 +122,13 @@ if(BUILD_TESTING)
         src/battle_animation_lab.cpp
         src/battle_ui.cpp
         src/catalog.cpp
+        src/clocks.cpp
         src/diagnostics.cpp
         src/overlays.cpp
         src/predicates.cpp
         src/sexpr.cpp
         src/source_loader.cpp
+        src/settings.cpp
         src/symbols.cpp
     )
     target_include_directories(pokered-modern-foundation-tests PRIVATE

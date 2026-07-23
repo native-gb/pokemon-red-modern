@@ -1,17 +1,12 @@
 #pragma once
 
+#include "settings.hpp"
+
 #include <filesystem>
 
 #include <gubsy/runtime.hpp>
 
 namespace pokered {
-
-struct PresentationSettings {
-    bool vsync{true};
-    bool motion_interpolation{true};
-    bool show_fps{true};
-    int render_rate_limit{144};
-};
 
 struct WindowInput {
     bool quit{};
@@ -43,6 +38,7 @@ struct WindowInput {
     bool pan_world_right{};
     bool pan_world_up{};
     bool pan_world_down{};
+    bool gamepad_changed{};
 };
 
 struct HostWindow {
@@ -52,7 +48,8 @@ struct HostWindow {
 };
 
 int effective_render_rate(const PresentationSettings& settings);
-bool initialize_window(HostWindow& window, const std::filesystem::path& data_root);
+bool initialize_window(HostWindow& window, const std::filesystem::path& data_root,
+                       int control_profile);
 bool apply_window_vsync(HostWindow& window, bool enabled);
 WindowInput poll_window_events(HostWindow& window);
 void update_window(HostWindow& window, double elapsed);

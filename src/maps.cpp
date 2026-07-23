@@ -513,7 +513,7 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
         static_cast<float>(start.global_y_tiles / 2 + world.player.y);
     world.player.initialized = true;
     world.current = 0;
-    world.view = WorldView::selected;
+    world.view = WorldView::world;
     world.follow_player = true;
     world.target_zoom = 2.0F;
     world.zoom = 2.0F;
@@ -667,6 +667,7 @@ void select_previous_map(WorldState& world) {
 
 void toggle_world_view(WorldState& world) {
     world.view = world.view == WorldView::selected ? WorldView::world : WorldView::selected;
+    world.follow_player = true;
     reset_world_view(world);
 }
 
@@ -690,8 +691,14 @@ void reset_world_view(WorldState& world) {
         world_view_bounds(world, left, top, right, bottom);
     else
         selected_view_bounds(world, left, top, right, bottom);
-    world.target_camera_x = (left + right) * 0.5F;
-    world.target_camera_y = (top + bottom) * 0.5F;
+    world.follow_player = world.player.initialized;
+    if (world.follow_player) {
+        world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
+        world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
+    } else {
+        world.target_camera_x = (left + right) * 0.5F;
+        world.target_camera_y = (top + bottom) * 0.5F;
+    }
     world.target_zoom = 1.0F;
     if (!world.camera_initialized) {
         world.camera_x = world.target_camera_x;
@@ -716,7 +723,7 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
             (target_x - world.player.visual_global_x) * movement_response;
         world.player.visual_global_y +=
             (target_y - world.player.visual_global_y) * movement_response;
-        if (world.follow_player && world.view == WorldView::selected) {
+        if (world.follow_player) {
             world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
             world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
         }

@@ -1,5 +1,7 @@
 #include "tools.hpp"
 
+#include "controls_menu.hpp"
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -20,7 +22,9 @@ void place(float x, float y, float width, float height, bool arrange) {
     ImGui::SetNextWindowSize({width, height}, ImGuiCond_Always);
 }
 
-void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog) {
+void draw_player_tools(ToolState& tools, GubsyRuntime& runtime,
+                       const content::CatalogSummary& catalog,
+                       PresentationSettings& presentation) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     constexpr float margin = 16.0F;
     constexpr float top = 42.0F;
@@ -42,21 +46,56 @@ void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog)
 
     place(margin + width + gap, top, width, height, tools.arrange);
     if (ImGui::Begin("Player Settings", nullptr, kFixedTools)) {
-        ImGui::TextUnformatted("Display");
-        ImGui::BulletText("F11 toggles fullscreen");
-        ImGui::BulletText("Game view keeps its native 10:9 aspect");
-        ImGui::BulletText("GPU render target; no CPU framebuffer");
-        ImGui::BulletText("World view supports arbitrary pan and zoom");
-        ImGui::Spacing();
-        ImGui::TextWrapped("WASD/arrows move. E, Z, X, or Enter interacts. Tab switches "
-                           "map/world view. IJKL pans and +/- zooms.");
+        if (ImGui::BeginTabBar("PlayerSettingsTabs")) {
+            if (ImGui::BeginTabItem("Display")) {
+                ImGui::Checkbox("VSync", &presentation.vsync);
+                ImGui::Checkbox("Motion interpolation", &presentation.motion_interpolation);
+                ImGui::Checkbox("Show FPS overlay", &presentation.show_fps);
+                constexpr std::array render_rates{60, 120, 144, 165, 240};
+                int selected_rate = static_cast<int>(
+                    std::find(render_rates.begin(), render_rates.end(),
+                              presentation.render_rate_limit) -
+                    render_rates.begin());
+                if (selected_rate >= static_cast<int>(render_rates.size())) selected_rate = 2;
+                if (ImGui::Combo("Frame limit", &selected_rate,
+                                 "60 Hz\0"
+                                 "120 Hz\0"
+                                 "144 Hz\0"
+                                 "165 Hz\0"
+                                 "240 Hz\0"))
+                    presentation.render_rate_limit =
+                        render_rates[static_cast<std::size_t>(selected_rate)];
+                ImGui::Separator();
+                ImGui::BulletText("F11 toggles fullscreen");
+                ImGui::BulletText("Game view keeps its native 10:9 aspect");
+                ImGui::BulletText("GPU render target; no CPU framebuffer");
+                ImGui::BulletText("World view supports arbitrary pan and zoom");
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Speed")) {
+                ImGui::Checkbox("Enable fast-forward", &presentation.fast_forward_enabled);
+                ImGui::Checkbox("Toggle instead of hold", &presentation.fast_forward_toggle);
+                ImGui::SliderInt("Game speed", &presentation.fast_forward_multiplier, 2, 8,
+                                 "%dx");
+                ImGui::TextWrapped(
+                    "Left trigger or the bound fast-forward control accelerates simulation. "
+                    "Presentation, audio, music, and real play time remain unscaled.");
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Controls")) {
+                draw_controls_panel(runtime, presentation, tools.control_status);
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
+        }
     }
     ImGui::End();
 }
 
 void draw_developer_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
                           BattleAnimationLab& lab, WorldState& maps,
-                          PresentationSettings& presentation, const char* renderer_name) {
+                          PresentationSettings& presentation, const GameClocks& clocks,
+                          const char* renderer_name) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     constexpr float margin = 12.0F;
     constexpr float top = 42.0F;
@@ -71,6 +110,12 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
     if (ImGui::Begin("Runtime State", nullptr, kFixedTools)) {
         ImGui::Text("Mode: %s", label(game.mode));
         ImGui::Text("Simulation step: %llu", static_cast<unsigned long long>(game.step));
+        ImGui::Text("Game time: %.3f s", clocks.game_time);
+        ImGui::Text("Real time: %.3f s", clocks.real_time);
+        ImGui::Text("Presentation: %.3f s", clocks.presentation_time);
+        ImGui::Text("Audio: %.3f s", clocks.audio_time);
+        ImGui::Text("Music: %.3f s", clocks.music_time);
+        ImGui::Text("Fast-forward: %s", clocks.fast_forward ? "active" : "inactive");
         ImGui::Checkbox("Paused", &game.paused);
         ImGui::Separator();
         ImGui::Text("Renderer: %s", renderer_name);
@@ -353,8 +398,9 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
     if (input.toggle_developer_tools) toggle(ToolLayout::developer);
 }
 
-void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                BattleAnimationLab& lab, WorldState& maps, PresentationSettings& presentation,
+void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
+                const content::CatalogSummary& catalog, BattleAnimationLab& lab, WorldState& maps,
+                PresentationSettings& presentation, const GameClocks& clocks,
                 const render::WorldRenderResources& world_resources, const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
@@ -385,10 +431,12 @@ void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary
         ImGui::EndMainMenuBar();
     }
 
+    sync_controls_navigation(tools.layout == ToolLayout::player, tools.controller_navigation);
     if (tools.layout == ToolLayout::player)
-        draw_player_tools(tools, catalog);
+        draw_player_tools(tools, runtime, catalog, presentation);
     else if (tools.layout == ToolLayout::developer)
-        draw_developer_tools(tools, game, catalog, lab, maps, presentation, renderer_name);
+        draw_developer_tools(tools, game, catalog, lab, maps, presentation, clocks,
+                             renderer_name);
 
     if (game.mode == Mode::overworld) draw_world_annotations(maps, world_resources);
 

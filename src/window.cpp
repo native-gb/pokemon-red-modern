@@ -1,8 +1,10 @@
 #include "window.hpp"
 
+#include "controls.hpp"
 #include "src/imgui_layer.hpp"
 
 #include <SDL3/SDL.h>
+#include <imgui.h>
 
 #include <cstdio>
 
@@ -12,7 +14,8 @@ int effective_render_rate(const PresentationSettings& settings) {
     return settings.motion_interpolation ? settings.render_rate_limit : 60;
 }
 
-bool initialize_window(HostWindow& window, const std::filesystem::path& data_root) {
+bool initialize_window(HostWindow& window, const std::filesystem::path& data_root,
+                       int control_profile) {
     GubsyAppConfig config;
     config.enable_mods = false;
     config.project_root = POKERED_MODERN_SOURCE_DIR;
@@ -48,11 +51,19 @@ bool initialize_window(HostWindow& window, const std::filesystem::path& data_roo
     if (!apply_window_vsync(window, true))
         std::fprintf(stderr, "could not enable VSync: %s\n", SDL_GetError());
 
+    if (!register_controls(window.runtime, control_profile)) {
+        std::fprintf(stderr, "could not register the control profiles\n");
+        cleanup_gubsy_runtime(window.runtime);
+        return false;
+    }
+    assign_unclaimed_gamepads(window.runtime);
+
     if (!init_imgui_layer(window.frame.window, window.frame.renderer)) {
         std::fprintf(stderr, "could not initialize ImGui\n");
         cleanup_gubsy_runtime(window.runtime);
         return false;
     }
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
     return true;
 }
 
@@ -68,6 +79,12 @@ WindowInput poll_window_events(HostWindow& window) {
     while (SDL_PollEvent(&event)) {
         gubsy_process_sdl_event(window.runtime, event);
         if (event.type == SDL_EVENT_QUIT) input.quit = true;
+        if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
+            assign_unclaimed_gamepads(window.runtime);
+            input.gamepad_changed = true;
+        } else if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
+            input.gamepad_changed = true;
+        }
         if (event.type != SDL_EVENT_KEY_DOWN) continue;
         if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
                  event.key.key == SDLK_KP_PLUS)
