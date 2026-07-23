@@ -89,6 +89,25 @@ struct CaptureFormulaProgram {
     std::vector<CaptureFormulaInstruction> instructions;
 };
 
+enum class ExperienceFormulaOpcode : std::uint8_t {
+    divide_reward_data,
+    calculate_stat_experience,
+    calculate_base_experience,
+    boost_if_traded,
+    boost_if_trainer,
+};
+
+struct ExperienceFormulaInstruction {
+    ExperienceFormulaOpcode opcode{
+        ExperienceFormulaOpcode::divide_reward_data};
+    std::array<std::uint16_t, 4> operands{};
+};
+
+struct ExperienceFormulaProgram {
+    std::string key;
+    std::vector<ExperienceFormulaInstruction> instructions;
+};
+
 struct BattleRuleCatalog {
     std::filesystem::path source;
     std::vector<DamageFormulaProgram> damage_formulas;
@@ -97,6 +116,8 @@ struct BattleRuleCatalog {
     std::uint16_t original_critical_hit_program{};
     std::vector<CaptureFormulaProgram> capture_formulas;
     std::uint16_t original_capture_formula{};
+    std::vector<ExperienceFormulaProgram> experience_formulas;
+    std::uint16_t original_experience_formula{};
     bool loaded{};
 };
 
@@ -147,6 +168,21 @@ struct CaptureFormulaResult {
     bool caught{};
 };
 
+struct ExperienceFormulaInput {
+    std::uint8_t base_experience{};
+    std::array<std::uint8_t, 5> base_stats{};
+    std::uint8_t defeated_level{};
+    std::uint8_t base_value_divisor{1U};
+    std::uint8_t participant_divisor{1U};
+    bool traded{};
+    bool trainer_battle{};
+};
+
+struct ExperienceFormulaResult {
+    std::uint32_t experience{};
+    std::array<std::uint16_t, 5> stat_experience{};
+};
+
 bool load_battle_rules(const std::filesystem::path& path,
                        BattleRuleCatalog& result, std::string& error);
 const DamageFormulaProgram* find_damage_formula(
@@ -154,6 +190,8 @@ const DamageFormulaProgram* find_damage_formula(
 const CriticalHitProgram* find_critical_hit_program(
     const BattleRuleCatalog& rules, std::uint16_t id);
 const CaptureFormulaProgram* find_capture_formula(
+    const BattleRuleCatalog& rules, std::uint16_t id);
+const ExperienceFormulaProgram* find_experience_formula(
     const BattleRuleCatalog& rules, std::uint16_t id);
 bool execute_damage_formula(const RuleCatalog& pokemon_rules,
                             const DamageFormulaProgram& program,
@@ -170,5 +208,9 @@ bool execute_capture_formula(const CaptureFormulaProgram& program,
                              std::span<const std::uint8_t> random_bytes,
                              CaptureFormulaResult& result,
                              std::string& error);
+bool execute_experience_formula(const ExperienceFormulaProgram& program,
+                                const ExperienceFormulaInput& input,
+                                ExperienceFormulaResult& result,
+                                std::string& error);
 
 } // namespace pokered

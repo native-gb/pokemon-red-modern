@@ -100,6 +100,21 @@ second roll, and failure shake tier. The numeric constants are read from the
 verified cartridge routine during import. Item records will bind to stable
 ball-profile IDs; the runtime does not switch on Red item IDs.
 
+The original experience-award calculation is executable as a fourth imported
+semantic program. Its readable source is:
+
+```text
+source/battle_effects/experience.sexpr
+```
+
+The importer derives the level divisor and verifies the cartridge's half-add
+boost routine before lowering reward-data division, stat-experience awards,
+base experience, traded-Pokemon boost, and trainer-battle boost. Division and
+boost order remain program-owned so every intermediate floor is preserved.
+The future battle owner will schedule participants and Exp. All recipients;
+the generic formula executor receives those divisors without knowing Red party
+rules or item identities.
+
 The import report separately keeps status and move-effect program counts at
 zero until those domains are genuinely executable.
 

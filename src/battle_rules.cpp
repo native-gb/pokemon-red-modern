@@ -98,6 +98,21 @@ bool valid_instruction(const CaptureFormulaInstruction& instruction) {
     return false;
 }
 
+bool valid_instruction(const ExperienceFormulaInstruction& instruction) {
+    const auto& value = instruction.operands;
+    switch (instruction.opcode) {
+    case ExperienceFormulaOpcode::divide_reward_data:
+    case ExperienceFormulaOpcode::calculate_stat_experience:
+        return true;
+    case ExperienceFormulaOpcode::calculate_base_experience:
+        return value[0] != 0U;
+    case ExperienceFormulaOpcode::boost_if_traded:
+    case ExperienceFormulaOpcode::boost_if_trainer:
+        return value[0] != 0U && value[1] != 0U;
+    }
+    return false;
+}
+
 std::uint16_t interaction_multiplier(const RuleCatalog& rules,
                                      std::uint8_t attacking,
                                      std::uint8_t defending) {
@@ -124,7 +139,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '3'}) {
+        magic != std::array{'P', 'B', 'R', '4'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -331,6 +346,55 @@ bool load_battle_rules(const std::filesystem::path& path,
         }
         loaded.capture_formulas.push_back(std::move(program));
     }
+
+    std::uint16_t experience_count = 0;
+    if (!read_u16(input, experience_count) || experience_count == 0U ||
+        experience_count > 64U ||
+        !read_u16(input, loaded.original_experience_formula) ||
+        loaded.original_experience_formula >= experience_count) {
+        error = "battle rule cache has an invalid experience formula index";
+        return false;
+    }
+    loaded.experience_formulas.reserve(experience_count);
+    keys.clear();
+    for (std::uint16_t index = 0; index < experience_count; ++index) {
+        ExperienceFormulaProgram program;
+        std::uint16_t instruction_count = 0;
+        if (!read_string(input, program.key) ||
+            !keys.insert(program.key).second ||
+            !read_u16(input, instruction_count) ||
+            instruction_count == 0U || instruction_count > 64U) {
+            error = "battle rule cache has an invalid experience formula";
+            return false;
+        }
+        program.instructions.reserve(instruction_count);
+        for (std::uint16_t instruction_index = 0;
+             instruction_index < instruction_count; ++instruction_index) {
+            ExperienceFormulaInstruction instruction;
+            std::uint8_t opcode = 0;
+            if (!read_u8(input, opcode) ||
+                opcode > static_cast<std::uint8_t>(
+                             ExperienceFormulaOpcode::boost_if_trainer)) {
+                error = "battle rule cache has an unknown experience opcode";
+                return false;
+            }
+            instruction.opcode =
+                static_cast<ExperienceFormulaOpcode>(opcode);
+            for (std::uint16_t& operand : instruction.operands)
+                if (!read_u16(input, operand)) {
+                    error =
+                        "battle rule cache has truncated experience operands";
+                    return false;
+                }
+            if (!valid_instruction(instruction)) {
+                error = "battle rule cache has invalid experience operands";
+                return false;
+            }
+            program.instructions.push_back(instruction);
+        }
+        loaded.experience_formulas.push_back(std::move(program));
+    }
+
     if (input.peek() != std::char_traits<char>::eof()) {
         error = "battle rule cache contains trailing data";
         return false;

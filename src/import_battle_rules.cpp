@@ -50,6 +50,13 @@ CaptureFormulaInstruction capture_instruction(
     return {.opcode = opcode, .operands = {a, b, c, d}};
 }
 
+ExperienceFormulaInstruction experience_instruction(
+    ExperienceFormulaOpcode opcode, std::uint16_t a = 0U,
+    std::uint16_t b = 0U, std::uint16_t c = 0U,
+    std::uint16_t d = 0U) {
+    return {.opcode = opcode, .operands = {a, b, c, d}};
+}
+
 DamageFormulaProgram lift_original_damage_formula() {
     DamageFormulaProgram program;
     program.key = "gen_1_original_damage";
@@ -98,10 +105,50 @@ bool read_immediate(std::span<const std::uint8_t> rom,
                     std::uint8_t& result, std::string& error) {
     if (instruction_offset + 1U >= rom.size() ||
         rom[instruction_offset] != opcode) {
-        error = "capture formula immediate is absent from its verified source";
+        error = "battle rule immediate is absent from its verified source";
         return false;
     }
     result = rom[instruction_offset + 1U];
+    return true;
+}
+
+bool lift_original_experience_formula(
+    std::span<const std::uint8_t> rom, ExperienceFormulaProgram& program,
+    std::string& error) {
+    std::uint8_t experience_divisor = 0;
+    if (!read_immediate(rom, 0x0552B3U, 0x3EU, experience_divisor, error))
+        return false;
+
+    // BoostExp copies the low word, shifts it right once, then adds that half
+    // back into the original reward. Validate the source sequence so the
+    // semantic 3/2 ratio is tied to the user's verified cartridge.
+    constexpr std::array<std::uint8_t, 18> boost_sequence{
+        0xF0U, 0x97U, 0x47U, 0xF0U, 0x98U, 0x4FU,
+        0xCBU, 0x38U, 0xCBU, 0x19U, 0x81U, 0xE0U,
+        0x98U, 0xF0U, 0x97U, 0x88U, 0xE0U, 0x97U};
+    constexpr std::size_t boost_offset = 0x05549FU;
+    if (boost_offset + boost_sequence.size() > rom.size() ||
+        !std::equal(boost_sequence.begin(), boost_sequence.end(),
+                    rom.begin() +
+                        static_cast<std::ptrdiff_t>(boost_offset))) {
+        error = "experience boost sequence is not the verified routine";
+        return false;
+    }
+
+    program.key = "gen_1_original_experience";
+    program.instructions = {
+        experience_instruction(
+            ExperienceFormulaOpcode::divide_reward_data),
+        experience_instruction(
+            ExperienceFormulaOpcode::calculate_stat_experience),
+        experience_instruction(
+            ExperienceFormulaOpcode::calculate_base_experience,
+            experience_divisor),
+        experience_instruction(ExperienceFormulaOpcode::boost_if_traded,
+                               3U, 2U),
+        experience_instruction(ExperienceFormulaOpcode::boost_if_trainer,
+                               3U, 2U),
+    };
     return true;
 }
 
@@ -249,6 +296,7 @@ void emit_instruction(std::ostringstream& source,
 void emit_source(const DamageFormulaProgram& program,
                  const CriticalHitProgram& critical,
                  const CaptureFormulaProgram& capture,
+                 const ExperienceFormulaProgram& experience,
                  BattleRuleImport& result) {
     std::ostringstream source;
     source << "; Semantic lift from the verified cartridge's damage routines.\n"
@@ -348,6 +396,39 @@ void emit_source(const DamageFormulaProgram& program,
     add_text_file(result, "source/battle_effects/capture.sexpr",
                   capture_source.str());
 
+    std::ostringstream experience_source;
+    experience_source
+        << "; Semantic lift of the verified cartridge experience award at\n"
+        << "; 0x05524f..0x0554b1. Party scheduling and Exp. All recipient\n"
+        << "; selection remain responsibilities of the battle owner.\n\n"
+        << "experience_formula " << experience.key << '\n';
+    for (const ExperienceFormulaInstruction& instruction :
+         experience.instructions) {
+        const auto& value = instruction.operands;
+        switch (instruction.opcode) {
+        case ExperienceFormulaOpcode::divide_reward_data:
+            experience_source << "    divide_reward_data\n";
+            break;
+        case ExperienceFormulaOpcode::calculate_stat_experience:
+            experience_source << "    calculate_stat_experience\n";
+            break;
+        case ExperienceFormulaOpcode::calculate_base_experience:
+            experience_source << "    calculate_base_experience\n"
+                              << "        divisor " << value[0] << '\n';
+            break;
+        case ExperienceFormulaOpcode::boost_if_traded:
+            experience_source << "    boost_if_traded "
+                              << value[0] << ' ' << value[1] << '\n';
+            break;
+        case ExperienceFormulaOpcode::boost_if_trainer:
+            experience_source << "    boost_if_trainer "
+                              << value[0] << ' ' << value[1] << '\n';
+            break;
+        }
+    }
+    add_text_file(result, "source/battle_effects/experience.sexpr",
+                  experience_source.str());
+
     std::ostringstream report;
     report << "Pokemon Red semantic battle-rule import\n"
            << "damage_formula_programs 1\n"
@@ -355,11 +436,12 @@ void emit_source(const DamageFormulaProgram& program,
            << '\n'
            << "capture_formula_programs 1\n"
            << "critical_hit_programs 1\n"
+           << "experience_formula_programs 1\n"
            << "move_effect_programs 0\n"
            << "status_programs 0\n"
-           << "coverage_note damage, critical-hit, and capture calculations "
-              "are executable; remaining battle program domains stay "
-              "explicitly incomplete\n";
+           << "coverage_note damage, critical-hit, capture, and experience "
+              "calculations are executable; remaining battle program "
+              "domains stay explicitly incomplete\n";
     add_text_file(result, "reports/battle_rule_import_summary.txt",
                   report.str());
 }
@@ -367,8 +449,9 @@ void emit_source(const DamageFormulaProgram& program,
 void emit_cache(const DamageFormulaProgram& program,
                 const CriticalHitProgram& critical,
                 const CaptureFormulaProgram& capture,
+                const ExperienceFormulaProgram& experience,
                 BattleRuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '3'};
+    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '4'};
     write_u16(bytes, 1U);
     write_u16(bytes, 0U);
     write_string(bytes, program.key);
@@ -421,6 +504,18 @@ void emit_cache(const DamageFormulaProgram& program,
         for (const std::uint16_t operand : value.operands)
             write_u16(bytes, operand);
     }
+
+    write_u16(bytes, 1U);
+    write_u16(bytes, 0U);
+    write_string(bytes, experience.key);
+    write_u16(bytes,
+              static_cast<std::uint16_t>(experience.instructions.size()));
+    for (const ExperienceFormulaInstruction& value :
+         experience.instructions) {
+        bytes.push_back(static_cast<std::uint8_t>(value.opcode));
+        for (const std::uint16_t operand : value.operands)
+            write_u16(bytes, operand);
+    }
     result.files.push_back(
         {"compiled/battle_rules.bin", std::move(bytes)});
 }
@@ -443,11 +538,15 @@ bool decode_battle_rule_import(std::span<const std::uint8_t> rom,
     if (!lift_original_critical_hit_program(rom, critical, error)) return false;
     CaptureFormulaProgram capture;
     if (!lift_original_capture_formula(rom, capture, error)) return false;
-    emit_source(program, critical, capture, result);
-    emit_cache(program, critical, capture, result);
+    ExperienceFormulaProgram experience;
+    if (!lift_original_experience_formula(rom, experience, error))
+        return false;
+    emit_source(program, critical, capture, experience, result);
+    emit_cache(program, critical, capture, experience, result);
     result.damage_formulas = 1U;
     result.critical_hit_programs = 1U;
     result.capture_formulas = 1U;
+    result.experience_formulas = 1U;
     error.clear();
     return true;
 }

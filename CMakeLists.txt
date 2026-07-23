@@ -93,6 +93,7 @@ add_executable(native-gb-pokemon-red-modern
     src/controls.cpp
     src/controls_menu.cpp
     src/diagnostics.cpp
+    src/experience_rules.cpp
     src/interactions.cpp
     src/main.cpp
     src/maps.cpp
@@ -136,6 +137,7 @@ if(BUILD_TESTING)
         src/capture_rules.cpp
         src/clocks.cpp
         src/diagnostics.cpp
+        src/experience_rules.cpp
         src/interactions.cpp
         src/maps.cpp
         src/overlays.cpp

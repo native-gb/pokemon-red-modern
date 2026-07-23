@@ -733,6 +733,74 @@ void test_local_rule_cache(TestState& state) {
               "freeze and sleep profile captures immediately when status "
               "subtraction underflows");
     }
+
+    const pokered::ExperienceFormulaProgram* experience =
+        pokered::find_experience_formula(
+            battle_rules, battle_rules.original_experience_formula);
+    check(state,
+          experience != nullptr &&
+              experience->key == "gen_1_original_experience" &&
+              experience->instructions.size() == 5U,
+          "original experience formula resolves by imported ruleset binding");
+    if (experience != nullptr) {
+        const pokered::SpeciesRule* squirtle =
+            pokered::find_species(rules, 7U);
+        pokered::ExperienceFormulaResult boosted;
+        check(state,
+              squirtle != nullptr &&
+                  pokered::execute_experience_formula(
+                      *experience,
+                      {
+                          .base_experience = squirtle->experience_yield,
+                          .base_stats = {
+                              squirtle->base_hp,
+                              squirtle->base_attack,
+                              squirtle->base_defense,
+                              squirtle->base_speed,
+                              squirtle->base_special,
+                          },
+                          .defeated_level = 5U,
+                          .base_value_divisor = 1U,
+                          .participant_divisor = 1U,
+                          .traded = true,
+                          .trainer_battle = true,
+                      },
+                      boosted, error) &&
+                  boosted.experience == 105U &&
+                  boosted.stat_experience ==
+                      std::array<std::uint16_t, 5>{
+                          44U, 48U, 65U, 43U, 50U},
+              "experience executor awards stat experience and applies "
+              "traded then trainer boosts");
+
+        pokered::ExperienceFormulaResult divided;
+        check(state,
+              squirtle != nullptr &&
+                  pokered::execute_experience_formula(
+                      *experience,
+                      {
+                          .base_experience = squirtle->experience_yield,
+                          .base_stats = {
+                              squirtle->base_hp,
+                              squirtle->base_attack,
+                              squirtle->base_defense,
+                              squirtle->base_speed,
+                              squirtle->base_special,
+                          },
+                          .defeated_level = 5U,
+                          .base_value_divisor = 2U,
+                          .participant_divisor = 2U,
+                          .traded = false,
+                          .trainer_battle = false,
+                      },
+                      divided, error) &&
+                  divided.experience == 11U &&
+                  divided.stat_experience ==
+                      std::array<std::uint16_t, 5>{
+                          11U, 12U, 16U, 10U, 12U},
+              "experience executor preserves sequential Exp. All and "
+              "participant division floors");
+    }
 }
 
 void test_local_boot_cache(TestState& state) {
