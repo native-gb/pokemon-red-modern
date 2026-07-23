@@ -45,6 +45,20 @@ terminators, identities, unique internal-to-Dex joins, move and type
 references, progression order, and runtime-cache structure. The report at
 `reports/rule_import_summary.txt` records exact counts and source spans.
 
+## Implemented table executors
+
+Generic runtime queries now execute directly against the validated cache:
+
+- sparse dual-type effectiveness, including duplicate-type suppression;
+- exact level-up move lookup with source ordering preserved;
+- TM/HM compatibility-bit lookup;
+- level-to-experience and experience-to-level lookup;
+- level, item, and trade evolution eligibility.
+
+These functions contain no species, move, type, machine, or evolution names.
+They are the table-backed progression layer beneath future party, battle, and
+menu owners. They do not make the formula/effect domains below complete.
+
 ## Engine boundary
 
 The runtime loader is campaign-neutral. It knows how to validate typed

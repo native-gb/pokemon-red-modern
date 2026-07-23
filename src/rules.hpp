@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -109,7 +110,22 @@ bool load_rules(const std::filesystem::path& path, RuleCatalog& result, std::str
 const TypeRule* find_type(const RuleCatalog& rules, std::uint8_t id);
 const MoveRule* find_move(const RuleCatalog& rules, std::uint8_t id);
 const SpeciesRule* find_species(const RuleCatalog& rules, std::uint8_t dex_number);
+std::uint16_t type_multiplier_tenths(const RuleCatalog& rules,
+                                     std::uint8_t attacking_type,
+                                     const std::array<std::uint8_t, 2>& defending_types);
+bool species_can_learn_machine(const RuleCatalog& rules,
+                               std::uint8_t species_dex,
+                               std::uint8_t machine_index);
+std::vector<std::uint8_t> moves_learned_at_level(const RuleCatalog& rules,
+                                                 std::uint8_t species_dex,
+                                                 std::uint8_t level);
+const EvolutionRule* eligible_evolution(
+    const RuleCatalog& rules, std::uint8_t species_dex, std::uint8_t level,
+    std::optional<std::uint8_t> item, bool traded);
 std::uint32_t experience_for_level(const RuleCatalog& rules, std::uint8_t growth_curve_id,
                                    std::uint8_t level);
+std::uint8_t level_for_experience(const RuleCatalog& rules,
+                                  std::uint8_t growth_curve_id,
+                                  std::uint32_t experience);
 
 } // namespace pokered

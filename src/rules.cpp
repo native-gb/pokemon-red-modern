@@ -287,10 +287,95 @@ const SpeciesRule* find_species(const RuleCatalog& rules, std::uint8_t dex_numbe
     return &rules.species[dex_number - 1U];
 }
 
+std::uint16_t type_multiplier_tenths(
+    const RuleCatalog& rules, std::uint8_t attacking_type,
+    const std::array<std::uint8_t, 2>& defending_types) {
+    if (find_type(rules, attacking_type) == nullptr ||
+        find_type(rules, defending_types[0]) == nullptr ||
+        find_type(rules, defending_types[1]) == nullptr)
+        return 0U;
+    std::uint16_t result = 10U;
+    for (std::size_t slot = 0; slot < defending_types.size(); ++slot) {
+        if (slot != 0U && defending_types[slot] == defending_types[0]) continue;
+        const auto found = std::find_if(
+            rules.type_interactions.begin(), rules.type_interactions.end(),
+            [&](const TypeInteractionRule& interaction) {
+                return interaction.attacking_type == attacking_type &&
+                       interaction.defending_type == defending_types[slot];
+            });
+        const std::uint16_t multiplier =
+            found == rules.type_interactions.end() ? 10U
+                                                   : found->multiplier_tenths;
+        result = static_cast<std::uint16_t>((result * multiplier) / 10U);
+    }
+    return result;
+}
+
+bool species_can_learn_machine(const RuleCatalog& rules,
+                               std::uint8_t species_dex,
+                               std::uint8_t machine_index) {
+    const SpeciesRule* species = find_species(rules, species_dex);
+    if (species == nullptr || machine_index >= rules.machines.size()) return false;
+    const MachineRule& machine = rules.machines[machine_index];
+    if (machine.index != machine_index) return false;
+    const std::size_t byte = static_cast<std::size_t>(machine.index) / 8U;
+    const std::uint8_t mask =
+        static_cast<std::uint8_t>(1U << (machine.index % 8U));
+    return byte < species->machine_compatibility.size() &&
+           (species->machine_compatibility[byte] & mask) != 0U;
+}
+
+std::vector<std::uint8_t> moves_learned_at_level(const RuleCatalog& rules,
+                                                 std::uint8_t species_dex,
+                                                 std::uint8_t level) {
+    std::vector<std::uint8_t> result;
+    if (find_species(rules, species_dex) == nullptr || level == 0U ||
+        level > 100U)
+        return result;
+    for (const LearnsetRule& entry : rules.learnsets) {
+        if (entry.species_dex == species_dex && entry.level == level)
+            result.push_back(entry.move_id);
+    }
+    return result;
+}
+
+const EvolutionRule* eligible_evolution(
+    const RuleCatalog& rules, std::uint8_t species_dex, std::uint8_t level,
+    std::optional<std::uint8_t> item, bool traded) {
+    const auto found = std::find_if(
+        rules.evolutions.begin(), rules.evolutions.end(),
+        [&](const EvolutionRule& evolution) {
+            if (evolution.species_dex != species_dex ||
+                level < evolution.minimum_level)
+                return false;
+            switch (evolution.method) {
+            case EvolutionMethod::level:
+                return !item.has_value() && !traded &&
+                       level >= evolution.parameter;
+            case EvolutionMethod::item:
+                return item.has_value() && *item == evolution.parameter;
+            case EvolutionMethod::trade:
+                return traded;
+            }
+            return false;
+        });
+    return found == rules.evolutions.end() ? nullptr : &*found;
+}
+
 std::uint32_t experience_for_level(const RuleCatalog& rules, std::uint8_t growth_curve_id,
                                    std::uint8_t level) {
     if (growth_curve_id >= rules.growth_curves.size() || level == 0U || level > 100U) return 0;
     return rules.growth_curves[growth_curve_id].experience_by_level[level - 1U];
+}
+
+std::uint8_t level_for_experience(const RuleCatalog& rules,
+                                  std::uint8_t growth_curve_id,
+                                  std::uint32_t experience) {
+    if (growth_curve_id >= rules.growth_curves.size()) return 0U;
+    const auto& levels = rules.growth_curves[growth_curve_id].experience_by_level;
+    const auto upper = std::upper_bound(levels.begin(), levels.end(), experience);
+    const std::size_t count = static_cast<std::size_t>(upper - levels.begin());
+    return static_cast<std::uint8_t>(std::clamp<std::size_t>(count, 1U, 100U));
 }
 
 } // namespace pokered

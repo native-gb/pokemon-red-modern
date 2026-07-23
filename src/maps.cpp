@@ -1,5 +1,6 @@
 #include "maps.hpp"
 #include "interactions.hpp"
+#include "state.hpp"
 
 #include <algorithm>
 #include <array>
@@ -458,7 +459,8 @@ bool is_passable(const WorldState& world, std::size_t map_index, std::int32_t gl
                      map.tiles[offset]) != tileset->passable_tiles.end();
 }
 
-std::string substitute_names(std::string text) {
+std::string substitute_campaign_text(std::string text,
+                                     const CampaignState& campaign) {
     const auto replace_all = [&](std::string_view token, std::string_view replacement) {
         std::size_t position = 0;
         while ((position = text.find(token, position)) != std::string::npos) {
@@ -466,17 +468,19 @@ std::string substitute_names(std::string text) {
             position += replacement.size();
         }
     };
-    replace_all("{player_name}", "RED");
-    replace_all("{rival_name}", "GREEN");
+    replace_all("{player_name}", campaign.player_name);
+    replace_all("{rival_name}", campaign.rival_name);
     return text;
 }
 
-void open_interaction(WorldState& world, const InteractionProgram* program) {
+void open_interaction(WorldState& world, const CampaignState& campaign,
+                      const InteractionProgram* program) {
     world.dialogue = {};
     if (program != nullptr && program->status == InteractionProgramStatus::dialogue &&
         !program->pages.empty()) {
         for (const std::string& page : program->pages)
-            world.dialogue.pages.push_back(substitute_names(page));
+            world.dialogue.pages.push_back(
+                substitute_campaign_text(page, campaign));
     } else if (program != nullptr &&
                program->status == InteractionProgramStatus::decoded_native) {
         world.dialogue.pages.push_back("[Decoded interaction executor pending]");
@@ -685,8 +689,11 @@ bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
 }
 
 void step_world(WorldState& world, const InteractionCatalog& interactions,
+                const CampaignState& campaign,
                 const WorldStepInput& input) {
-    if (!world.player.initialized || world.spatial.size() != world.maps.size()) return;
+    if (!campaign.initialized || !world.player.initialized ||
+        world.spatial.size() != world.maps.size())
+        return;
     ++world.simulation_tick;
 
     if (world.dialogue.open) {
@@ -722,9 +729,10 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                 const WorldActorSpawn& spawn =
                     world.maps[actor.map_index].actors[actor.spawn_index];
                 open_interaction(
-                    world, find_interaction(interactions, target.id, spawn.text_id));
+                    world, campaign,
+                    find_interaction(interactions, target.id, spawn.text_id));
             } else if (cells.background_program_by_cell[cell] != 0U) {
-                open_interaction(world,
+                open_interaction(world, campaign,
                                  find_interaction(interactions, target.id,
                                                   cells.background_program_by_cell[cell]));
             }

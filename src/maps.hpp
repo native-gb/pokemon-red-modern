@@ -11,6 +11,7 @@
 namespace pokered {
 
 struct InteractionCatalog;
+struct CampaignState;
 
 struct MapTileset {
     std::uint8_t id{};
@@ -191,6 +192,7 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
 bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
                     std::int32_t y, std::string& error);
 void step_world(WorldState& world, const InteractionCatalog& interactions,
+                const CampaignState& campaign,
                 const WorldStepInput& input);
 void select_next_map(WorldState& world);
 void select_previous_map(WorldState& world);

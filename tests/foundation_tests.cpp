@@ -11,6 +11,7 @@
 #include "rules.hpp"
 #include "settings.hpp"
 #include "sexpr.hpp"
+#include "state.hpp"
 #include "symbols.hpp"
 
 #include <algorithm>
@@ -424,14 +425,30 @@ void test_world_spaces_and_warps(TestState& state) {
     world.maps = {std::move(surface), std::move(house)};
     pokered::InteractionCatalog interactions;
     interactions.loaded = true;
+    interactions.maps.push_back({
+        .map_id = 0,
+        .decoded = true,
+        .backgrounds =
+            {{.index = 1, .x = 0, .y = 1, .program_id = 1}},
+        .actors = {},
+        .programs =
+            {{
+                .status = pokered::InteractionProgramStatus::dialogue,
+                .pages = {"Hello {player_name}. {rival_name} is waiting."},
+            }},
+    });
+    pokered::CampaignState campaign;
     std::string error;
+    check(state,
+          pokered::begin_new_campaign(campaign, "PLAYER", "RIVAL", {}, error),
+          "campaign fixture initializes");
     check(state, pokered::initialize_world_runtime(world, interactions, error),
           "world-space fixture initializes");
 
     world.player.x = 0;
     world.player.y = 0;
     world.player.move_cooldown = 0;
-    pokered::step_world(world, interactions, {.right = true});
+    pokered::step_world(world, interactions, campaign, {.right = true});
     check(state,
           world.player.map_index == 1 && world.current_space == 1 && world.player.x == 0 &&
               world.player.y == 1,
@@ -444,11 +461,22 @@ void test_world_spaces_and_warps(TestState& state) {
     world.player.x = 0;
     world.player.y = 0;
     world.player.move_cooldown = 0;
-    pokered::step_world(world, interactions, {.down = true});
+    pokered::step_world(world, interactions, campaign, {.down = true});
     check(state,
           world.player.map_index == 0 && world.current_space == 0 && world.player.x == 1 &&
               world.player.y == 0,
           "LAST_MAP warp returns through the remembered outdoor endpoint");
+
+    world.player.x = 0;
+    world.player.y = 0;
+    world.player.facing = pokered::WorldDirection::down;
+    world.player.move_cooldown = 0;
+    pokered::step_world(world, interactions, campaign, {.activate = true});
+    check(state,
+          world.dialogue.open && world.dialogue.pages ==
+                                     std::vector<std::string>{
+                                         "Hello PLAYER. RIVAL is waiting."},
+          "world dialogue consumes campaign-owned naming results");
 }
 
 void test_local_rule_cache(TestState& state) {
@@ -483,12 +511,40 @@ void test_local_rule_cache(TestState& state) {
           bulbasaur != nullptr &&
               pokered::experience_for_level(rules, bulbasaur->growth_curve_id, 5) == 135,
           "materialized growth curve resolves level-five experience");
-    const bool fire_beats_grass = std::ranges::any_of(
-        rules.type_interactions, [](const pokered::TypeInteractionRule& interaction) {
-            return interaction.attacking_type == 20U && interaction.defending_type == 22U &&
-                   interaction.multiplier_tenths == 20U;
-        });
-    check(state, fire_beats_grass, "type chart retains Fire versus Grass");
+    check(state,
+          bulbasaur != nullptr &&
+              pokered::level_for_experience(
+                  rules, bulbasaur->growth_curve_id, 135) == 5,
+          "materialized growth curve resolves experience back to level");
+    check(state,
+          bulbasaur != nullptr &&
+              pokered::type_multiplier_tenths(
+                  rules, 20U, bulbasaur->type_ids) == 20U,
+          "type executor combines Fire versus Grass and Poison");
+
+    const std::vector<std::uint8_t> level_seven =
+        pokered::moves_learned_at_level(rules, 1U, 7U);
+    check(state, level_seven == std::vector<std::uint8_t>{73U},
+          "learnset executor resolves Bulbasaur's level-seven move");
+    check(state,
+          pokered::species_can_learn_machine(rules, 1U, 2U) &&
+              !pokered::species_can_learn_machine(rules, 1U, 23U),
+          "machine executor reads species compatibility bits");
+
+    const pokered::EvolutionRule* level_evolution =
+        pokered::eligible_evolution(rules, 1U, 16U, std::nullopt, false);
+    const pokered::EvolutionRule* item_evolution =
+        pokered::eligible_evolution(rules, 25U, 1U, 33U, false);
+    const pokered::EvolutionRule* trade_evolution =
+        pokered::eligible_evolution(rules, 64U, 1U, std::nullopt, true);
+    check(state,
+          level_evolution != nullptr &&
+              level_evolution->target_species_dex == 2U &&
+              item_evolution != nullptr &&
+              item_evolution->target_species_dex == 26U &&
+              trade_evolution != nullptr &&
+              trade_evolution->target_species_dex == 65U,
+          "evolution executor resolves level, item, and trade methods");
 }
 
 void test_local_boot_cache(TestState& state) {

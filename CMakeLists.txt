@@ -138,6 +138,7 @@ if(BUILD_TESTING)
         src/rules.cpp
         src/sexpr.cpp
         src/source_loader.cpp
+        src/state.cpp
         src/settings.cpp
         src/symbols.cpp
     )

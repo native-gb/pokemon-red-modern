@@ -88,6 +88,7 @@ int main(int argc, char** argv) {
 
     pokered::content::CatalogSummary catalog;
     pokered::GameState game;
+    pokered::CampaignState campaign;
     pokered::BootContent boot_content;
     pokered::BootState boot;
     std::string boot_error;
@@ -320,6 +321,7 @@ int main(int argc, char** argv) {
         while (accumulator >= step_seconds) {
             if (!game.paused) {
                 pokered::step_game(game);
+                pokered::step_campaign(campaign);
                 if (game.mode == pokered::Mode::overworld)
                     pokered::step_world_animation(world);
                 pokered::advance_game_clock(clocks, step_seconds);
@@ -336,7 +338,10 @@ int main(int argc, char** argv) {
                 }
                 pending_boot_input = {};
                 if (boot_result.new_game_requested) {
-                    if (!pokered::enter_world_at(
+                    if (!pokered::begin_new_campaign(
+                            campaign, boot.player_name, boot.rival_name,
+                            boot.option_values, boot_error) ||
+                        !pokered::enter_world_at(
                             world, boot_content.new_game_map_id,
                             boot_content.new_game_x, boot_content.new_game_y,
                             boot_error)) {
@@ -349,7 +354,7 @@ int main(int argc, char** argv) {
                 }
             }
             if (!game.paused && !tools_own_input && game.mode == pokered::Mode::overworld) {
-                pokered::step_world(world, interactions,
+                pokered::step_world(world, interactions, campaign,
                                     {
                                         .left = controls.left,
                                         .right = controls.right,
