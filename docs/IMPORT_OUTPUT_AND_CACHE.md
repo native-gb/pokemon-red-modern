@@ -124,7 +124,6 @@ effect counter
 
 ```text
 animation title_intro
-    scene title
     set_position logo 40 -56 native_canvas
     show logo
     tween_position logo 40 16 24 ease_out native_canvas

@@ -71,7 +71,6 @@ using ImageId = Id<struct ImageTag>;
 using SpriteId = Id<struct SpriteTag>;
 using SpriteClipId = Id<struct SpriteClipTag>;
 using PaletteId = Id<struct PaletteTag>;
-using SceneId = Id<struct SceneTag>;
 using AnimationId = Id<struct AnimationTag>;
 using InstrumentId = Id<struct InstrumentTag>;
 using MusicId = Id<struct MusicTag>;

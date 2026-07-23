@@ -15,17 +15,6 @@ enum class Filtering {
     linear,
 };
 
-enum class SceneNodeKind {
-    sprite,
-    text,
-    rectangle,
-    tile_layer,
-    particle_emitter,
-    external_actor,
-    external_battler,
-    camera,
-};
-
 enum class AudioChannelKind {
     square_1,
     square_2,
@@ -61,22 +50,6 @@ struct SpriteClipDef {
 
 struct PaletteDef {
     std::vector<Color> colors;
-};
-
-struct SceneNodeDef {
-    Symbol name;
-    SceneNodeKind kind{SceneNodeKind::sprite};
-    SpriteId sprite;
-    TextId text;
-    PaletteId palette;
-    std::int32_t layer{};
-    std::int32_t x{};
-    std::int32_t y{};
-    bool visible{true};
-};
-
-struct SceneDef {
-    std::vector<SceneNodeDef> nodes;
 };
 
 struct InstrumentDef {

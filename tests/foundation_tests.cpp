@@ -205,7 +205,6 @@ void test_predicates(TestState& state) {
 void test_animations(TestState& state) {
     constexpr std::string_view source =
         "animation original_title\n"
-        "    scene original_title\n"
         "    set_position logo 40 -20 native_canvas\n"
         "    show logo\n"
         "    parallel\n"
@@ -217,20 +216,9 @@ void test_animations(TestState& state) {
         "    show version_label\n"
         "    signal title_ready\n";
 
-    // Build an original two-node scene and resolve its one semantic sound cue.
+    // Resolve the sound cue while the title view retains ownership of persistent targets.
     pokered::content::Catalog catalog;
-    pokered::content::SceneDef scene;
-    pokered::content::SceneNodeDef logo;
-    logo.name = symbol("logo");
-    logo.visible = false;
-    scene.nodes.push_back(std::move(logo));
-    pokered::content::SceneNodeDef version_label;
-    version_label.name = symbol("version_label");
-    version_label.visible = false;
-    scene.nodes.push_back(std::move(version_label));
     pokered::Diagnostics diagnostics;
-    pokered::content::add(catalog.scenes, symbol("original_title"), std::move(scene),
-                          {"scene.sexpr", 1, 1}, diagnostics);
     pokered::content::add(catalog.sounds, symbol("title_rise"), pokered::content::SoundProgram{},
                           {"sound.sexpr", 1, 1}, diagnostics);
 
@@ -244,13 +232,17 @@ void test_animations(TestState& state) {
     check(state, program.duration == 5, "parallel duration contributes to sequence");
 
     // Step the executor and observe movement, sound, visibility, and signal output.
+    std::vector<pokered::AnimationTarget> targets(2);
+    targets[0].name = symbol("logo");
+    targets[1].name = symbol("version_label");
     pokered::AnimationState animation;
-    check(state, pokered::start_animation(program, catalog, animation, diagnostics),
+    check(state, pokered::start_animation(program, targets, animation, diagnostics),
           "animation starts");
     pokered::step_animation(animation);
-    const pokered::AnimationNode* node = pokered::find_animation_node(animation, symbol("logo"));
-    check(state, node != nullptr && node->visible, "title logo becomes visible");
-    check(state, node != nullptr && node->y == -20.0F, "title logo starts above canvas");
+    const pokered::AnimationTarget* target =
+        pokered::find_animation_target(animation, symbol("logo"));
+    check(state, target != nullptr && target->visible, "title logo becomes visible");
+    check(state, target != nullptr && target->y == -20.0F, "title logo starts above canvas");
     pokered::step_animation(animation);
     pokered::step_animation(animation);
     check(state,
@@ -259,10 +251,10 @@ void test_animations(TestState& state) {
           "parallel sound cue fires on schedule");
     while (!animation.finished)
         pokered::step_animation(animation);
-    node = pokered::find_animation_node(animation, symbol("logo"));
-    check(state, node != nullptr && node->y == 16.0F, "title logo tween reaches destination");
-    const pokered::AnimationNode* version =
-        pokered::find_animation_node(animation, symbol("version_label"));
+    target = pokered::find_animation_target(animation, symbol("logo"));
+    check(state, target != nullptr && target->y == 16.0F, "title logo tween reaches destination");
+    const pokered::AnimationTarget* version =
+        pokered::find_animation_target(animation, symbol("version_label"));
     check(state, version != nullptr && version->visible, "version label appears after tween");
     check(state,
           animation.cues.size() == 1 &&

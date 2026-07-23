@@ -12,7 +12,6 @@ namespace {
 
 struct TimelineCompiler {
     const content::Catalog& catalog;
-    const content::SceneDef& scene;
     content::AnimationProgram program;
     Diagnostics& diagnostics;
 };
@@ -43,27 +42,6 @@ bool exact_arguments(const sexpr::Form& form, std::size_t count, Diagnostics& di
               "'" + form.head.symbol.text + "' requires " + std::to_string(count) +
                   " inline argument(s)");
     return false;
-}
-
-std::optional<std::uint32_t> node_index(const sexpr::Form& form, const Symbol& name,
-                                        TimelineCompiler& compiler) {
-    const auto found =
-        std::find_if(compiler.scene.nodes.begin(), compiler.scene.nodes.end(),
-                     [&name](const content::SceneNodeDef& node) { return node.name == name; });
-    if (found == compiler.scene.nodes.end()) {
-        add_error(compiler.diagnostics, form.source, "unknown_animation_node",
-                  "scene has no node named '" + name.text + "'");
-        return std::nullopt;
-    }
-
-    // Store scene node names once so runtime events retain useful symbolic inspection.
-    const auto symbol =
-        std::find(compiler.program.symbols.begin(), compiler.program.symbols.end(), name);
-    if (symbol != compiler.program.symbols.end()) {
-        return static_cast<std::uint32_t>(std::distance(compiler.program.symbols.begin(), symbol));
-    }
-    compiler.program.symbols.push_back(name);
-    return static_cast<std::uint32_t>(compiler.program.symbols.size() - 1);
 }
 
 std::optional<std::uint32_t> intern_symbol(const Symbol& symbol, TimelineCompiler& compiler) {
@@ -138,7 +116,7 @@ std::uint32_t compile_visibility(const sexpr::Form& form, std::uint32_t at_tick,
     if (!exact_arguments(form, 1, compiler.diagnostics)) return 0;
     const Symbol* node = symbol_argument(form, 0, compiler.diagnostics);
     if (node == nullptr) return 0;
-    const auto subject = node_index(form, *node, compiler);
+    const auto subject = intern_symbol(*node, compiler);
     if (!subject) return 0;
     compiler.program.events.push_back({
         .operation = visible ? content::AnimationOp::show : content::AnimationOp::hide,
@@ -158,7 +136,7 @@ std::uint32_t compile_set_position(const sexpr::Form& form, std::uint32_t at_tic
     const auto y = integer_argument(form, 2, compiler.diagnostics);
     const Symbol* space_name = symbol_argument(form, 3, compiler.diagnostics);
     if (node == nullptr || !x || !y || space_name == nullptr) return 0;
-    const auto subject = node_index(form, *node, compiler);
+    const auto subject = intern_symbol(*node, compiler);
     const auto space = coordinate_space(*space_name);
     if (!subject || !space || !integer_fits_i32(*x) || !integer_fits_i32(*y)) {
         add_error(compiler.diagnostics, form.source, "invalid_animation_position",
@@ -190,7 +168,7 @@ std::uint32_t compile_tween_position(const sexpr::Form& form, std::uint32_t at_t
     if (node == nullptr || !x || !y || !duration || ease_name == nullptr || space_name == nullptr) {
         return 0;
     }
-    const auto subject = node_index(form, *node, compiler);
+    const auto subject = intern_symbol(*node, compiler);
     const auto ease = easing(*ease_name);
     const auto space = coordinate_space(*space_name);
     if (!subject || !ease || !space || !integer_fits_i32(*x) || !integer_fits_i32(*y) ||
@@ -302,12 +280,12 @@ float eased(float progress, content::AnimationEase ease) {
     return clamped;
 }
 
-std::optional<std::size_t> runtime_node_index(const AnimationState& state, const Symbol& name) {
+std::optional<std::size_t> runtime_target_index(const AnimationState& state, const Symbol& name) {
     const auto found =
-        std::find_if(state.nodes.begin(), state.nodes.end(),
-                     [&name](const AnimationNode& node) { return node.name == name; });
-    if (found == state.nodes.end()) return std::nullopt;
-    return static_cast<std::size_t>(std::distance(state.nodes.begin(), found));
+        std::find_if(state.targets.begin(), state.targets.end(),
+                     [&name](const AnimationTarget& target) { return target.name == name; });
+    if (found == state.targets.end()) return std::nullopt;
+    return static_cast<std::size_t>(std::distance(state.targets.begin(), found));
 }
 
 void apply_event(const content::AnimationEvent& event, AnimationState& state) {
@@ -327,17 +305,17 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
         return;
     }
 
-    const auto index = runtime_node_index(state, program.symbols[event.subject]);
+    const auto index = runtime_target_index(state, program.symbols[event.subject]);
     if (!index) return;
-    AnimationNode& node = state.nodes[*index];
+    AnimationTarget& target = state.targets[*index];
     if (event.operation == content::AnimationOp::show)
-        node.visible = true;
+        target.visible = true;
     else if (event.operation == content::AnimationOp::hide)
-        node.visible = false;
+        target.visible = false;
     else if (event.operation == content::AnimationOp::set_position) {
-        node.x = static_cast<float>(event.x);
-        node.y = static_cast<float>(event.y);
-        node.space = event.space;
+        target.x = static_cast<float>(event.x);
+        target.y = static_cast<float>(event.y);
+        target.space = event.space;
     } else if (event.operation == content::AnimationOp::tween_position) {
         state.tweens.erase(
             std::remove_if(state.tweens.begin(), state.tweens.end(),
@@ -347,14 +325,14 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
             .node = static_cast<std::uint32_t>(*index),
             .begin_tick = event.at_tick,
             .duration = event.duration,
-            .from_x = node.x,
-            .from_y = node.y,
+            .from_x = target.x,
+            .from_y = target.y,
             .to_x = static_cast<float>(event.x),
             .to_y = static_cast<float>(event.y),
             .ease = event.ease,
             .space = event.space,
         });
-        node.space = event.space;
+        target.space = event.space;
     }
 }
 
@@ -363,34 +341,19 @@ void apply_event(const content::AnimationEvent& event, AnimationState& state) {
 bool compile_animation(const sexpr::Form& source, const content::Catalog& catalog,
                        content::AnimationProgram& result, Diagnostics& diagnostics) {
     if (!sexpr::is_head(source, "animation") || source.arguments.size() != 1 ||
-        source.arguments.front().kind != sexpr::AtomKind::symbol || source.children.empty() ||
-        !sexpr::is_head(source.children.front(), "scene")) {
+        source.arguments.front().kind != sexpr::AtomKind::symbol) {
         add_error(diagnostics, source.source, "invalid_animation_definition",
-                  "animation requires a name and begins with a scene form");
+                  "animation requires exactly one symbolic name");
         return false;
     }
-    const sexpr::Form& scene_form = source.children.front();
-    const Symbol* scene_name = symbol_argument(scene_form, 0, diagnostics);
-    if (scene_name == nullptr || !exact_arguments(scene_form, 1, diagnostics)) return false;
-    const auto scene_id = content::find(catalog.scenes, *scene_name);
-    if (!scene_id) {
-        add_error(diagnostics, scene_form.source, "unknown_animation_scene",
-                  "unknown scene '" + scene_name->text + "'");
-        return false;
-    }
-    const content::SceneDef* scene = content::get(catalog.scenes, *scene_id);
-    if (scene == nullptr) return false;
 
-    // Lower structured sequence and parallel blocks into a deterministic event timeline.
+    // Lower view-independent sequence and parallel blocks into one deterministic timeline.
     TimelineCompiler compiler{
         .catalog = catalog,
-        .scene = *scene,
         .program = {},
         .diagnostics = diagnostics,
     };
-    compiler.program.scene = *scene_id;
-    const std::vector<sexpr::Form> body(source.children.begin() + 1, source.children.end());
-    compiler.program.duration = compile_sequence(body, 0, compiler);
+    compiler.program.duration = compile_sequence(source.children, 0, compiler);
     std::stable_sort(compiler.program.events.begin(), compiler.program.events.end(),
                      [](const content::AnimationEvent& left, const content::AnimationEvent& right) {
                          return left.at_tick < right.at_tick;
@@ -400,31 +363,32 @@ bool compile_animation(const sexpr::Form& source, const content::Catalog& catalo
     return true;
 }
 
-bool start_animation(const content::AnimationProgram& program, const content::Catalog& catalog,
-                     AnimationState& state, Diagnostics& diagnostics) {
-    const content::SceneDef* scene = content::get(catalog.scenes, program.scene);
-    if (scene == nullptr) {
-        add_error(diagnostics, {}, "animation_scene_out_of_range",
-                  "animation references a scene outside the active catalog");
-        return false;
+bool start_animation(const content::AnimationProgram& program,
+                     std::span<const AnimationTarget> targets, AnimationState& state,
+                     Diagnostics& diagnostics) {
+    // Persistent targets belong to the active Pokémon view and are bound by semantic name.
+    for (const content::AnimationEvent& event : program.events) {
+        if (event.operation == content::AnimationOp::play_sound ||
+            event.operation == content::AnimationOp::signal) {
+            continue;
+        }
+        const Symbol& name = program.symbols[event.subject];
+        const bool found =
+            std::find_if(targets.begin(), targets.end(), [&name](const AnimationTarget& target) {
+                return target.name == name;
+            }) != targets.end();
+        if (!found) {
+            add_error(diagnostics, event.source, "missing_animation_target",
+                      "active view does not expose animation target '" + name.text + "'");
+            return false;
+        }
     }
 
-    // Materialize mutable scene nodes; the catalog stays immutable and shareable.
+    // Copy only the small transform overrides which the active view reads while drawing.
     AnimationState started;
     started.program = &program;
     started.finished = false;
-    started.nodes.reserve(scene->nodes.size());
-    for (const content::SceneNodeDef& source : scene->nodes) {
-        started.nodes.push_back({
-            .name = source.name,
-            .kind = source.kind,
-            .x = static_cast<float>(source.x),
-            .y = static_cast<float>(source.y),
-            .layer = source.layer,
-            .visible = source.visible,
-            .space = content::CoordinateSpace::native_canvas,
-        });
-    }
+    started.targets.assign(targets.begin(), targets.end());
     state = std::move(started);
     return true;
 }
@@ -440,13 +404,13 @@ void step_animation(AnimationState& state) {
         ++state.next_event;
     }
     for (const AnimationTween& tween : state.tweens) {
-        if (tween.node >= state.nodes.size()) continue;
+        if (tween.node >= state.targets.size()) continue;
         const float progress =
             static_cast<float>(state.tick - tween.begin_tick) / static_cast<float>(tween.duration);
         const float amount = eased(progress, tween.ease);
-        AnimationNode& node = state.nodes[tween.node];
-        node.x = tween.from_x + (tween.to_x - tween.from_x) * amount;
-        node.y = tween.from_y + (tween.to_y - tween.from_y) * amount;
+        AnimationTarget& target = state.targets[tween.node];
+        target.x = tween.from_x + (tween.to_x - tween.from_x) * amount;
+        target.y = tween.from_y + (tween.to_y - tween.from_y) * amount;
     }
     state.tweens.erase(std::remove_if(state.tweens.begin(), state.tweens.end(),
                                       [&state](const AnimationTween& tween) {
@@ -460,9 +424,9 @@ void step_animation(AnimationState& state) {
     ++state.tick;
 }
 
-const AnimationNode* find_animation_node(const AnimationState& state, const Symbol& name) {
-    const auto found = runtime_node_index(state, name);
-    return found ? &state.nodes[*found] : nullptr;
+const AnimationTarget* find_animation_target(const AnimationState& state, const Symbol& name) {
+    const auto found = runtime_target_index(state, name);
+    return found ? &state.targets[*found] : nullptr;
 }
 
 } // namespace pokered

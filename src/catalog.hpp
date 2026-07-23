@@ -109,7 +109,6 @@ struct Catalog {
     Index<SpriteId, SpriteDef> sprites;
     Index<SpriteClipId, SpriteClipDef> sprite_clips;
     Index<PaletteId, PaletteDef> palettes;
-    Index<SceneId, SceneDef> scenes;
     Index<AnimationId, AnimationProgram> animations;
 
     Index<InstrumentId, InstrumentDef> instruments;

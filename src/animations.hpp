@@ -5,16 +5,15 @@
 #include "sexpr.hpp"
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace pokered {
 
-struct AnimationNode {
+struct AnimationTarget {
     Symbol name;
-    content::SceneNodeKind kind{content::SceneNodeKind::sprite};
     float x{};
     float y{};
-    std::int32_t layer{};
     bool visible{};
     content::CoordinateSpace space{content::CoordinateSpace::native_canvas};
 };
@@ -44,7 +43,7 @@ struct AnimationCue {
 
 struct AnimationState {
     const content::AnimationProgram* program{};
-    std::vector<AnimationNode> nodes;
+    std::vector<AnimationTarget> targets;
     std::vector<AnimationTween> tweens;
     std::vector<AnimationCue> cues;
     std::uint32_t tick{};
@@ -54,9 +53,10 @@ struct AnimationState {
 
 bool compile_animation(const sexpr::Form& source, const content::Catalog& catalog,
                        content::AnimationProgram& result, Diagnostics& diagnostics);
-bool start_animation(const content::AnimationProgram& program, const content::Catalog& catalog,
-                     AnimationState& state, Diagnostics& diagnostics);
+bool start_animation(const content::AnimationProgram& program,
+                     std::span<const AnimationTarget> targets, AnimationState& state,
+                     Diagnostics& diagnostics);
 void step_animation(AnimationState& state);
-const AnimationNode* find_animation_node(const AnimationState& state, const Symbol& name);
+const AnimationTarget* find_animation_target(const AnimationState& state, const Symbol& name);
 
 } // namespace pokered

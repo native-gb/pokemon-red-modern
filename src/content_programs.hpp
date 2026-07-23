@@ -134,7 +134,6 @@ struct AnimationEvent {
 };
 
 struct AnimationProgram {
-    SceneId scene;
     std::vector<Symbol> symbols;
     std::vector<AnimationEvent> events;
     std::uint32_t duration{};

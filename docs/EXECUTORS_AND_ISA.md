@@ -460,23 +460,22 @@ dedicated deterministic RNG stream.
 
 ## Animation ISA
 
-Animations mutate an `AnimationState` containing scene nodes. Render code reads
-those nodes; animation instructions never issue SDL calls.
-
-Node kinds include:
+Pokémon view renderers own their layouts. An animation receives a small set of
+named targets from the active view:
 
 ```text
-sprite
-text
-rectangle
-tile_layer
-particle_emitter
-external_actor
-external_battler
-camera
+title_logo
+version_label
+attacker
+defender
+battle_screen
 ```
 
-Lifetime and assets:
+The animation state stores transform and visibility overrides for those
+targets. It may also own temporary effects created for the animation. It never
+constructs a general scene graph or issues SDL calls.
+
+Temporary effects and bindings:
 
 ```text
 spawn
@@ -553,7 +552,6 @@ Title example:
 
 ```text
 animation title_intro
-    scene title
     set_position logo 40 -56 native_canvas
     show logo
 
@@ -629,7 +627,7 @@ Developer tools expose:
 - current generated source file and line;
 - canonical parenthesized S-expression;
 - recent instructions and operation completions;
-- active animation nodes and tracks;
+- active animation targets, temporary effects, and tracks;
 - battle effect instances and persistent slots;
 - instruction budget and stack usage;
 - breakpoints by record key or source line.
@@ -648,8 +646,8 @@ The current engine code includes:
   result;
 - a typed animation timeline compiler for `sequence`, `parallel`, `wait`,
   visibility, position, position tweens, semantic sound cues, and signals;
-- an animation executor whose mutable nodes and tweens are independent of SDL
-  and concrete rendering.
+- an animation executor whose target overrides and tweens are independent of
+  SDL and concrete rendering.
 
 Campaign, battle-effect, AI, and audio compilers remain the next implementation
 slices. Their documented instruction sets are contracts, not claims that every

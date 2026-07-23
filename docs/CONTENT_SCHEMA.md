@@ -101,7 +101,6 @@ struct Catalog {
     Index<SpriteId, SpriteDef> sprites;
     Index<SpriteClipId, SpriteClipDef> sprite_clips;
     Index<PaletteId, PaletteDef> palettes;
-    Index<SceneId, SceneDef> scenes;
     Index<AnimationId, AnimationProgram> animations;
 
     Index<InstrumentId, InstrumentDef> instruments;
@@ -400,7 +399,7 @@ encounter_slot route_1_pidgey_common
 Static encounters, gifts, trades, fishing, and Safari encounters have explicit
 records rather than overloaded encounter-slot flags.
 
-## Graphics, scenes, and animation
+## Graphics and animation
 
 Graphics records describe normalized imported assets:
 
@@ -417,19 +416,24 @@ sprite_clip player_walk_down
     frame player_down_stand duration 8
 ```
 
-Scenes declare named nodes that animation programs manipulate:
+Pokémon view renderers own their layouts. They expose only the semantic targets
+that an active animation is allowed to modify:
 
 ```text
-scene title
-    node background image title_background layer 0
-    node logo sprite title_logo layer 10 hidden
-    node version_label sprite red_version layer 20 hidden
-    node title_pokemon sprite missing_sprite layer 30 hidden
-    node trainer sprite red_title layer 40 hidden
+title view
+    title_logo
+    version_label
+
+battle view
+    attacker
+    defender
+    battle_screen
 ```
 
-Dynamic nodes can bind to semantic slots such as `attacker`, `defender`,
-`player`, `target_actor`, or a selected species picture.
+The animation state contains transform and visibility overrides for those
+targets plus temporary effects it explicitly spawns. It does not contain a
+general scene graph and does not construct battle, title, world, or menu
+screens.
 
 ## Audio
 
