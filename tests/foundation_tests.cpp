@@ -1,4 +1,5 @@
 #include "animations.hpp"
+#include "battle.hpp"
 #include "battle_animation_lab.hpp"
 #include "battle_rules.hpp"
 #include "boot.hpp"
@@ -978,6 +979,102 @@ void test_local_rule_cache(TestState& state) {
                   bypassed.random_bytes_consumed == 0U,
               "content-requested accuracy bypass guarantees a hit without "
               "consuming battle random state");
+    }
+
+    const pokered::MoveEffectProgram* ordinary_effect =
+        pokered::find_move_effect_program(battle_rules, 0U);
+    check(state,
+          ordinary_effect != nullptr &&
+              ordinary_effect->key == "ordinary_damage" &&
+              ordinary_effect->source_effect_ids ==
+                  std::vector<std::uint8_t>{0U} &&
+              ordinary_effect->instructions.size() == 4U,
+          "ordinary damage moves resolve through an imported source-effect "
+          "binding");
+    if (stats != nullptr && experience != nullptr &&
+        ordinary_effect != nullptr) {
+        pokered::PokemonState player_mon;
+        pokered::PokemonState enemy_mon;
+        check(state,
+              pokered::build_pokemon(
+                  rules, *stats, 7U, 5U,
+                  {15U, 15U, 15U, 15U}, 0x1234U, "RED",
+                  player_mon, error) &&
+                  pokered::build_pokemon(
+                      rules, *stats, 1U, 5U,
+                      {15U, 15U, 15U, 15U}, 0x2222U, "BLUE",
+                      enemy_mon, error),
+              "battle owner fixtures build from imported Pokemon content");
+
+        pokered::PartyState player_party{{player_mon}};
+        pokered::PartyState enemy_party{{enemy_mon}};
+        pokered::BattleState exchange;
+        const std::uint16_t player_hp = player_mon.current_hp;
+        const std::uint16_t enemy_hp = enemy_mon.current_hp;
+        check(state,
+              pokered::begin_battle(
+                  rules, battle_rules, player_party, enemy_party,
+                  pokered::BattleKind::wild, 0x12345678U, exchange,
+                  error) &&
+                  pokered::execute_battle_turn(
+                      rules, battle_rules, 0x1234U, player_party,
+                      exchange, {0U, 0U}, error) &&
+                  exchange.turn == 1U &&
+                  exchange.phase == pokered::BattlePhase::choose_action &&
+                  exchange.outcome == pokered::BattleOutcome::ongoing &&
+                  player_party.members[0].moves[0].pp ==
+                      player_mon.moves[0].pp - 1U &&
+                  exchange.enemy_party.members[0].moves[0].pp ==
+                      enemy_mon.moves[0].pp - 1U &&
+                  player_party.members[0].current_hp < player_hp &&
+                  exchange.enemy_party.members[0].current_hp < enemy_hp,
+              "battle owner resolves a complete speed-ordered ordinary move "
+              "exchange through imported effect and formula programs");
+
+        const pokered::PokemonState before_unsupported =
+            player_party.members[0];
+        check(state,
+              !pokered::execute_battle_turn(
+                  rules, battle_rules, 0x1234U, player_party, exchange,
+                  {1U, 0U}, error) &&
+                  player_party.members[0].moves[1].pp ==
+                      before_unsupported.moves[1].pp &&
+                  player_party.members[0].current_hp ==
+                      before_unsupported.current_hp,
+              "unimported move effects fail transactionally without "
+              "consuming campaign PP or HP");
+
+        pokered::PartyState victory_party{{player_mon}};
+        enemy_mon.current_hp = 1U;
+        pokered::BattleState victory;
+        const std::uint32_t old_experience =
+            victory_party.members[0].experience;
+        check(state,
+              pokered::begin_battle(
+                  rules, battle_rules, victory_party,
+                  pokered::PartyState{{enemy_mon}},
+                  pokered::BattleKind::wild, 0x3456789AU, victory,
+                  error),
+              "battle owner starts a deterministic victory fixture");
+        victory.player.accuracy_bypassed = true;
+        check(state,
+              pokered::execute_battle_turn(
+                  rules, battle_rules, 0x1234U, victory_party, victory,
+                  {0U, 0U}, error) &&
+                  !victory.active &&
+                  victory.phase == pokered::BattlePhase::finished &&
+                  victory.outcome ==
+                      pokered::BattleOutcome::player_victory &&
+                  victory.enemy_party.members[0].current_hp == 0U &&
+                  victory_party.members[0].experience > old_experience &&
+                  std::ranges::any_of(
+                      victory.events,
+                      [](const pokered::BattleEvent& event) {
+                          return event.kind ==
+                                 pokered::BattleEventKind::gained_experience;
+                      }),
+              "ordinary battle victory faints the enemy, awards imported "
+              "experience, and reaches a finished outcome");
     }
 }
 

@@ -84,6 +84,7 @@ endif()
 add_executable(native-gb-pokemon-red-modern
     src/accuracy_rules.cpp
     src/animations.cpp
+    src/battle.cpp
     src/battle_animation_lab.cpp
     src/battle_rules.cpp
     src/battle_ui.cpp
@@ -133,6 +134,7 @@ if(BUILD_TESTING)
         tests/foundation_tests.cpp
         src/accuracy_rules.cpp
         src/animations.cpp
+        src/battle.cpp
         src/battle_animation_lab.cpp
         src/battle_rules.cpp
         src/battle_ui.cpp

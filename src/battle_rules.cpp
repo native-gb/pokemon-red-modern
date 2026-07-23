@@ -148,6 +148,19 @@ bool valid_instruction(const AccuracyFormulaInstruction& instruction) {
     return false;
 }
 
+bool valid_instruction(const MoveEffectInstruction& instruction) {
+    switch (instruction.opcode) {
+    case MoveEffectOpcode::check_accuracy:
+    case MoveEffectOpcode::calculate_critical:
+    case MoveEffectOpcode::calculate_damage:
+    case MoveEffectOpcode::deal_damage:
+        return std::ranges::all_of(
+            instruction.operands,
+            [](std::uint16_t value) { return value == 0U; });
+    }
+    return false;
+}
+
 std::uint16_t interaction_multiplier(const RuleCatalog& rules,
                                      std::uint8_t attacking,
                                      std::uint8_t defending) {
@@ -174,7 +187,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '6'}) {
+        magic != std::array{'P', 'B', 'R', '7'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -550,6 +563,70 @@ bool load_battle_rules(const std::filesystem::path& path,
         loaded.accuracy_formulas.push_back(std::move(program));
     }
 
+    std::uint16_t effect_count = 0;
+    if (!read_u16(input, effect_count) || effect_count == 0U ||
+        effect_count > 256U) {
+        error = "battle rule cache has an invalid move-effect program count";
+        return false;
+    }
+    loaded.move_effect_programs.reserve(effect_count);
+    keys.clear();
+    std::set<std::uint8_t> bound_effects;
+    for (std::uint16_t index = 0; index < effect_count; ++index) {
+        MoveEffectProgram program;
+        std::uint16_t binding_count = 0;
+        std::uint16_t instruction_count = 0;
+        if (!read_string(input, program.key) ||
+            !keys.insert(program.key).second ||
+            !read_u16(input, binding_count) || binding_count == 0U ||
+            binding_count > 256U) {
+            error = "battle rule cache has an invalid move-effect program";
+            return false;
+        }
+        program.source_effect_ids.reserve(binding_count);
+        for (std::uint16_t binding_index = 0;
+             binding_index < binding_count; ++binding_index) {
+            std::uint8_t source_effect = 0;
+            if (!read_u8(input, source_effect) ||
+                !bound_effects.insert(source_effect).second) {
+                error =
+                    "battle rule cache has duplicate move-effect bindings";
+                return false;
+            }
+            program.source_effect_ids.push_back(source_effect);
+        }
+        if (!read_u16(input, instruction_count) ||
+            instruction_count == 0U || instruction_count > 256U) {
+            error = "battle rule cache has invalid move-effect instructions";
+            return false;
+        }
+        program.instructions.reserve(instruction_count);
+        for (std::uint16_t instruction_index = 0;
+             instruction_index < instruction_count; ++instruction_index) {
+            MoveEffectInstruction instruction;
+            std::uint8_t opcode = 0;
+            if (!read_u8(input, opcode) ||
+                opcode > static_cast<std::uint8_t>(
+                             MoveEffectOpcode::deal_damage)) {
+                error = "battle rule cache has an unknown move-effect opcode";
+                return false;
+            }
+            instruction.opcode = static_cast<MoveEffectOpcode>(opcode);
+            for (std::uint16_t& operand : instruction.operands)
+                if (!read_u16(input, operand)) {
+                    error =
+                        "battle rule cache has truncated move-effect operands";
+                    return false;
+                }
+            if (!valid_instruction(instruction)) {
+                error = "battle rule cache has invalid move-effect operands";
+                return false;
+            }
+            program.instructions.push_back(instruction);
+        }
+        loaded.move_effect_programs.push_back(std::move(program));
+    }
+
     if (input.peek() != std::char_traits<char>::eof()) {
         error = "battle rule cache contains trailing data";
         return false;
@@ -571,6 +648,18 @@ const CriticalHitProgram* find_critical_hit_program(
     return id < rules.critical_hit_programs.size()
                ? &rules.critical_hit_programs[id]
                : nullptr;
+}
+
+const MoveEffectProgram* find_move_effect_program(
+    const BattleRuleCatalog& rules, std::uint8_t source_effect_id) {
+    const auto found = std::ranges::find_if(
+        rules.move_effect_programs,
+        [source_effect_id](const MoveEffectProgram& program) {
+            return std::ranges::find(program.source_effect_ids,
+                                     source_effect_id) !=
+                   program.source_effect_ids.end();
+        });
+    return found == rules.move_effect_programs.end() ? nullptr : &*found;
 }
 
 bool execute_damage_formula(const RuleCatalog& pokemon_rules,

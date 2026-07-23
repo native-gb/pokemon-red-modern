@@ -71,6 +71,10 @@ AccuracyFormulaInstruction accuracy_instruction(
     return {.opcode = opcode, .operands = {a, b, c, d}};
 }
 
+MoveEffectInstruction move_effect_instruction(MoveEffectOpcode opcode) {
+    return {.opcode = opcode};
+}
+
 DamageFormulaProgram lift_original_damage_formula() {
     DamageFormulaProgram program;
     program.key = "gen_1_original_damage";
@@ -310,6 +314,19 @@ bool lift_original_accuracy_formula(
     return true;
 }
 
+MoveEffectProgram lift_original_ordinary_move_effect() {
+    MoveEffectProgram program;
+    program.key = "ordinary_damage";
+    program.source_effect_ids = {0U};
+    program.instructions = {
+        move_effect_instruction(MoveEffectOpcode::check_accuracy),
+        move_effect_instruction(MoveEffectOpcode::calculate_critical),
+        move_effect_instruction(MoveEffectOpcode::calculate_damage),
+        move_effect_instruction(MoveEffectOpcode::deal_damage),
+    };
+    return program;
+}
+
 bool lift_original_capture_formula(
     std::span<const std::uint8_t> rom, CaptureFormulaProgram& program,
     std::string& error) {
@@ -457,6 +474,7 @@ void emit_source(const DamageFormulaProgram& program,
                  const ExperienceFormulaProgram& experience,
                  const StatFormulaProgram& stats,
                  const AccuracyFormulaProgram& accuracy,
+                 const MoveEffectProgram& ordinary_effect,
                  BattleRuleImport& result) {
     std::ostringstream source;
     source << "; Semantic lift from the verified cartridge's damage routines.\n"
@@ -678,6 +696,38 @@ void emit_source(const DamageFormulaProgram& program,
     add_text_file(result, "source/battle_effects/accuracy.sexpr",
                   accuracy_source.str());
 
+    std::ostringstream effect_source;
+    effect_source
+        << "; Semantic ordinary-damage path selected by source effect zero.\n"
+        << "; The importer owns this cartridge binding; the battle engine\n"
+        << "; dispatches source effect IDs only through imported programs.\n\n"
+        << "move_effect " << ordinary_effect.key << '\n'
+        << "    source_effect_ids";
+    for (const std::uint8_t source_effect :
+         ordinary_effect.source_effect_ids)
+        effect_source << ' ' << static_cast<unsigned>(source_effect);
+    effect_source << '\n';
+    for (const MoveEffectInstruction& instruction :
+         ordinary_effect.instructions) {
+        switch (instruction.opcode) {
+        case MoveEffectOpcode::check_accuracy:
+            effect_source << "    check_accuracy\n";
+            break;
+        case MoveEffectOpcode::calculate_critical:
+            effect_source << "    calculate_critical\n";
+            break;
+        case MoveEffectOpcode::calculate_damage:
+            effect_source << "    calculate_damage\n";
+            break;
+        case MoveEffectOpcode::deal_damage:
+            effect_source << "    deal_damage\n";
+            break;
+        }
+    }
+    add_text_file(
+        result, "source/battle_effects/move_effects/ordinary_damage.sexpr",
+        effect_source.str());
+
     std::ostringstream report;
     report << "Pokemon Red semantic battle-rule import\n"
            << "damage_formula_programs 1\n"
@@ -688,12 +738,14 @@ void emit_source(const DamageFormulaProgram& program,
            << "experience_formula_programs 1\n"
            << "stat_formula_programs 1\n"
            << "accuracy_formula_programs 1\n"
-           << "move_effect_programs 0\n"
+           << "move_effect_programs 1\n"
+           << "bound_source_move_effects 1\n"
            << "status_programs 0\n"
            << "coverage_note damage, critical-hit, capture, experience, "
               "owned-Pokemon stat, and ordinary accuracy calculations are "
-              "executable; remaining battle program domains stay explicitly "
-              "incomplete\n";
+              "executable; source effect zero also owns the executable "
+              "ordinary-damage pipeline; remaining battle program domains "
+              "stay explicitly incomplete\n";
     add_text_file(result, "reports/battle_rule_import_summary.txt",
                   report.str());
 }
@@ -704,8 +756,9 @@ void emit_cache(const DamageFormulaProgram& program,
                 const ExperienceFormulaProgram& experience,
                 const StatFormulaProgram& stats,
                 const AccuracyFormulaProgram& accuracy,
+                const MoveEffectProgram& ordinary_effect,
                 BattleRuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '6'};
+    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '7'};
     write_u16(bytes, 1U);
     write_u16(bytes, 0U);
     write_string(bytes, program.key);
@@ -800,6 +853,21 @@ void emit_cache(const DamageFormulaProgram& program,
         for (const std::uint16_t operand : value.operands)
             write_u16(bytes, operand);
     }
+
+    write_u16(bytes, 1U);
+    write_string(bytes, ordinary_effect.key);
+    write_u16(bytes, static_cast<std::uint16_t>(
+                         ordinary_effect.source_effect_ids.size()));
+    bytes.insert(bytes.end(), ordinary_effect.source_effect_ids.begin(),
+                 ordinary_effect.source_effect_ids.end());
+    write_u16(bytes, static_cast<std::uint16_t>(
+                         ordinary_effect.instructions.size()));
+    for (const MoveEffectInstruction& value :
+         ordinary_effect.instructions) {
+        bytes.push_back(static_cast<std::uint8_t>(value.opcode));
+        for (const std::uint16_t operand : value.operands)
+            write_u16(bytes, operand);
+    }
     result.files.push_back(
         {"compiled/battle_rules.bin", std::move(bytes)});
 }
@@ -829,16 +897,19 @@ bool decode_battle_rule_import(std::span<const std::uint8_t> rom,
     if (!lift_original_stat_formula(rom, stats, error)) return false;
     AccuracyFormulaProgram accuracy;
     if (!lift_original_accuracy_formula(rom, accuracy, error)) return false;
+    const MoveEffectProgram ordinary_effect =
+        lift_original_ordinary_move_effect();
     emit_source(program, critical, capture, experience, stats, accuracy,
-                result);
+                ordinary_effect, result);
     emit_cache(program, critical, capture, experience, stats, accuracy,
-               result);
+               ordinary_effect, result);
     result.damage_formulas = 1U;
     result.critical_hit_programs = 1U;
     result.capture_formulas = 1U;
     result.experience_formulas = 1U;
     result.stat_formulas = 1U;
     result.accuracy_formulas = 1U;
+    result.move_effect_programs = 1U;
     error.clear();
     return true;
 }

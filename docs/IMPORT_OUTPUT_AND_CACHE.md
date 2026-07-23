@@ -118,6 +118,8 @@ The current vertical slice loads `battle_rules.bin`, `boot_content.bin`,
 contains validated semantic ordinary-damage, critical-hit, capture, and
 experience-award formula programs, plus owned-Pokemon stat calculation and
 ordinary accuracy/evasion calculation with the cartridge-owned stage ratios.
+It also contains the first source-effect binding and executable ordinary
+damage pipeline; unsupported source effects remain explicit import gaps.
 `boot_content.bin` contains normalized boot graphics, layouts, text programs,
 title timing tables, and initial-placement content.
 `world_interactions.bin` contains typed map-local interaction programs and

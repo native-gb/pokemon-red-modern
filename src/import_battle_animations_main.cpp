@@ -98,6 +98,8 @@ int main(int argc, char** argv) {
                     << battle_rules.stat_formulas << '\n'
                     << "accuracy_formula_programs "
                     << battle_rules.accuracy_formulas << '\n'
+                    << "move_effect_programs "
+                    << battle_rules.move_effect_programs << '\n'
                     << "boot_importer_version 1\n"
                     << "boot_images " << boot.images << '\n'
                     << "boot_title_species " << boot.title_species << '\n'
@@ -155,7 +157,9 @@ int main(int argc, char** argv) {
               << battle_rules.stat_formulas
               << " stat formula and "
               << battle_rules.accuracy_formulas
-              << " accuracy formula\n";
+              << " accuracy formula and "
+              << battle_rules.move_effect_programs
+              << " move-effect program\n";
     std::cout << "Battle rule cache: "
               << output_root / "compiled" / "battle_rules.bin" << '\n';
     std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"

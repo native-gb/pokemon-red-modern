@@ -134,8 +134,32 @@ move/PP state. Construction and experience progression join those instances
 to imported species, growth, move, learnset, evolution, experience, and stat
 programs. They do not contain Red species or move switches.
 
-The import report separately keeps status and move-effect program counts at
-zero until those domains are genuinely executable.
+Ordinary move accuracy/evasion is executable from the cartridge's complete
+13-entry stage-ratio table:
+
+```text
+source/battle_effects/accuracy.sexpr
+```
+
+The importer validates the reflected-evasion constant, two-stage calculation,
+minimum-one behavior, 255 cap, and strict random comparison. The generic
+executor therefore preserves maximum accuracy's one-in-256 miss without
+owning Gen I ratios.
+
+The first move-effect program is also executable:
+
+```text
+source/battle_effects/move_effects/ordinary_damage.sexpr
+```
+
+Its imported source-effect binding drives accuracy, critical-hit, damage, and
+HP application through the generic `BattleState` owner. A complete ordinary
+turn now owns speed ordering, PP consumption, deterministic RNG, fainting,
+replacement, victory/defeat, and experience awards transactionally.
+Unsupported effects reject the turn without consuming PP or HP.
+
+The import report keeps status programs at zero and reports exactly one bound
+source move effect until those domains are genuinely executable.
 
 ## Engine boundary
 
@@ -154,7 +178,9 @@ record is complete data but not a complete playable battle implementation.
 This distinction is enforced in the import report:
 
 ```text
-semantic_move_effect_programs 0
+move_effect_programs 1
+bound_source_move_effects 1
+status_programs 0
 ```
 
 The count must eventually equal the complete reachable effect-program set.

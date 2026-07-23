@@ -156,6 +156,24 @@ struct AccuracyFormulaProgram {
     std::vector<AccuracyFormulaInstruction> instructions;
 };
 
+enum class MoveEffectOpcode : std::uint8_t {
+    check_accuracy,
+    calculate_critical,
+    calculate_damage,
+    deal_damage,
+};
+
+struct MoveEffectInstruction {
+    MoveEffectOpcode opcode{MoveEffectOpcode::check_accuracy};
+    std::array<std::uint16_t, 4> operands{};
+};
+
+struct MoveEffectProgram {
+    std::string key;
+    std::vector<std::uint8_t> source_effect_ids;
+    std::vector<MoveEffectInstruction> instructions;
+};
+
 struct BattleRuleCatalog {
     std::filesystem::path source;
     std::vector<DamageFormulaProgram> damage_formulas;
@@ -170,6 +188,7 @@ struct BattleRuleCatalog {
     std::uint16_t original_stat_formula{};
     std::vector<AccuracyFormulaProgram> accuracy_formulas;
     std::uint16_t original_accuracy_formula{};
+    std::vector<MoveEffectProgram> move_effect_programs;
     bool loaded{};
 };
 
@@ -276,6 +295,8 @@ const StatFormulaProgram* find_stat_formula(
     const BattleRuleCatalog& rules, std::uint16_t id);
 const AccuracyFormulaProgram* find_accuracy_formula(
     const BattleRuleCatalog& rules, std::uint16_t id);
+const MoveEffectProgram* find_move_effect_program(
+    const BattleRuleCatalog& rules, std::uint8_t source_effect_id);
 bool execute_damage_formula(const RuleCatalog& pokemon_rules,
                             const DamageFormulaProgram& program,
                             const DamageFormulaInput& input,
