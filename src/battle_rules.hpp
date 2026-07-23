@@ -52,12 +52,51 @@ struct CriticalHitProgram {
     std::vector<CriticalHitInstruction> instructions;
 };
 
+enum class CaptureFormulaOpcode : std::uint8_t {
+    sample_first_roll,
+    guaranteed_capture,
+    apply_status_reduction,
+    calculate_capture_value,
+    compare_primary,
+    sample_second_roll,
+    calculate_shake_value,
+    select_shakes,
+};
+
+struct CaptureFormulaInstruction {
+    CaptureFormulaOpcode opcode{CaptureFormulaOpcode::sample_first_roll};
+    std::array<std::uint16_t, 4> operands{};
+};
+
+struct CaptureBallProfile {
+    std::string key;
+    std::uint8_t rejection_ceiling{};
+    std::uint8_t hp_divisor{};
+    std::uint8_t shake_divisor{};
+    bool guaranteed{};
+};
+
+struct CaptureStatusProfile {
+    std::string key;
+    std::uint8_t first_roll_reduction{};
+    std::uint8_t shake_bonus{};
+};
+
+struct CaptureFormulaProgram {
+    std::string key;
+    std::vector<CaptureBallProfile> ball_profiles;
+    std::vector<CaptureStatusProfile> status_profiles;
+    std::vector<CaptureFormulaInstruction> instructions;
+};
+
 struct BattleRuleCatalog {
     std::filesystem::path source;
     std::vector<DamageFormulaProgram> damage_formulas;
     std::uint16_t original_damage_formula{};
     std::vector<CriticalHitProgram> critical_hit_programs;
     std::uint16_t original_critical_hit_program{};
+    std::vector<CaptureFormulaProgram> capture_formulas;
+    std::uint16_t original_capture_formula{};
     bool loaded{};
 };
 
@@ -92,11 +131,29 @@ struct CriticalHitResult {
     bool critical{};
 };
 
+struct CaptureFormulaInput {
+    std::uint16_t ball_profile{};
+    std::uint16_t status_profile{};
+    std::uint8_t catch_rate{};
+    std::uint16_t current_hp{};
+    std::uint16_t maximum_hp{};
+};
+
+struct CaptureFormulaResult {
+    std::uint16_t capture_value{};
+    std::uint16_t shake_value{};
+    std::size_t random_bytes_consumed{};
+    std::uint8_t shakes{};
+    bool caught{};
+};
+
 bool load_battle_rules(const std::filesystem::path& path,
                        BattleRuleCatalog& result, std::string& error);
 const DamageFormulaProgram* find_damage_formula(
     const BattleRuleCatalog& rules, std::uint16_t id);
 const CriticalHitProgram* find_critical_hit_program(
+    const BattleRuleCatalog& rules, std::uint16_t id);
+const CaptureFormulaProgram* find_capture_formula(
     const BattleRuleCatalog& rules, std::uint16_t id);
 bool execute_damage_formula(const RuleCatalog& pokemon_rules,
                             const DamageFormulaProgram& program,
@@ -108,5 +165,10 @@ bool execute_critical_hit_program(const CriticalHitProgram& program,
                                   std::span<const std::uint8_t> random_bytes,
                                   CriticalHitResult& result,
                                   std::string& error);
+bool execute_capture_formula(const CaptureFormulaProgram& program,
+                             const CaptureFormulaInput& input,
+                             std::span<const std::uint8_t> random_bytes,
+                             CaptureFormulaResult& result,
+                             std::string& error);
 
 } // namespace pokered

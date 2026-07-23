@@ -90,6 +90,8 @@ int main(int argc, char** argv) {
                     << battle_rules.damage_formulas << '\n'
                     << "critical_hit_programs "
                     << battle_rules.critical_hit_programs << '\n'
+                    << "capture_formula_programs "
+                    << battle_rules.capture_formulas << '\n'
                     << "boot_importer_version 1\n"
                     << "boot_images " << boot.images << '\n'
                     << "boot_title_species " << boot.title_species << '\n'
@@ -139,7 +141,9 @@ int main(int argc, char** argv) {
     std::cout << "Imported " << battle_rules.damage_formulas
               << " semantic damage formula and "
               << battle_rules.critical_hit_programs
-              << " critical-hit program\n";
+              << " critical-hit program, plus "
+              << battle_rules.capture_formulas
+              << " capture formula\n";
     std::cout << "Battle rule cache: "
               << output_root / "compiled" / "battle_rules.bin" << '\n';
     std::cout << "Readable scripts: " << output_root / "source" / "animations" / "battle_moves"

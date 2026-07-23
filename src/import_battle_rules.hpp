@@ -14,6 +14,7 @@ struct BattleRuleImport {
     std::vector<GeneratedFile> files;
     std::size_t damage_formulas{};
     std::size_t critical_hit_programs{};
+    std::size_t capture_formulas{};
 };
 
 // Lift the verified cartridge's battle calculation routines into semantic,

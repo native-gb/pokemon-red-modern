@@ -78,6 +78,26 @@ bool valid_instruction(const CriticalHitInstruction& instruction) {
     return false;
 }
 
+bool valid_instruction(const CaptureFormulaInstruction& instruction) {
+    const auto& value = instruction.operands;
+    switch (instruction.opcode) {
+    case CaptureFormulaOpcode::sample_first_roll:
+    case CaptureFormulaOpcode::guaranteed_capture:
+    case CaptureFormulaOpcode::apply_status_reduction:
+        return true;
+    case CaptureFormulaOpcode::calculate_capture_value:
+        return value[0] != 0U && value[1] != 0U && value[2] != 0U;
+    case CaptureFormulaOpcode::compare_primary:
+    case CaptureFormulaOpcode::sample_second_roll:
+        return value[0] != 0U;
+    case CaptureFormulaOpcode::calculate_shake_value:
+        return value[0] != 0U && value[1] != 0U;
+    case CaptureFormulaOpcode::select_shakes:
+        return value[0] < value[1] && value[1] < value[2];
+    }
+    return false;
+}
+
 std::uint16_t interaction_multiplier(const RuleCatalog& rules,
                                      std::uint8_t attacking,
                                      std::uint8_t defending) {
@@ -104,7 +124,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '2'}) {
+        magic != std::array{'P', 'B', 'R', '3'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -215,6 +235,101 @@ bool load_battle_rules(const std::filesystem::path& path,
             program.instructions.push_back(instruction);
         }
         loaded.critical_hit_programs.push_back(std::move(program));
+    }
+
+    std::uint16_t capture_count = 0;
+    if (!read_u16(input, capture_count) || capture_count == 0U ||
+        capture_count > 64U ||
+        !read_u16(input, loaded.original_capture_formula) ||
+        loaded.original_capture_formula >= capture_count) {
+        error = "battle rule cache has an invalid capture formula index";
+        return false;
+    }
+    loaded.capture_formulas.reserve(capture_count);
+    keys.clear();
+    for (std::uint16_t index = 0; index < capture_count; ++index) {
+        CaptureFormulaProgram program;
+        std::uint16_t ball_count = 0;
+        std::uint16_t status_count = 0;
+        std::uint16_t instruction_count = 0;
+        if (!read_string(input, program.key) ||
+            !keys.insert(program.key).second ||
+            !read_u16(input, ball_count) || ball_count == 0U ||
+            ball_count > 64U) {
+            error = "battle rule cache has an invalid capture formula";
+            return false;
+        }
+
+        std::set<std::string> profile_keys;
+        program.ball_profiles.reserve(ball_count);
+        for (std::uint16_t profile_index = 0; profile_index < ball_count;
+             ++profile_index) {
+            CaptureBallProfile profile;
+            std::uint8_t guaranteed = 0;
+            if (!read_string(input, profile.key) ||
+                !profile_keys.insert(profile.key).second ||
+                !read_u8(input, profile.rejection_ceiling) ||
+                !read_u8(input, profile.hp_divisor) ||
+                !read_u8(input, profile.shake_divisor) ||
+                !read_u8(input, guaranteed) || profile.hp_divisor == 0U ||
+                profile.shake_divisor == 0U || guaranteed > 1U) {
+                error = "battle rule cache has an invalid capture ball profile";
+                return false;
+            }
+            profile.guaranteed = guaranteed != 0U;
+            program.ball_profiles.push_back(std::move(profile));
+        }
+
+        if (!read_u16(input, status_count) || status_count == 0U ||
+            status_count > 64U) {
+            error = "battle rule cache has invalid capture status profiles";
+            return false;
+        }
+        profile_keys.clear();
+        program.status_profiles.reserve(status_count);
+        for (std::uint16_t profile_index = 0; profile_index < status_count;
+             ++profile_index) {
+            CaptureStatusProfile profile;
+            if (!read_string(input, profile.key) ||
+                !profile_keys.insert(profile.key).second ||
+                !read_u8(input, profile.first_roll_reduction) ||
+                !read_u8(input, profile.shake_bonus)) {
+                error =
+                    "battle rule cache has an invalid capture status profile";
+                return false;
+            }
+            program.status_profiles.push_back(std::move(profile));
+        }
+
+        if (!read_u16(input, instruction_count) ||
+            instruction_count == 0U || instruction_count > 64U) {
+            error = "battle rule cache has invalid capture instructions";
+            return false;
+        }
+        program.instructions.reserve(instruction_count);
+        for (std::uint16_t instruction_index = 0;
+             instruction_index < instruction_count; ++instruction_index) {
+            CaptureFormulaInstruction instruction;
+            std::uint8_t opcode = 0;
+            if (!read_u8(input, opcode) ||
+                opcode > static_cast<std::uint8_t>(
+                             CaptureFormulaOpcode::select_shakes)) {
+                error = "battle rule cache has an unknown capture opcode";
+                return false;
+            }
+            instruction.opcode = static_cast<CaptureFormulaOpcode>(opcode);
+            for (std::uint16_t& operand : instruction.operands)
+                if (!read_u16(input, operand)) {
+                    error = "battle rule cache has truncated capture operands";
+                    return false;
+                }
+            if (!valid_instruction(instruction)) {
+                error = "battle rule cache has invalid capture operands";
+                return false;
+            }
+            program.instructions.push_back(instruction);
+        }
+        loaded.capture_formulas.push_back(std::move(program));
     }
     if (input.peek() != std::char_traits<char>::eof()) {
         error = "battle rule cache contains trailing data";

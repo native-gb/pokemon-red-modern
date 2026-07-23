@@ -645,6 +645,94 @@ void test_local_rule_cache(TestState& state) {
               "high-critical move rate saturates at the cartridge threshold "
               "and keeps strict comparison");
     }
+
+    const pokered::CaptureFormulaProgram* capture =
+        pokered::find_capture_formula(
+            battle_rules, battle_rules.original_capture_formula);
+    check(state,
+          capture != nullptr &&
+              capture->key == "gen_1_original_capture" &&
+              capture->ball_profiles.size() == 5U &&
+              capture->status_profiles.size() == 3U &&
+              capture->instructions.size() == 8U,
+          "original capture formula and modifier profiles resolve by "
+          "imported ruleset binding");
+    if (capture != nullptr) {
+        constexpr std::array<std::uint8_t, 1> master_roll{0xFFU};
+        pokered::CaptureFormulaResult master;
+        check(state,
+              pokered::execute_capture_formula(
+                  *capture,
+                  {
+                      .ball_profile = 0U,
+                      .status_profile = 0U,
+                      .catch_rate = 3U,
+                      .current_hp = 45U,
+                      .maximum_hp = 45U,
+                  },
+                  master_roll, master, error) &&
+                  master.caught && master.random_bytes_consumed == 1U,
+              "Master Ball profile preserves the cartridge's initial random "
+              "call before guaranteed capture");
+
+        constexpr std::array<std::uint8_t, 2> ordinary_rolls{40U, 100U};
+        pokered::CaptureFormulaResult ordinary_capture;
+        check(state,
+              pokered::execute_capture_formula(
+                  *capture,
+                  {
+                      .ball_profile = 3U,
+                      .status_profile = 0U,
+                      .catch_rate = 45U,
+                      .current_hp = 39U,
+                      .maximum_hp = 45U,
+                  },
+                  ordinary_rolls, ordinary_capture, error) &&
+                  ordinary_capture.caught &&
+                  ordinary_capture.capture_value == 106U &&
+                  ordinary_capture.random_bytes_consumed == 2U,
+              "ordinary capture executes HP arithmetic and the inclusive "
+              "second-roll comparison");
+
+        constexpr std::array<std::uint8_t, 2> rejected_rolls{200U, 150U};
+        pokered::CaptureFormulaResult rejected_capture;
+        check(state,
+              pokered::execute_capture_formula(
+                  *capture,
+                  {
+                      .ball_profile = 1U,
+                      .status_profile = 0U,
+                      .catch_rate = 45U,
+                      .current_hp = 45U,
+                      .maximum_hp = 45U,
+                  },
+                  rejected_rolls, rejected_capture, error) &&
+                  !rejected_capture.caught &&
+                  rejected_capture.capture_value == 86U &&
+                  rejected_capture.shake_value == 10U &&
+                  rejected_capture.shakes == 1U &&
+                  rejected_capture.random_bytes_consumed == 2U,
+              "Ultra Ball profile rejection-samples and calculates the exact "
+              "failure shake tier");
+
+        constexpr std::array<std::uint8_t, 1> status_roll{24U};
+        pokered::CaptureFormulaResult status_capture;
+        check(state,
+              pokered::execute_capture_formula(
+                  *capture,
+                  {
+                      .ball_profile = 3U,
+                      .status_profile = 2U,
+                      .catch_rate = 1U,
+                      .current_hp = 45U,
+                      .maximum_hp = 45U,
+                  },
+                  status_roll, status_capture, error) &&
+                  status_capture.caught &&
+                  status_capture.random_bytes_consumed == 1U,
+              "freeze and sleep profile captures immediately when status "
+              "subtraction underflows");
+    }
 }
 
 void test_local_boot_cache(TestState& state) {

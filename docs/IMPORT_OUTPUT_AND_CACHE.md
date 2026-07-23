@@ -115,8 +115,8 @@ data/runtime/imports/pokemon_red_us_rev_0/
 The exact chunk format can change without changing the readable source syntax.
 The current vertical slice loads `battle_rules.bin`, `boot_content.bin`,
 `world_maps.bin`, and `world_interactions.bin` directly. `battle_rules.bin`
-contains validated semantic formula programs, initially the ordinary damage
-program. `boot_content.bin` contains normalized boot graphics, layouts, text
+contains validated semantic ordinary-damage, critical-hit, and capture formula
+programs. `boot_content.bin` contains normalized boot graphics, layouts, text
 programs, title timing tables, and initial-placement content.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Normal startup does not parse the readable `.sexpr` files.

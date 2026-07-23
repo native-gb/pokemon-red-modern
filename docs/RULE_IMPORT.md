@@ -86,8 +86,22 @@ move ratios, random-byte rotation, and strict threshold comparison. This
 preserves the original Focus Energy defect through imported program data
 without a Red move-ID switch or formula constants in the engine.
 
-The import report separately keeps capture, status, and move-effect program
-counts at zero until those domains are genuinely executable.
+The original capture calculation is executable as a third imported semantic
+program. Its readable source is:
+
+```text
+source/battle_effects/capture.sexpr
+```
+
+It contains five ball profiles, three status modifier profiles, and ordered
+operations for the first-roll ceiling and rejection sampling, guaranteed
+capture, status subtraction, HP-derived capture value, catch-rate comparison,
+second roll, and failure shake tier. The numeric constants are read from the
+verified cartridge routine during import. Item records will bind to stable
+ball-profile IDs; the runtime does not switch on Red item IDs.
+
+The import report separately keeps status and move-effect program counts at
+zero until those domains are genuinely executable.
 
 ## Engine boundary
 
