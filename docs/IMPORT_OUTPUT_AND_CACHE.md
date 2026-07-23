@@ -151,7 +151,7 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
-twenty-three programs import Pallet Town's Oak interception, all three Oak's Lab
+twenty-eight programs import Pallet Town's Oak interception, all three Oak's Lab
 starter-ball branches, all three first-rival battle branches, the Viridian
 Mart Oak's Parcel handoff, Oak's parcel-return/Pokédex request, and all three
 starter-dependent branches of the first Route 22 rival encounter. They also
@@ -216,6 +216,13 @@ imported item ID, attempt quantity one, hide that exact actor only on success,
 substitute its imported name into the shared receipt text, and leave it present
 on capacity failure. The readable peer is
 `source/scripts/campaign/loose_item_pickup.sexpr`.
+Five additional Pewter Gym fibers import Brock's trainer class and party,
+pre-battle and badge presentation, loss exit, TM34 success/full-bag/retry
+branches, both badge-state bits, the gym-trainer event, Pewter guide and Route
+22 actor toggles, Route 22 event reset, post-reward advice, and both before/
+after states of the gym guide. The guide's YES/NO branch uses a generic bounded
+choice jump; the engine contains no Brock, Bide, badge, or Pewter-specific
+case. Its readable peer is `source/scripts/campaign/pewter_gym.sexpr`.
 The cache also initializes all 228 records from the cartridge toggleable-object
 table, including its 32 default-hidden actors. The readable accounting peer is
 `source/world/initial_actor_visibility.sexpr`; runtime initialization does not

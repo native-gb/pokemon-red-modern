@@ -157,6 +157,7 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.player_path.empty();
     case CampaignOpcode::jump_if_player_y:
     case CampaignOpcode::jump_if_item_grant_failed:
+    case CampaignOpcode::jump_if_choice_no:
         return instruction.b == 0U && instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
@@ -320,7 +321,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'B'}) {
+        magic != std::array{'P', 'C', 'P', 'C'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -462,7 +463,9 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
                  instruction.opcode ==
                      CampaignOpcode::jump_if_player_y ||
                  instruction.opcode ==
-                     CampaignOpcode::jump_if_item_grant_failed) &&
+                     CampaignOpcode::jump_if_item_grant_failed ||
+                 instruction.opcode ==
+                     CampaignOpcode::jump_if_choice_no) &&
                 instruction.value >= program.instructions.size()) {
                 error =
                     "campaign program jump leaves its instruction range";
@@ -879,6 +882,10 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             fiber.waiting_battle = true;
             error.clear();
             return true;
+        case CampaignOpcode::jump_if_choice_no:
+            if (fiber.last_choice != 0U)
+                fiber.instruction_index = instruction.value;
+            break;
         case CampaignOpcode::say_if_player_won:
             if (campaign.battle.outcome !=
                 BattleOutcome::player_victory)

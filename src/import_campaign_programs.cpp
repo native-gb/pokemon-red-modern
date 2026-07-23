@@ -122,6 +122,31 @@ constexpr std::size_t kRoute1MartSampleTextOffset = 0x01CAE3U;
 constexpr std::size_t kRoute1GotPotionTextOffset = 0x01CAE8U;
 constexpr std::size_t kRoute1RepeatTextOffset = 0x01CAEEU;
 constexpr std::size_t kRoute1NoRoomTextOffset = 0x01CAF3U;
+constexpr std::size_t kPewterGymBrockPostBattleOffset = 0x05C3D2U;
+constexpr std::size_t kPewterGymBeatBrockSetOffset = 0x05C3E6U;
+constexpr std::size_t kPewterGymTmGrantOffset = 0x05C3EBU;
+constexpr std::size_t kPewterGymGotTmSetOffset = 0x05C3FAU;
+constexpr std::size_t kPewterGymBagFullOffset = 0x05C401U;
+constexpr std::size_t kPewterGymObtainedBadgeSetOffset = 0x05C408U;
+constexpr std::size_t kPewterGymBeatGymSetOffset = 0x05C40DU;
+constexpr std::size_t kPewterGymHideGymGuideOffset = 0x05C412U;
+constexpr std::size_t kPewterGymHideRouteRivalOffset = 0x05C41CU;
+constexpr std::size_t kPewterGymClearRouteFlagsOffset = 0x05C426U;
+constexpr std::size_t kPewterGymTrainerDefeatedSetOffset = 0x05C42DU;
+constexpr std::size_t kPewterGymBrockActorOffset = 0x05C53AU;
+constexpr std::size_t kPewterGymBrockCheckOffset = 0x05C44FU;
+constexpr std::size_t kPewterGymGotTmCheckOffset = 0x05C456U;
+constexpr std::size_t kPewterGymBrockPreBattleTextOffset = 0x05C49EU;
+constexpr std::size_t kPewterGymBrockAdviceTextOffset = 0x05C4A3U;
+constexpr std::size_t kPewterGymWaitTakeThisTextOffset = 0x05C4A8U;
+constexpr std::size_t kPewterGymReceivedTmTextOffset = 0x05C4ADU;
+constexpr std::size_t kPewterGymTmNoRoomTextOffset = 0x05C4B7U;
+constexpr std::size_t kPewterGymBadgeTextOffset = 0x05C4BCU;
+constexpr std::size_t kPewterGymGuidePreAdviceTextOffset = 0x05C515U;
+constexpr std::size_t kPewterGymGuideBeginAdviceTextOffset = 0x05C51AU;
+constexpr std::size_t kPewterGymGuideAdviceTextOffset = 0x05C51FU;
+constexpr std::size_t kPewterGymGuideFreeServiceTextOffset = 0x05C524U;
+constexpr std::size_t kPewterGymGuidePostBattleTextOffset = 0x05C529U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -174,6 +199,7 @@ enum class Opcode : std::uint8_t {
     actor_path_by_player_x,
     actor_path_by_player_y,
     start_trainer_battle,
+    jump_if_choice_no,
     say_if_player_won,
     say_if_player_lost,
     end_if_player_lost,
@@ -339,6 +365,37 @@ struct Route1PotionProgram {
     DecodedTextProgram got_item;
     DecodedTextProgram repeat;
     DecodedTextProgram no_room;
+};
+
+struct PewterGymProgram {
+    std::uint8_t map_id{};
+    std::uint8_t brock_actor_index{};
+    std::uint8_t guide_actor_index{};
+    std::uint8_t trainer_class{};
+    std::uint16_t trainer_party{};
+    std::uint32_t beat_brock_flag{};
+    std::uint32_t got_tm_flag{};
+    std::uint32_t obtained_badge_flag{};
+    std::uint32_t beat_gym_flag{};
+    std::uint32_t gym_trainer_defeated_flag{};
+    std::uint32_t first_route_rival_flag{};
+    std::uint32_t route_rival_wants_battle_flag{};
+    std::uint16_t tm_item_id{};
+    std::uint8_t tm_quantity{};
+    std::string tm_name;
+    ToggleActor gym_guide;
+    ToggleActor route_rival;
+    DecodedTextProgram pre_battle;
+    DecodedTextProgram badge;
+    DecodedTextProgram wait_take_this;
+    DecodedTextProgram received_tm;
+    DecodedTextProgram no_room;
+    DecodedTextProgram post_battle_advice;
+    DecodedTextProgram guide_pre_advice;
+    DecodedTextProgram guide_begin_advice;
+    DecodedTextProgram guide_advice;
+    DecodedTextProgram guide_free_service;
+    DecodedTextProgram guide_post_battle;
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -1750,6 +1807,188 @@ bool decode_route_1_potion_program(
     return true;
 }
 
+bool decode_pewter_gym_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ToggleActor>& toggle_actors,
+    const std::vector<ImportedItemName>& item_names,
+    const Route22FirstRivalProgram& route_22,
+    PewterGymProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 54U;
+    result.brock_actor_index = 1U;
+    result.guide_actor_index = 3U;
+
+    constexpr std::array<std::uint8_t, 5> post_battle_check{
+        0xFAU, 0x57U, 0xD0U, 0xFEU, 0xFFU};
+    if (!has_bytes(
+            rom, kPewterGymBrockPostBattleOffset,
+            post_battle_check) ||
+        kPewterGymBrockActorOffset + 8U > rom.size() ||
+        rom[kPewterGymBrockActorOffset + 3U] != 0xFFU ||
+        (rom[kPewterGymBrockActorOffset + 5U] & 0xC0U) !=
+            0x40U ||
+        (rom[kPewterGymBrockActorOffset + 5U] & 0x3FU) !=
+            result.brock_actor_index ||
+        rom[kPewterGymBrockActorOffset + 6U] <=
+            kTrainerOpponentOffset ||
+        rom[kPewterGymBrockActorOffset + 7U] == 0U) {
+        error =
+            "Pewter Gym Brock actor does not match the verified ROM";
+        return false;
+    }
+    result.trainer_class = static_cast<std::uint8_t>(
+        rom[kPewterGymBrockActorOffset + 6U] -
+        kTrainerOpponentOffset);
+    result.trainer_party = static_cast<std::uint16_t>(
+        rom[kPewterGymBrockActorOffset + 7U] - 1U);
+
+    if (!decode_checked_event(
+            rom, kPewterGymBrockCheckOffset,
+            result.beat_brock_flag, error) ||
+        kPewterGymGotTmCheckOffset + 2U > rom.size() ||
+        rom[kPewterGymGotTmCheckOffset] != 0xCBU ||
+        rom[kPewterGymGotTmCheckOffset + 1U] < 0x47U ||
+        (rom[kPewterGymGotTmCheckOffset + 1U] - 0x47U) % 8U !=
+            0U) {
+        if (error.empty())
+            error =
+                "Pewter Gym Brock reward checks do not match the verified ROM";
+        return false;
+    }
+    result.got_tm_flag =
+        result.beat_brock_flag -
+        (result.beat_brock_flag % 8U) +
+        (rom[kPewterGymGotTmCheckOffset + 1U] - 0x47U) / 8U;
+
+    std::uint32_t set_beat_brock = 0U;
+    std::uint32_t set_got_tm = 0U;
+    if (!decode_set_event(
+            rom, kPewterGymBeatBrockSetOffset,
+            set_beat_brock, error) ||
+        !decode_set_event(
+            rom, kPewterGymGotTmSetOffset,
+            set_got_tm, error) ||
+        set_beat_brock != result.beat_brock_flag ||
+        set_got_tm != result.got_tm_flag ||
+        !decode_set_event(
+            rom, kPewterGymObtainedBadgeSetOffset,
+            result.obtained_badge_flag, error) ||
+        !decode_set_event(
+            rom, kPewterGymBeatGymSetOffset,
+            result.beat_gym_flag, error) ||
+        !decode_set_event(
+            rom, kPewterGymTrainerDefeatedSetOffset,
+            result.gym_trainer_defeated_flag, error)) {
+        if (error.empty())
+            error =
+                "Pewter Gym reward mutations do not match the verified ROM";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    constexpr std::array<std::uint8_t, 7> bag_full_text{
+        0x3EU, 0x06U, 0xE0U, 0x8CU, 0xCDU, 0x20U, 0x29U};
+    if (kPewterGymTmGrantOffset + 6U > rom.size() ||
+        rom[kPewterGymTmGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kPewterGymTmGrantOffset + 3U,
+            give_item_call) ||
+        !has_bytes(
+            rom, kPewterGymBagFullOffset,
+            bag_full_text)) {
+        error =
+            "Pewter Gym TM grant does not match the verified ROM";
+        return false;
+    }
+    result.tm_quantity = rom[kPewterGymTmGrantOffset + 1U];
+    result.tm_item_id = rom[kPewterGymTmGrantOffset + 2U];
+    const auto item = std::ranges::find_if(
+        item_names,
+        [&result](const ImportedItemName& candidate) {
+            return candidate.item_id == result.tm_item_id;
+        });
+    if (result.tm_quantity == 0U || item == item_names.end()) {
+        error =
+            "Pewter Gym TM is absent from the imported item catalogue";
+        return false;
+    }
+    result.tm_name = item->name;
+
+    if (!decode_toggle_operation(
+            rom, kPewterGymHideGymGuideOffset, 0x11U,
+            toggle_actors, result.gym_guide, error) ||
+        !decode_toggle_operation(
+            rom, kPewterGymHideRouteRivalOffset, 0x11U,
+            toggle_actors, result.route_rival, error))
+        return false;
+
+    if (kPewterGymClearRouteFlagsOffset + 7U > rom.size() ||
+        rom[kPewterGymClearRouteFlagsOffset] != 0x21U) {
+        error =
+            "Pewter Gym Route 22 reset does not match the verified ROM";
+        return false;
+    }
+    const std::uint16_t route_flag_address =
+        static_cast<std::uint16_t>(
+            rom[kPewterGymClearRouteFlagsOffset + 1U] |
+            static_cast<std::uint16_t>(
+                rom[kPewterGymClearRouteFlagsOffset + 2U])
+                << 8U);
+    if (!decode_reused_event(
+            rom, kPewterGymClearRouteFlagsOffset + 3U,
+            route_flag_address, false,
+            result.first_route_rival_flag, error) ||
+        !decode_reused_event(
+            rom, kPewterGymClearRouteFlagsOffset + 5U,
+            route_flag_address, false,
+            result.route_rival_wants_battle_flag, error) ||
+        result.first_route_rival_flag !=
+            route_22.first_rival_flag ||
+        result.route_rival_wants_battle_flag !=
+            route_22.wants_battle_flag ||
+        result.route_rival.map_id != route_22.map_id ||
+        result.route_rival.actor_index !=
+            route_22.actor_index) {
+        if (error.empty())
+            error =
+                "Pewter Gym Route 22 reset disagrees with imported Route 22 state";
+        return false;
+    }
+
+    const std::array<std::pair<std::size_t, DecodedTextProgram*>, 11>
+        text_programs{{
+            {kPewterGymBrockPreBattleTextOffset,
+             &result.pre_battle},
+            {kPewterGymBadgeTextOffset, &result.badge},
+            {kPewterGymWaitTakeThisTextOffset,
+             &result.wait_take_this},
+            {kPewterGymReceivedTmTextOffset,
+             &result.received_tm},
+            {kPewterGymTmNoRoomTextOffset, &result.no_room},
+            {kPewterGymBrockAdviceTextOffset,
+             &result.post_battle_advice},
+            {kPewterGymGuidePreAdviceTextOffset,
+             &result.guide_pre_advice},
+            {kPewterGymGuideBeginAdviceTextOffset,
+             &result.guide_begin_advice},
+            {kPewterGymGuideAdviceTextOffset,
+             &result.guide_advice},
+            {kPewterGymGuideFreeServiceTextOffset,
+             &result.guide_free_service},
+            {kPewterGymGuidePostBattleTextOffset,
+             &result.guide_post_battle},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(rom, 0x17U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Pewter Gym dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -2593,6 +2832,101 @@ GeneratedFile readable_loose_item_source(
     };
 }
 
+GeneratedFile readable_pewter_gym_source(
+    const PewterGymProgram& gym) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Pewter Gym program.\n"
+        << "; Trainer owner, reward branches, flags, item, toggles, and every page below are ROM-derived.\n\n"
+        << "campaign_program pewter_gym_brock_battle\n"
+        << "    trigger map pewter_gym actor_activation "
+        << static_cast<unsigned>(gym.brock_actor_index) << '\n'
+        << "    absent_flag 0x" << std::hex
+        << gym.beat_brock_flag << std::dec << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(gym.pre_battle.pages, "        ")
+        << "    start_trainer_battle class "
+        << static_cast<unsigned>(gym.trainer_class)
+        << " party " << gym.trainer_party << '\n'
+        << "    if_player_won say\n"
+        << page_source(gym.badge.pages, "        ")
+        << "    if_player_lost end\n"
+        << "    continue pewter_gym_brock_reward\n\n"
+        << "campaign_program pewter_gym_brock_tm_retry\n"
+        << "    trigger map pewter_gym actor_activation "
+        << static_cast<unsigned>(gym.brock_actor_index) << '\n'
+        << "    required_flag 0x" << std::hex
+        << gym.beat_brock_flag << '\n'
+        << "    absent_flag 0x" << gym.got_tm_flag
+        << std::dec << '\n'
+        << "    continue pewter_gym_brock_reward\n\n"
+        << "campaign_fragment pewter_gym_brock_reward\n"
+        << "    say\n"
+        << page_source(gym.wait_take_this.pages, "        ")
+        << "    set_flag 0x" << std::hex
+        << gym.beat_brock_flag << std::dec << '\n'
+        << "    try_give_item " << source_quote(gym.tm_name)
+        << " rom_id " << gym.tm_item_id << " quantity "
+        << static_cast<unsigned>(gym.tm_quantity) << '\n'
+        << "    if_item_grant_failed say\n"
+        << page_source(gym.no_room.pages, "        ")
+        << "    else\n"
+        << "        say\n"
+        << page_source(gym.received_tm.pages, "            ")
+        << "        set_flag 0x" << std::hex
+        << gym.got_tm_flag << std::dec << '\n'
+        << "    set_flag obtained_badge 0x" << std::hex
+        << gym.obtained_badge_flag << '\n'
+        << "    set_flag beat_gym 0x"
+        << gym.beat_gym_flag << '\n'
+        << "    hide_actor map_" << std::dec
+        << static_cast<unsigned>(gym.gym_guide.map_id)
+        << " actor "
+        << static_cast<unsigned>(gym.gym_guide.actor_index)
+        << '\n'
+        << "    hide_actor map_"
+        << static_cast<unsigned>(gym.route_rival.map_id)
+        << " actor "
+        << static_cast<unsigned>(gym.route_rival.actor_index)
+        << '\n'
+        << "    clear_flag 0x" << std::hex
+        << gym.first_route_rival_flag << '\n'
+        << "    clear_flag 0x"
+        << gym.route_rival_wants_battle_flag << '\n'
+        << "    set_flag 0x"
+        << gym.gym_trainer_defeated_flag << std::dec
+        << "\n    unlock_input\n    end\n\n"
+        << "campaign_program pewter_gym_brock_advice\n"
+        << "    required_flag 0x" << std::hex
+        << gym.got_tm_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(gym.post_battle_advice.pages, "        ")
+        << "\ncampaign_program pewter_gym_guide_before_brock\n"
+        << "    absent_flag 0x" << std::hex
+        << gym.beat_gym_flag << std::dec << '\n'
+        << "    ask_yes_no\n"
+        << page_source(gym.guide_pre_advice.pages, "        ")
+        << "    if_yes say\n"
+        << page_source(gym.guide_begin_advice.pages, "        ")
+        << "    if_no say\n"
+        << page_source(gym.guide_free_service.pages, "        ")
+        << "    say\n"
+        << page_source(gym.guide_advice.pages, "        ")
+        << "\ncampaign_program pewter_gym_guide_after_brock\n"
+        << "    required_flag 0x" << std::hex
+        << gym.beat_gym_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(gym.guide_post_battle.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/pewter_gym.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -2744,6 +3078,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     Route1PotionProgram route_1_potion;
     if (!decode_route_1_potion_program(
             rom, route_1_potion, error))
+        return false;
+    PewterGymProgram pewter_gym;
+    if (!decode_pewter_gym_program(
+            rom, toggle_actors, item_names,
+            route_22_first_rival, pewter_gym, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -3489,7 +3828,191 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(potion_repeat));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'B'};
+    const auto append_pewter_reward =
+        [&](std::vector<Instruction>& reward_instructions) {
+            reward_instructions.push_back(
+                dialogue(pewter_gym.wait_take_this.pages));
+            reward_instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                pewter_gym.beat_brock_flag));
+            reward_instructions.push_back(operation(
+                Opcode::try_give_item,
+                pewter_gym.tm_quantity, 0U,
+                pewter_gym.tm_item_id));
+            const std::size_t pewter_bag_full_jump =
+                reward_instructions.size();
+            reward_instructions.push_back(operation(
+                Opcode::jump_if_item_grant_failed));
+            reward_instructions.push_back(
+                dialogue(pewter_gym.received_tm.pages));
+            reward_instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                pewter_gym.got_tm_flag));
+            const std::size_t victory_jump =
+                reward_instructions.size();
+            reward_instructions.push_back(
+                operation(Opcode::jump));
+            reward_instructions[pewter_bag_full_jump].value =
+                static_cast<std::uint32_t>(
+                    reward_instructions.size());
+            reward_instructions.push_back(
+                dialogue(pewter_gym.no_room.pages));
+            reward_instructions[victory_jump].value =
+                static_cast<std::uint32_t>(
+                    reward_instructions.size());
+            reward_instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                pewter_gym.obtained_badge_flag));
+            reward_instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                pewter_gym.beat_gym_flag));
+            reward_instructions.push_back(operation(
+                Opcode::hide_actor,
+                pewter_gym.gym_guide.actor_index, 0U,
+                pewter_gym.gym_guide.map_id));
+            reward_instructions.push_back(operation(
+                Opcode::hide_actor,
+                pewter_gym.route_rival.actor_index, 0U,
+                pewter_gym.route_rival.map_id));
+            reward_instructions.push_back(operation(
+                Opcode::clear_flag, 0U, 0U,
+                pewter_gym.first_route_rival_flag));
+            reward_instructions.push_back(operation(
+                Opcode::clear_flag, 0U, 0U,
+                pewter_gym.route_rival_wants_battle_flag));
+            reward_instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                pewter_gym.gym_trainer_defeated_flag));
+            reward_instructions.push_back(
+                operation(Opcode::unlock_input));
+            reward_instructions.push_back(
+                operation(Opcode::end));
+        };
+
+    Program brock_battle;
+    brock_battle.key = "pewter_gym_brock_battle";
+    brock_battle.trigger_kind =
+        TriggerKind::actor_activation;
+    brock_battle.trigger_map = pewter_gym.map_id;
+    brock_battle.trigger_x =
+        pewter_gym.brock_actor_index;
+    brock_battle.absent_flag =
+        pewter_gym.beat_brock_flag;
+    brock_battle.instructions.push_back(
+        operation(Opcode::lock_input));
+    brock_battle.instructions.push_back(
+        dialogue(pewter_gym.pre_battle.pages));
+    brock_battle.instructions.push_back(operation(
+        Opcode::start_trainer_battle,
+        pewter_gym.trainer_class, 0U,
+        pewter_gym.trainer_party));
+    Instruction badge = operation(
+        Opcode::say_if_player_won);
+    badge.pages = pewter_gym.badge.pages;
+    brock_battle.instructions.push_back(std::move(badge));
+    brock_battle.instructions.push_back(
+        operation(Opcode::end_if_player_lost));
+    append_pewter_reward(brock_battle.instructions);
+    programs.push_back(std::move(brock_battle));
+
+    Program brock_tm_retry;
+    brock_tm_retry.key = "pewter_gym_brock_tm_retry";
+    brock_tm_retry.trigger_kind =
+        TriggerKind::actor_activation;
+    brock_tm_retry.trigger_map = pewter_gym.map_id;
+    brock_tm_retry.trigger_x =
+        pewter_gym.brock_actor_index;
+    brock_tm_retry.required_flag =
+        pewter_gym.beat_brock_flag;
+    brock_tm_retry.absent_flag =
+        pewter_gym.got_tm_flag;
+    brock_tm_retry.instructions.push_back(
+        operation(Opcode::lock_input));
+    append_pewter_reward(brock_tm_retry.instructions);
+    programs.push_back(std::move(brock_tm_retry));
+
+    Program brock_advice;
+    brock_advice.key = "pewter_gym_brock_advice";
+    brock_advice.trigger_kind =
+        TriggerKind::actor_activation;
+    brock_advice.trigger_map = pewter_gym.map_id;
+    brock_advice.trigger_x =
+        pewter_gym.brock_actor_index;
+    brock_advice.required_flag =
+        pewter_gym.got_tm_flag;
+    brock_advice.instructions.push_back(
+        operation(Opcode::lock_input));
+    brock_advice.instructions.push_back(
+        dialogue(pewter_gym.post_battle_advice.pages));
+    brock_advice.instructions.push_back(
+        operation(Opcode::unlock_input));
+    brock_advice.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(brock_advice));
+
+    Program guide_before;
+    guide_before.key = "pewter_gym_guide_before_brock";
+    guide_before.trigger_kind =
+        TriggerKind::actor_activation;
+    guide_before.trigger_map = pewter_gym.map_id;
+    guide_before.trigger_x =
+        pewter_gym.guide_actor_index;
+    guide_before.absent_flag =
+        pewter_gym.beat_gym_flag;
+    guide_before.instructions.push_back(
+        operation(Opcode::lock_input));
+    Instruction guide_question =
+        operation(Opcode::ask_yes_no);
+    guide_question.pages =
+        pewter_gym.guide_pre_advice.pages;
+    guide_before.instructions.push_back(
+        std::move(guide_question));
+    const std::size_t guide_no_jump =
+        guide_before.instructions.size();
+    guide_before.instructions.push_back(
+        operation(Opcode::jump_if_choice_no));
+    guide_before.instructions.push_back(
+        dialogue(pewter_gym.guide_begin_advice.pages));
+    const std::size_t guide_advice_jump =
+        guide_before.instructions.size();
+    guide_before.instructions.push_back(
+        operation(Opcode::jump));
+    guide_before.instructions[guide_no_jump].value =
+        static_cast<std::uint32_t>(
+            guide_before.instructions.size());
+    guide_before.instructions.push_back(
+        dialogue(pewter_gym.guide_free_service.pages));
+    guide_before.instructions[guide_advice_jump].value =
+        static_cast<std::uint32_t>(
+            guide_before.instructions.size());
+    guide_before.instructions.push_back(
+        dialogue(pewter_gym.guide_advice.pages));
+    guide_before.instructions.push_back(
+        operation(Opcode::unlock_input));
+    guide_before.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(guide_before));
+
+    Program guide_after;
+    guide_after.key = "pewter_gym_guide_after_brock";
+    guide_after.trigger_kind =
+        TriggerKind::actor_activation;
+    guide_after.trigger_map = pewter_gym.map_id;
+    guide_after.trigger_x =
+        pewter_gym.guide_actor_index;
+    guide_after.required_flag =
+        pewter_gym.beat_gym_flag;
+    guide_after.instructions.push_back(
+        operation(Opcode::lock_input));
+    guide_after.instructions.push_back(
+        dialogue(pewter_gym.guide_post_battle.pages));
+    guide_after.instructions.push_back(
+        operation(Opcode::unlock_input));
+    guide_after.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(guide_after));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'C'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u16(cache, item_names.size());
@@ -3543,6 +4066,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_loose_item_source(
             item_names, found_item, no_item_room));
+    result.files.push_back(
+        readable_pewter_gym_source(pewter_gym));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

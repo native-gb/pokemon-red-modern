@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first twenty-three imported story fibers are executable from the ordinary
+The first twenty-eight imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -753,6 +753,16 @@ hides the actor on success, and leaves it available when the imported bag
 capacity rejects a new stack. This covers all three Viridian Forest items and
 is the same path later maps use.
 
+Pewter Gym is now a complete imported first-badge slice. Brock presents his
+cartridge pre-battle pages and hands imported trainer class 34, party 0 to the
+ordinary battle owner, producing level-12 Geodude and level-14 Onix. Defeat
+ends without progression. Victory presents the BoulderBadge pages, then runs
+the source TM34 transaction: full bags retain a retry state, while a later
+activation grants TM34 and switches Brock to his post-battle advice. Both
+badge-state bits, the gym trainer event, Route 22 event reset, and the two
+source actor removals come from the imported program. The gym guide also owns
+his cartridge YES/NO advice split and post-Brock response.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -779,10 +789,12 @@ clerk and verifies the imported Potion stack and event, then checks all three
 Viridian Forest loose items, including full-bag retention followed by a
 successful retry, name substitution, inventory stacking, and actor removal.
 The Forest's three trainer actors are also required to resolve to imported
-trainer-interaction records.
+trainer-interaction records. It then drives Brock through the imported trainer
+party, deliberately fails the TM grant with a full bag while retaining the
+badge, frees a slot, retries TM34, and verifies the final advice state.
 
 This is not full-campaign completion. The next campaign blocker begins with
-Pewter Gym/Brock's reward flow and Pewter City's progression gates. Every
+Pewter City's progression gates and the Route 3/Mt. Moon campaign slice. Every
 later map program still requires semantic lifting and the remaining acceptance
 gates above stay open.
 

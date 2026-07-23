@@ -1745,6 +1745,7 @@ void test_local_pallet_campaign_program(TestState& state) {
     check(state,
           programs.naming.maximum_length == 10U &&
               programs.inventory_stack_capacity == 20U &&
+              programs.programs.size() == 28U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
               programs.item_names.front().name == "MASTER BALL" &&
@@ -2563,6 +2564,184 @@ void test_local_pallet_campaign_program(TestState& state) {
                   campaign.inventory, 4U) == 6U &&
               !actor_visible(51U, 7U),
           "generic Forest Poké Ball pickup stacks and hides");
+    world.dialogue = {};
+
+    // The Pewter guide's ROM branch is a small but useful conditional-fiber
+    // check: NO selects the "free service" response, then rejoins the common
+    // party-order advice.
+    check(state,
+          pokered::enter_world_at(world, 54U, 7, 11, error),
+          "campaign fixture enters Pewter Gym below its guide");
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.choice.open,
+          "Pewter guide opens its imported yes/no advice");
+    pokered::step_world(
+        world, interactions, campaign, {.down = true});
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find("free") !=
+                  std::string::npos,
+          "Pewter guide NO branch selects the imported free-service response");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Pewter guide advice advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() && !campaign.input_locked,
+          "Pewter guide rejoins and completes its imported advice");
+
+    // Fill every imported stack slot so Brock's first reward pass exercises
+    // the cartridge's retryable TM branch after a real battle handoff.
+    for (std::uint16_t item_id = 100U; item_id < 116U; ++item_id)
+        check(state,
+              pokered::give_inventory_item(
+                  campaign.inventory, item_id, 1U),
+              "campaign fixture fills one Brock reward bag slot");
+    check(state,
+          pokered::enter_world_at(world, 54U, 4, 2, error),
+          "campaign fixture reaches Brock");
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Brock activation starts its imported campaign fiber");
+    for (std::size_t guard = 0U;
+         guard < 1000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Brock challenge advances to battle");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id ==
+                  34U &&
+              campaign.trainer_battle_request.trainer_party_index ==
+                  0U,
+          "Brock fiber selects imported trainer class 34 party 0");
+    battle_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign,
+              battle_view, battle_began, error),
+          "Brock request starts its owned trainer battle");
+    check(state,
+          battle_began && campaign.battle.active &&
+              campaign.battle.enemy_party.members.size() == 2U &&
+              campaign.battle.enemy_party.members[0].species_dex ==
+                  74U &&
+              campaign.battle.enemy_party.members[0].level == 12U &&
+              campaign.battle.enemy_party.members[1].species_dex ==
+                  95U &&
+              campaign.battle.enemy_party.members[1].level == 14U,
+          "Brock battle materializes imported Geodude and Onix");
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Brock victory and reward flow advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BAAFU) &&
+              !pokered::campaign_flag(campaign, 0x6BAAEU) &&
+              pokered::campaign_flag(campaign, 0x69AB0U) &&
+              pokered::campaign_flag(campaign, 0x6B950U) &&
+              pokered::campaign_flag(campaign, 0x6BAAAU) &&
+              !pokered::campaign_flag(campaign, 0x6BF58U) &&
+              !pokered::campaign_flag(campaign, 0x6BF5FU) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 0xEAU) == 0U &&
+              !actor_visible(2U, 5U),
+          "Brock full-bag victory grants badge state, preserves TM retry, and applies map state");
+
+    for (std::uint16_t item_id = 100U; item_id < 116U; ++item_id)
+        check(state,
+              pokered::take_inventory_item(
+                  campaign.inventory, item_id, 1U),
+              "campaign fixture frees one Brock reward bag slot");
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 54U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Brock TM retry starts after freeing room");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Brock TM retry advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BAAEU) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 0xEAU) == 1U,
+          "Brock retry grants imported TM34 and records its event");
+
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 54U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "kinds of trainers") != std::string::npos,
+          "Brock switches to imported post-reward advice");
 }
 
 } // namespace

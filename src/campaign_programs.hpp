@@ -52,6 +52,7 @@ enum class CampaignOpcode : std::uint8_t {
     actor_path_by_player_x,
     actor_path_by_player_y,
     start_trainer_battle,
+    jump_if_choice_no,
     say_if_player_won,
     say_if_player_lost,
     end_if_player_lost,
