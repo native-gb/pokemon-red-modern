@@ -1,4 +1,4 @@
-; Synthetic battle view used when no locally imported cartridge pack exists.
+; Synthetic battle view used by parser and composition tests.
 battle_ui development
     tiles 121 122 123 124 125 126 127 237 113 98 99 107 109 110
     zero_hp_condition "OUT"

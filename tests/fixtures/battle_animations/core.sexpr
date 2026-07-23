@@ -1,4 +1,4 @@
-; Original development fixtures for the isolated battle-animation lab.
+; Synthetic fixtures for the isolated battle-animation parser and executor.
 
 animation tackle
     set_offset attacker 0 0 native_canvas

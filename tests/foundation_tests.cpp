@@ -282,7 +282,8 @@ void test_animations(TestState& state) {
 void test_battle_animation_lab(TestState& state) {
     // Load the same readable source tree used by the visual development view.
     const std::filesystem::path source_root =
-        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "dev" / "battle_animations";
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "tests" / "fixtures" /
+        "battle_animations";
     pokered::Diagnostics diagnostics;
     pokered::BattleAnimationLab lab;
     check(state, pokered::load_battle_animation_lab(source_root, lab, diagnostics),
@@ -302,7 +303,7 @@ void test_battle_animation_lab(TestState& state) {
 void test_battle_ui(TestState& state) {
     // Load a synthetic readable fixture, then compose semantic slots from parsed data.
     const std::filesystem::path source_root =
-        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "data" / "dev" / "battle_ui";
+        std::filesystem::path(POKERED_MODERN_SOURCE_DIR) / "tests" / "fixtures" / "battle_ui";
     pokered::Diagnostics diagnostics;
     pokered::BattleUiState ui;
     check(state, pokered::load_battle_ui_source(source_root, ui, diagnostics),

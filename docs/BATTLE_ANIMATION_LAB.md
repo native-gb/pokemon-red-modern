@@ -5,9 +5,8 @@
 The lab isolates visual battle-animation development from battle rules,
 campaign progression, and the reference executable. With a local Red import,
 it renders the selected species' back picture as the player and front picture
-as the opponent. Without one, it retains original placeholder battlers. It
-runs readable animation programs against the semantic targets `attacker`,
-`defender`, and `battle_screen`.
+as the opponent. It runs readable animation programs against the semantic
+targets `attacker`, `defender`, and `battle_screen`.
 
 The battle view owns battler layout. Animation programs may transform those
 targets and own temporary effects created with `spawn`. There is no general
@@ -31,10 +30,10 @@ The current animation name appears in the top bar.
 
 ## Source
 
-Committed original fixtures live in:
+Small synthetic parser fixtures live in:
 
 ```text
-data/dev/battle_animations/
+tests/fixtures/battle_animations/
 ```
 
 For example:
@@ -80,14 +79,13 @@ data/runtime/imports/pokemon_red_us_rev_0/
     compiled/battle_pictures.bin
 ```
 
-The decoder is a shared, byte-in/byte-buffers-out C++ module linked into the
-game and the standalone native importer. The shell command builds and invokes
-that small native adapter. A WebAssembly build can pass browser-selected ROM
-bytes to the same decoder without Python, a subprocess, or native filesystem
-access.
+The decoder is compiled into the standalone native importer and is not linked
+into the game executable. The shell command builds and invokes that tool. A
+browser build can compile the same decoding sources into a separate importer
+WebAssembly module without Python, a subprocess, or native filesystem access.
 
-Normal runs prefer these imported programs when the directory exists and
-otherwise use the committed fixtures. Every ROM special-effect command is
+Normal runs consume these locally imported programs. The committed fixtures
+are test inputs, not a fallback campaign. Every ROM special-effect command is
 retained by name in generated source and all 39 used special-effect routines
 lower without a generic fallback.
 
