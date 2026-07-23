@@ -10,16 +10,21 @@ verify ROM
   -> identify version and language
   -> decode source domains
   -> normalize to semantic records
+  -> emit readable deterministic source
   -> resolve typed references
   -> validate invariants and completeness
   -> compile scripts and animation tracks
   -> pack atlases and audio
-  -> write versioned local cache atomically
+  -> write compiled runtime pack atomically
 ```
 
 The cache key includes the ROM digest, importer version, schema version,
 enhancement profile, visual profile, and language. A mismatch rebuilds
 the cache. The source ROM is never modified.
+
+Normal startup loads the compiled pack. It does not reopen the ROM or parse the
+generated source tree. The full lifecycle and directory layout are specified in
+[IMPORT_OUTPUT_AND_CACHE.md](IMPORT_OUTPUT_AND_CACHE.md).
 
 ## Pre-extraction inventory
 
@@ -75,6 +80,9 @@ provenance
 At load time, each domain becomes a typed index keyed by stable IDs. The runtime
 does not read source text, JSON, ROM offsets, or asset files from arbitrary
 paths during gameplay.
+
+The generated source remains available locally for inspection, source-level
+debugging, and copying records into explicit overlay packages.
 
 ## Maps
 

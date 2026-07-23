@@ -5,9 +5,10 @@ imported campaign.
 
 This repository is not an emulator and does not contain Pokémon Red game data.
 It will verify a user-supplied supported cartridge, decode it into typed
-semantic content, and cache that content locally. Runtime logic, rendering,
-tooling, enhancements, and future authored campaigns remain independent of ROM
-layout.
+semantic content, emit readable local source, and compile a runtime pack.
+Normal launches load that pack without reparsing the cartridge or generated
+source. Runtime logic, rendering, tooling, enhancements, and future authored
+campaigns remain independent of ROM layout.
 
 ## Current milestone
 
@@ -31,4 +32,9 @@ No cartridge is required for the scaffold to open.
 See [PLAN.md](PLAN.md) for the implementation order and
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the ownership model. The
 campaign coroutine design is in
-[docs/SCRIPT_LANGUAGE.md](docs/SCRIPT_LANGUAGE.md).
+[docs/SCRIPT_LANGUAGE.md](docs/SCRIPT_LANGUAGE.md). Detailed contracts:
+
+- [content records and indexes](docs/CONTENT_SCHEMA.md);
+- [executors and typed ISAs](docs/EXECUTORS_AND_ISA.md);
+- [packages and patches](docs/PACKAGES_AND_PATCHES.md);
+- [generated source and compiled cache](docs/IMPORT_OUTPUT_AND_CACHE.md).

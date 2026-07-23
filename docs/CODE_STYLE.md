@@ -16,6 +16,10 @@ Use `MapId`, `ActorId`, `SpeciesId`, `MoveId`, `ItemId`, `ScriptId`, and
 `PartyMember`, and `ScriptFiber`; do not expose cartridge-era names unless they
 are necessary in importer provenance.
 
+Authored/generated content symbols, program operations, package IDs, and local
+source filenames use `snake_case`. C++ types use the repository's existing
+PascalCase convention and ordinary functions/variables use `snake_case`.
+
 ## Separate definition from state
 
 Immutable definitions live in the content pack. Mutable instances live in game

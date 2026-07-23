@@ -8,9 +8,10 @@ Red campaign packs, graphics, dialogue, music, maps, encounter tables, parties,
 or other extracted cartridge content.
 
 A user supplies a supported cartridge locally. The importer verifies it and
-creates a private, disposable cache. The executable remains useful as an engine
-and tool host without that cache, and original campaigns can target the same
-schemas.
+creates readable normalized source and a private compiled cache. Both remain
+local and ignored by version control. The executable remains useful as an
+engine and tool host without that cache, and original campaigns can target the
+same schemas.
 
 Clean architecture still matters after local import:
 

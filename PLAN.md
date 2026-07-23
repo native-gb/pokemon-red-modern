@@ -12,13 +12,16 @@ rendering or memory constraints.
 - [x] Independent repository and incremental build.
 - [x] Windowed GPU host with centered 10:9 view.
 - [x] Full-screen F1 player and F2 developer layouts.
-- [x] Flat source layout with gameplay isolated from concrete render and host APIs.
+- [x] Flat source layout with gameplay isolated from concrete render and host
+  APIs.
 - [x] Architecture, code-style, distribution, and extraction plans.
 
 ## Milestone 1 — reproducible content pack
 
 - Verify supported ROM identity and header.
 - Define pack manifest, schema versions, cache keys, and provenance.
+- Emit deterministic readable source for every imported content/program domain.
+- Compile the readable source into a startup-ready runtime pack.
 - Import text, species, moves, types, items, trainers, encounters, growth,
   maps, tiles, sprites, palettes, audio, and scripts into typed indexes.
 - Materialize complete maps rather than retaining the cartridge streaming
@@ -26,7 +29,8 @@ rendering or memory constraints.
 - Add a pack inspector and exhaustive completeness report.
 
 Exit: importing the supported ROM produces the same validated pack every time,
-and every known source domain is accounted for.
+every known source domain is accounted for, and later launches load the
+compiled pack without reparsing the ROM or source tree.
 
 ## Milestone 2 — Pallet Town vertical slice
 

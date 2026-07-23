@@ -13,16 +13,19 @@ timelines.
 `main.cpp` constructs and connects these independent domains:
 
 ```text
-local ROM -> importer -> immutable ContentPack -> cache
-                                  |
-input -> deterministic GameState -> semantic events
-                                  |
-                    RenderState + audio director
+local ROM -> importer -> readable local source -> compiled ContentPack
+                                                    |
+input -> deterministic GameState -> semantic events |
+                                  |                 |
+                    RenderState + audio director <--'
                          |                 |
                     GPU renderer       audio device
 
-host window / controls / persistence / ImGui observe the edges
+window / controls / persistence / ImGui observe the edges
 ```
+
+ROM decoding and source parsing are build steps. Normal startup validates a
+small manifest and loads the compiled pack.
 
 There is no all-purpose application context. Dependencies are parameters or
 small domain-owned handles. Shutdown follows the visible ownership order.
@@ -79,6 +82,9 @@ Indexes use stable typed IDs. Imported content is immutable after validation.
 Maps are fully materialized during import; cartridge streaming is not a runtime
 concept.
 
+The concrete record/index contract is
+[CONTENT_SCHEMA.md](CONTENT_SCHEMA.md).
+
 ### Runtime
 
 `GameState` contains only deterministic mutable state:
@@ -119,6 +125,11 @@ scripts, choices, and movement completion are explicit.
 Use native C++ systems for reusable mechanics. Use imported scripts for
 campaign-specific sequencing. A script may request a battle or transition; the
 corresponding native executor owns its rules.
+
+Predicates, campaign scripts, battle effects, and animations share one indented
+S-expression reader but have separate typed compilers and legal operation sets.
+See [SCRIPT_LANGUAGE.md](SCRIPT_LANGUAGE.md) and
+[EXECUTORS_AND_ISA.md](EXECUTORS_AND_ISA.md).
 
 ### Battle
 

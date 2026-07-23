@@ -1,121 +1,246 @@
-# Campaign script language
+# Indented S-expression language
 
-## Purpose
+## Decision
 
-The script language expresses campaign-specific sequencing: dialogue, actor
-movement, flags, choices, item delivery, transitions, and requests to native
-systems. It does not implement collision, damage formulas, rendering, audio
-mixing, save I/O, or other reusable engine mechanics.
+Campaign scripts, predicates, battle effects, animations, small content
+records, and package overlays share one indentation-based S-expression reader.
+There is no Lua runtime and no separate punctuation-heavy grammar for each
+domain.
 
-Source is readable, indentation-scoped, and deliberately small. Internally it
-compiles to typed bytecode and executes as resumable coroutines. S-expressions
-may be useful in compiler internals, but they are not the authoring syntax.
-
-## Syntax principles
-
-- One semantic action per line.
-- Indentation forms blocks.
-- References resolve to typed IDs during compilation.
-- Commands state who does what: `move oak up`, then `move oak right`.
-- No combined direction shorthand such as `move oak up right`.
-- Waits and input ownership are explicit.
-- Conditions are semantic predicates, not raw memory reads.
+All symbols use `snake_case`:
 
 ```text
-script pallet_oak_encounter:
-    require flag oak_not_met
+oak_leads_player
+last_physical_damage
+title_intro
+kadabra_alakazam
+```
+
+The reader rejects kebab-case symbols. Quoted human-facing strings may contain
+ordinary punctuation and spacing.
+
+## Reader rules
+
+- Every nonblank line is one list.
+- Tokens on the line become that list's atoms.
+- An indented line becomes a child form of the preceding line.
+- A line at the same indentation closes the preceding sibling.
+- Dedentation closes ancestors until reaching that indentation.
+- Spaces are the indentation unit; tab characters are rejected.
+- `;` begins a comment outside a quoted string.
+- No colon, comma, brace, explicit `end`, or mandatory parenthesis is needed.
+- Blank lines do not affect structure.
+
+```text
+move oak up
+move oak right
+```
+
+is the same tree as:
+
+```lisp
+(move oak up)
+(move oak right)
+```
+
+Nested source:
+
+```text
+when
+    equal
+        last_physical_damage target user
+        0
+    fail
+    return
+```
+
+Canonical parenthesized form:
+
+```lisp
+(when
+    (equal
+        (last_physical_damage target user)
+        0)
+    (fail)
+    (return))
+```
+
+Canonical Lisp is a debug and test representation. Normal generated and
+authored source uses indentation.
+
+## Atoms
+
+The reader recognizes:
+
+- symbols;
+- signed integers;
+- exact decimal values where a schema permits them;
+- quoted UTF-8 strings;
+- `true` and `false`;
+- optional byte strings in importer-only records.
+
+Domain compilers assign types. The generic reader does not know whether
+`bulbasaur` is a species, text key, sprite, or local name.
+
+## One reader, typed compilers
+
+```text
+source text
+    -> tokens and indentation
+    -> generic form tree
+    -> domain compiler
+    -> typed IR
+    -> control-flow/reference validation
+    -> compact program or content record
+    -> source map
+```
+
+Domain compilers are separate:
+
+- content record compiler;
+- predicate compiler;
+- campaign compiler;
+- battle-effect compiler;
+- battle-AI compiler;
+- animation compiler;
+- audio compiler;
+- package-overlay compiler.
+
+A syntactically valid `move oak up` form still fails inside a battle-effect
+program because that compiler has no `move` opcode.
+
+## Campaign example
+
+```text
+script oak_leads_player
     lock input
-    face player up
-    move oak down
-    wait movement oak
-    say oak text.oak_dangerous
-    follow player oak
-    path player pallet_lab.entrance
-    wait movement player
-    stop follow player oak
+    face oak down
+    say oak oak_dangerous
+    move oak up
+    move oak up
+    wait operation oak
     unlock input
 ```
 
-```text
-script parcel_delivery:
-    if inventory has item.oaks_parcel:
-        take item.oaks_parcel 1
-        say oak text.parcel_thanks
-        give item.pokedex 1
-        set flag pokedex_received
-    else:
-        say oak text.oak_waiting
-```
+Movement remains one visible action per line. Combined direction sequences are
+not hidden in argument lists.
 
-## Command families
-
-The first compiler should cover:
-
-- flow: `if`, `else`, `choose`, `call`, `return`, `parallel`;
-- synchronization: `wait`, `lock input`, `unlock input`;
-- dialogue: `say`, `prompt`, `name`, `close text`;
-- actors: `face`, `move`, `path`, `follow`, `show`, `hide`, `emote`;
-- world: `warp`, `transition`, `set tile`, `refresh map`;
-- state: `set flag`, `clear flag`, `set variable`, `add variable`;
-- inventory: `give`, `take`, `has`, `open shop`;
-- party: `give pokemon`, `heal party`, `open party`;
-- encounters: `start battle`, `start trainer battle`;
-- animation: `play cue`, `start timeline`, `fade`;
-- system: `save`, `open menu`, `show credits`.
-
-Commands are versioned. Unsupported commands fail pack validation; they never
-become runtime no-ops.
-
-## Compiler pipeline
+## Predicate example
 
 ```text
-source
-  -> tokens and indentation tree
-  -> typed AST
-  -> reference resolution
-  -> control-flow and ownership validation
-  -> normalized IR
-  -> compact bytecode
-  -> source map and diagnostics
+predicate can_receive_lapras
+    and
+        party_has_space
+        not
+            species_owned lapras
 ```
 
-Validation checks missing references, impossible paths where statically known,
-unbalanced input locks, invalid waits, unsafe recursion, unreachable labels,
-and command/domain mismatches.
+Predicates are side-effect-free and can be embedded in content:
 
-## Runtime model
+```text
+actor_spawn saffron_lapras_giver
+    map silph_co_7f
+    actor silph_employee
+    position 4 7
+    visible_when
+        not
+            flag_set lapras_received
+```
 
-Each active script is a `ScriptFiber` containing:
+## Battle-effect example
 
-- script ID and instruction pointer;
-- typed value stack;
-- call frames;
-- wait condition;
-- owned input/control locks;
-- parent/child relationship;
-- deterministic creation order;
-- source location for tools.
+```text
+effect counter
+    when
+        equal
+            last_physical_damage target user
+            0
+        fail
+        return
 
-The scheduler advances ready fibers at a deterministic point in the fixed game
-step. A command either completes immediately, yields with a wait condition,
-starts a child operation and yields, or terminates. Developer tools expose the
-fiber list, stack frames, current source line, waits, locks, and recent command
-trace.
+    deal_fixed_damage target
+        multiply
+            last_physical_damage target user
+            2
+```
 
-## Native executor boundaries
+Programs avoid temporary locals when direct expression nesting is clearer.
+Typed persistent state is declared explicitly when an effect crosses events:
 
-Script commands call narrow semantic interfaces owned by native executors:
+```text
+effect bide
+    state accumulated_damage int 0
+    state turns int 0
 
-- world topology and map transitions;
-- movement, collision, interaction, and actor lifecycle;
-- encounter selection;
-- party, progression, evolution, and move learning;
-- inventory, shops, machines, and field-item use;
-- battle rules and AI;
-- dialogue, menus, and text layout;
-- render timelines and animation tracks;
-- music/effect direction and mixing;
-- save/load and migration.
+    on receive_damage
+        add accumulated_damage event_damage
 
-This keeps the language expressive enough for the campaign without turning it
-into a second general-purpose engine.
+    on turn_end
+        add turns 1
+```
+
+## Animation example
+
+```text
+animation title_intro
+    scene title
+    set_position logo 40 -56 native_canvas
+    show logo
+
+    parallel
+        tween_position logo 40 16 24 ease_out native_canvas
+        sequence
+            wait 8
+            play_sound title_riser
+
+    signal title_ready
+```
+
+## Content example
+
+```text
+move thunderbolt
+    name text.thunderbolt
+    type electric
+    power 95
+    accuracy 100
+    pp 15
+    effect thunderbolt_effect
+    animation thunderbolt
+    sound thunderbolt
+```
+
+Maps, images, and bulk media retain dedicated formats where appropriate.
+Indented forms reference those files; they do not encode every pixel or map
+cell as a giant program.
+
+## Package example
+
+```text
+package no_trade_evolutions
+    version 1 0 0
+
+    override evolution kadabra_alakazam
+        trigger level_up
+        condition
+            level_at_least 37
+```
+
+## Source maps and inspection
+
+Every form records file, line, column, indentation depth, package, and optional
+ROM provenance. Generated source uses stable formatting so debugger locations
+remain meaningful between identical imports.
+
+Developer tools show:
+
+- indented source;
+- canonical parenthesized form;
+- typed resolved operands;
+- compiled instruction;
+- active fiber and wait;
+- original ROM source range.
+
+See [EXECUTORS_AND_ISA.md](EXECUTORS_AND_ISA.md) for legal operations and
+[IMPORT_OUTPUT_AND_CACHE.md](IMPORT_OUTPUT_AND_CACHE.md) for generated-source
+and startup behavior.

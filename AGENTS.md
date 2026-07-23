@@ -33,6 +33,8 @@ shape for this repository.
   import logic, tooling, and clearly original test fixtures.
 - A supported ROM is decoded locally into a versioned cache. The cache is
   reproducible and disposable; it is never source-of-truth.
+- Import emits readable normalized local source and a compiled pack. Normal
+  startup loads the compiled pack and does not reparse the ROM or source tree.
 - Every imported record carries provenance sufficient to trace it to a ROM
   version and source range without exposing raw offsets to gameplay.
 
@@ -42,6 +44,8 @@ shape for this repository.
 - Keep ownership and lifetime visible. Host handles use one clear owner.
 - Use typed IDs at domain boundaries. Avoid magic integers and stringly-typed
   cross-domain references.
+- Content keys, script symbols, operations, package IDs, and generated
+  filenames use `snake_case`.
 - Organize by cohesive responsibility. Split files near 300–500 lines when a
   natural boundary exists; do not split merely to hit a number.
 - Comments explain invariants, ownership, sequencing, or non-obvious source
@@ -55,8 +59,8 @@ shape for this repository.
   but may never change the number or order of simulation steps.
 - World, battle, menus, cutscenes, and transitions publish semantic events for
   render and audio systems.
-- Campaign orchestration uses a validated, indentation-scoped script language.
-  Compile source to typed IR/bytecode; execute it with resumable coroutines.
+- Campaign orchestration, battle effects, and animations use validated indented
+  S-expressions with separate typed compilers and ISAs. There is no Lua runtime.
 - Script waits are explicit. A script owns input when its current instruction
   requires exclusive control.
 - Preserve player-visible compatibility intentionally. Do not reproduce unsafe

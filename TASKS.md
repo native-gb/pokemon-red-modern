@@ -2,16 +2,17 @@
 
 ## Next
 
-1. Specify the pack manifest and typed ID vocabulary.
-2. Port only ROM verification/hash utilities into the importer boundary.
-3. Build the domain inventory/completeness report before decoding assets.
-4. Import fonts, UI frames, palettes, tiles, and sprite sheets into GPU atlases.
-5. Import fully materialized map geometry, collisions, connections, warps, and
-   actor placements.
-6. Implement the script parser, validator, bytecode compiler, and coroutine VM
-   against original fixtures.
-7. Assemble the Pallet Town vertical slice.
-8. Choose the public repository license before the first external release.
+1. Implement symbols, typed IDs, dense indexes, ranges, and diagnostics.
+2. Implement `Catalog` records and cross-reference validation.
+3. Implement package `define`/`override` resolution and provenance.
+4. Implement the indented S-expression reader and canonical printer.
+5. Implement predicate, animation, campaign, and battle-effect compilers.
+6. Prove animation execution with an original placeholder title sequence.
+7. Port only ROM verification/hash utilities into the importer boundary.
+8. Build the domain inventory and deterministic readable-source emitter.
+9. Compile generated source into the indexed runtime pack and startup fast path.
+10. Assemble the Pallet Town vertical slice.
+11. Choose the public repository license before the first external release.
 
 ## Deliberately deferred
 
