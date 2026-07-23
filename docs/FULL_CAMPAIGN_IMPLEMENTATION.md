@@ -20,6 +20,35 @@ domain schemas remain in:
 - [IMPORT_OUTPUT_AND_CACHE.md](IMPORT_OUTPUT_AND_CACHE.md)
 - [PACKAGES_AND_PATCHES.md](PACKAGES_AND_PATCHES.md)
 
+## Persistent implementation operating rules
+
+Work under the full-campaign goal is implementation work, not another planning
+exercise.
+
+- Keep a runnable normal boot-to-campaign path and extend it continuously.
+- Prefer end-to-end playable slices that connect imported content to real
+  executors and presentation; do not stop after emitting inventories, structs,
+  or debug laboratories.
+- Treat the ROM, verified disassembly, generated provenance, and observable
+  original behavior as evidence. Do not guess when the evidence is available.
+- Make reasonable architecture decisions autonomously within this contract.
+  Ask only when a choice would materially change product intent, distribution
+  boundaries, or destructive external state.
+- Resolve blockers through importer improvements, semantic lifting, or general
+  executor operations. Do not hide them behind fallback dialogue or fake
+  success states.
+- Preserve a playable build while replacing temporary vertical-slice paths
+  with the real flow.
+- Use focused checks during active implementation. Run broad importer,
+  controller, sanitizer, campaign, and clean-checkout gates at meaningful
+  milestones rather than in every bug-fix hot loop.
+- Commit at coherent milestones and push regularly to `origin/main`.
+- Record remaining gaps and exact acceptance evidence after every major
+  campaign milestone.
+- Continue toward the complete playable acceptance section while safe,
+  in-scope work remains; a completed subsystem is not a reason to stop the
+  full-campaign goal.
+
 ## Non-negotiable boundaries
 
 - Do not spoof missing behavior with guessed dialogue, fake maps, placeholder
