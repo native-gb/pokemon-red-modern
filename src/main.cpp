@@ -523,8 +523,9 @@ int main(int argc, char** argv) {
                 if (!campaign_battle_began && !actor_battle_began &&
                     encounters.loaded &&
                     !pokered::begin_world_wild_battle(
-                        encounters, world, rules, battle_rules, campaign,
-                        animation_lab, battle_began, wild_error)) {
+                        encounters, campaign_programs, world, rules,
+                        battle_rules, campaign, animation_lab,
+                        battle_began, wild_error)) {
                     std::fprintf(stderr, "%s\n", wild_error.c_str());
                 }
                 if (campaign_battle_began || actor_battle_began ||

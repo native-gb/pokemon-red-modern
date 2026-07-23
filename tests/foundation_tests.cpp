@@ -1745,7 +1745,8 @@ void test_local_pallet_campaign_program(TestState& state) {
     check(state,
           programs.naming.maximum_length == 10U &&
               programs.inventory_stack_capacity == 20U &&
-              programs.programs.size() == 35U &&
+              programs.programs.size() == 42U &&
+              programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
               programs.item_names.front().name == "MASTER BALL" &&
@@ -1790,7 +1791,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 17> source_names{
+    constexpr std::array<std::string_view, 18> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1808,6 +1809,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "pallet_reward_updates.sexpr",
         "route_1_potion.sexpr",
         "pewter_city.sexpr",
+        "mt_moon_fossils.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2567,6 +2569,160 @@ void test_local_pallet_campaign_program(TestState& state) {
           "generic Forest Poké Ball pickup stacks and hides");
     world.dialogue = {};
 
+    bool route_3_trainers_complete = true;
+    for (std::uint8_t actor = 2U; actor <= 9U; ++actor)
+        route_3_trainers_complete =
+            route_3_trainers_complete &&
+            pokered::find_trainer_interaction(
+                interactions, 14U, actor) != nullptr;
+    bool mt_moon_trainers_complete = true;
+    for (std::uint8_t actor = 1U; actor <= 7U; ++actor)
+        mt_moon_trainers_complete =
+            mt_moon_trainers_complete &&
+            pokered::find_trainer_interaction(
+                interactions, 59U, actor) != nullptr;
+    for (std::uint8_t actor = 2U; actor <= 5U; ++actor)
+        mt_moon_trainers_complete =
+            mt_moon_trainers_complete &&
+            pokered::find_trainer_interaction(
+                interactions, 61U, actor) != nullptr;
+    check(state,
+          route_3_trainers_complete && mt_moon_trainers_complete,
+          "Route 3 and Mt. Moon ordinary trainers retain imported battle bindings");
+
+    // The B2F Super Nerd is not an ordinary trainer interaction: his victory
+    // gates both fossil transactions. Exercise the forced coordinate, imported
+    // party, Dome grant, actor movement, other-fossil removal, and final text.
+    check(state,
+          pokered::enter_world_at(world, 61U, 13, 8, error),
+          "campaign fixture reaches the Mt. Moon fossil gate");
+    check(state,
+          !pokered::campaign_suppresses_wild_encounters(
+              programs, campaign, world),
+          "Mt. Moon fossil area permits encounters before the Super Nerd victory");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find("Hey, stop") !=
+                  std::string::npos,
+          "Mt. Moon fossil gate starts the imported Super Nerd program");
+    for (std::size_t guard = 0U;
+         guard < 1000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Mt. Moon Super Nerd challenge advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id == 8U &&
+              campaign.trainer_battle_request.trainer_party_index == 1U,
+          "Mt. Moon fossil gate selects imported Super Nerd party 1");
+    bool fossil_battle_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign,
+              battle_view, fossil_battle_began, error),
+          "Mt. Moon Super Nerd request begins its battle");
+    check(state,
+          fossil_battle_began &&
+              campaign.battle.enemy_party.members.size() == 3U &&
+              campaign.battle.enemy_party.members[0].species_dex == 88U &&
+              campaign.battle.enemy_party.members[1].species_dex == 100U &&
+              campaign.battle.enemy_party.members[2].species_dex == 109U,
+          "Mt. Moon Super Nerd materializes imported Grimer Voltorb Koffing party");
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Mt. Moon Super Nerd victory advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BFB1U) &&
+              pokered::campaign_suppresses_wild_encounters(
+                  programs, campaign, world),
+          "Mt. Moon Super Nerd victory opens the fossil choice and suppresses area encounters");
+
+    world.last_actor_activation = {
+        .map_id = 61U,
+        .actor_index = 6U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.choice.open &&
+              world.dialogue.pages.front().find("DOME") !=
+                  std::string::npos,
+          "Dome Fossil actor opens its imported confirmation");
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Dome Fossil transaction advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BFB6U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 41U) == 1U &&
+              !actor_visible(61U, 6U) &&
+              !actor_visible(61U, 7U),
+          "Dome transaction grants its imported item and removes both fossil actors");
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 61U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find("CINNABAR") !=
+                  std::string::npos,
+          "Super Nerd switches to imported post-fossil laboratory text");
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Super Nerd post-fossil response completes");
+        if (!error.empty()) break;
+    }
+    world.dialogue = {};
+
     // Pewter's east exit is blocked until Brock is defeated. The imported
     // trigger cell and gym warp become a semantic escort destination; the
     // generic world owner supplies collision-aware smooth paths.
@@ -2650,7 +2806,7 @@ void test_local_pallet_campaign_program(TestState& state) {
 
     // Fill every imported stack slot so Brock's first reward pass exercises
     // the cartridge's retryable TM branch after a real battle handoff.
-    for (std::uint16_t item_id = 100U; item_id < 116U; ++item_id)
+    for (std::uint16_t item_id = 100U; item_id < 115U; ++item_id)
         check(state,
               pokered::give_inventory_item(
                   campaign.inventory, item_id, 1U),
@@ -2732,7 +2888,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               !actor_visible(2U, 5U),
           "Brock full-bag victory grants badge state, preserves TM retry, and applies map state");
 
-    for (std::uint16_t item_id = 100U; item_id < 116U; ++item_id)
+    for (std::uint16_t item_id = 100U; item_id < 115U; ++item_id)
         check(state,
               pokered::take_inventory_item(
                   campaign.inventory, item_id, 1U),

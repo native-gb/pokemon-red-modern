@@ -158,6 +158,25 @@ constexpr std::size_t kPewterCityRepelYesTextOffset = 0x01942CU;
 constexpr std::size_t kPewterCityRepelNoTextOffset = 0x019431U;
 constexpr std::size_t kPewterCityGymFollowTextOffset = 0x01945DU;
 constexpr std::size_t kPewterCityGymArrivalTextOffset = 0x019462U;
+constexpr std::size_t kMtMoonB2FDefaultScriptOffset = 0x049D6FU;
+constexpr std::size_t kMtMoonB2FFossilAreaCoordsOffset = 0x049D37U;
+constexpr std::size_t kMtMoonB2FBeatSuperNerdSetOffset = 0x049DA8U;
+constexpr std::size_t kMtMoonB2FSuperNerdActorOffset = 0x049FEFU;
+constexpr std::size_t kMtMoonB2FDomeGrantOffset = 0x049EFEU;
+constexpr std::size_t kMtMoonB2FHelixGrantOffset = 0x049F3EU;
+constexpr std::size_t kMtMoonB2FDomeToggleOffset = 0x049F0AU;
+constexpr std::size_t kMtMoonB2FHelixToggleOffset = 0x049F4AU;
+constexpr std::size_t kMtMoonB2FDomeSetOffset = 0x049F14U;
+constexpr std::size_t kMtMoonB2FHelixSetOffset = 0x049F54U;
+constexpr std::size_t kMtMoonB2FDomeQuestionTextOffset = 0x049F24U;
+constexpr std::size_t kMtMoonB2FHelixQuestionTextOffset = 0x049F64U;
+constexpr std::size_t kMtMoonB2FReceivedTextOffset = 0x049F6FU;
+constexpr std::size_t kMtMoonB2FNoRoomTextOffset = 0x049F7FU;
+constexpr std::size_t kMtMoonB2FBothMineTextOffset = 0x049F85U;
+constexpr std::size_t kMtMoonB2FOkShareTextOffset = 0x049F8AU;
+constexpr std::size_t kMtMoonB2FEachTakeOneTextOffset = 0x049F8FU;
+constexpr std::size_t kMtMoonB2FPokemonLabTextOffset = 0x049F94U;
+constexpr std::size_t kMtMoonB2FThenMineTextOffset = 0x049F99U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -436,6 +455,42 @@ struct PewterCityProgram {
     DecodedTextProgram repel_no;
     DecodedTextProgram gym_follow;
     DecodedTextProgram gym_arrival;
+};
+
+struct MtMoonFossilProgram {
+    std::uint8_t map_id{};
+    std::uint8_t super_nerd_actor_index{};
+    std::uint8_t dome_actor_index{};
+    std::uint8_t helix_actor_index{};
+    std::uint8_t trainer_class{};
+    std::uint16_t trainer_party{};
+    std::uint8_t trigger_x{};
+    std::uint8_t trigger_y{};
+    std::uint8_t suppression_x{};
+    std::uint8_t suppression_y{};
+    std::uint8_t suppression_width{};
+    std::uint8_t suppression_height{};
+    std::uint32_t beat_super_nerd_flag{};
+    std::uint32_t got_dome_flag{};
+    std::uint32_t got_helix_flag{};
+    std::uint16_t dome_item_id{};
+    std::uint16_t helix_item_id{};
+    std::uint8_t dome_quantity{};
+    std::uint8_t helix_quantity{};
+    std::string dome_item_name;
+    std::string helix_item_name;
+    ToggleActor dome_actor;
+    ToggleActor helix_actor;
+    DecodedTextProgram both_mine;
+    DecodedTextProgram okay_share;
+    DecodedTextProgram each_take_one;
+    DecodedTextProgram pokemon_lab;
+    DecodedTextProgram dome_question;
+    DecodedTextProgram helix_question;
+    DecodedTextProgram dome_received;
+    DecodedTextProgram helix_received;
+    DecodedTextProgram no_room;
+    DecodedTextProgram then_mine;
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -2168,6 +2223,195 @@ bool decode_pewter_city_program(
     return true;
 }
 
+bool decode_mt_moon_fossil_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ToggleActor>& toggle_actors,
+    const std::vector<ImportedItemName>& item_names,
+    MtMoonFossilProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 61U;
+    result.super_nerd_actor_index = 1U;
+    result.dome_actor_index = 6U;
+    result.helix_actor_index = 7U;
+    if (kMtMoonB2FDefaultScriptOffset + 21U > rom.size() ||
+        kMtMoonB2FSuperNerdActorOffset + 8U > rom.size() ||
+        rom[kMtMoonB2FDefaultScriptOffset + 8U] != 0xFAU ||
+        rom[kMtMoonB2FDefaultScriptOffset + 11U] != 0xFEU ||
+        rom[kMtMoonB2FDefaultScriptOffset + 16U] != 0xFAU ||
+        rom[kMtMoonB2FDefaultScriptOffset + 19U] != 0xFEU ||
+        (rom[kMtMoonB2FSuperNerdActorOffset + 5U] & 0xC0U) !=
+            0x40U ||
+        (rom[kMtMoonB2FSuperNerdActorOffset + 5U] & 0x3FU) !=
+            result.super_nerd_actor_index ||
+        rom[kMtMoonB2FSuperNerdActorOffset + 6U] <=
+            kTrainerOpponentOffset ||
+        rom[kMtMoonB2FSuperNerdActorOffset + 7U] == 0U) {
+        error =
+            "Mt. Moon fossil gate does not match the verified ROM";
+        return false;
+    }
+    result.trigger_y =
+        rom[kMtMoonB2FDefaultScriptOffset + 12U];
+    result.trigger_x =
+        rom[kMtMoonB2FDefaultScriptOffset + 20U];
+    result.trainer_class = static_cast<std::uint8_t>(
+        rom[kMtMoonB2FSuperNerdActorOffset + 6U] -
+        kTrainerOpponentOffset);
+    result.trainer_party = static_cast<std::uint16_t>(
+        rom[kMtMoonB2FSuperNerdActorOffset + 7U] - 1U);
+    std::size_t suppression_cursor =
+        kMtMoonB2FFossilAreaCoordsOffset;
+    std::vector<std::pair<std::uint8_t, std::uint8_t>>
+        suppression_cells;
+    while (suppression_cursor < rom.size() &&
+           rom[suppression_cursor] != 0xFFU &&
+           suppression_cells.size() < 64U) {
+        if (suppression_cursor + 2U > rom.size()) break;
+        suppression_cells.emplace_back(
+            rom[suppression_cursor + 1U],
+            rom[suppression_cursor]);
+        suppression_cursor += 2U;
+    }
+    if (suppression_cursor >= rom.size() ||
+        rom[suppression_cursor] != 0xFFU ||
+        suppression_cells.empty()) {
+        error =
+            "Mt. Moon fossil encounter-suppression cells have an unexpected extent";
+        return false;
+    }
+    const auto [minimum_x, maximum_x] = std::ranges::minmax(
+        suppression_cells, {}, &std::pair<std::uint8_t, std::uint8_t>::first);
+    const auto [minimum_y, maximum_y] = std::ranges::minmax(
+        suppression_cells, {}, &std::pair<std::uint8_t, std::uint8_t>::second);
+    result.suppression_x = minimum_x.first;
+    result.suppression_y = minimum_y.second;
+    result.suppression_width = static_cast<std::uint8_t>(
+        maximum_x.first - minimum_x.first + 1U);
+    result.suppression_height = static_cast<std::uint8_t>(
+        maximum_y.second - minimum_y.second + 1U);
+    if (suppression_cells.size() !=
+        static_cast<std::size_t>(result.suppression_width) *
+            result.suppression_height) {
+        error =
+            "Mt. Moon fossil encounter-suppression cells do not form a rectangle";
+        return false;
+    }
+    for (std::size_t index = 0U;
+         index < suppression_cells.size(); ++index) {
+        const std::uint8_t expected_x =
+            static_cast<std::uint8_t>(
+                result.suppression_x +
+                index % result.suppression_width);
+        const std::uint8_t expected_y =
+            static_cast<std::uint8_t>(
+                result.suppression_y +
+                index / result.suppression_width);
+        if (suppression_cells[index] !=
+            std::pair{expected_x, expected_y}) {
+            error =
+                "Mt. Moon fossil encounter-suppression cells are not row-major";
+            return false;
+        }
+    }
+
+    std::uint32_t set_beat_super_nerd = 0U;
+    if (!decode_checked_event(
+            rom, kMtMoonB2FDefaultScriptOffset,
+            result.beat_super_nerd_flag, error) ||
+        !decode_set_event(
+            rom, kMtMoonB2FBeatSuperNerdSetOffset,
+            set_beat_super_nerd, error) ||
+        set_beat_super_nerd != result.beat_super_nerd_flag ||
+        !decode_set_event(
+            rom, kMtMoonB2FDomeSetOffset,
+            result.got_dome_flag, error) ||
+        !decode_set_event(
+            rom, kMtMoonB2FHelixSetOffset,
+            result.got_helix_flag, error))
+        return false;
+
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    const auto decode_grant =
+        [&](std::size_t offset, std::uint8_t& quantity,
+            std::uint16_t& item_id, std::string& item_name) {
+            if (offset + 6U > rom.size() ||
+                rom[offset] != 0x01U ||
+                !has_bytes(rom, offset + 3U, give_item_call))
+                return false;
+            quantity = rom[offset + 1U];
+            item_id = rom[offset + 2U];
+            const auto item = std::ranges::find_if(
+                item_names,
+                [item_id](const ImportedItemName& candidate) {
+                    return candidate.item_id == item_id;
+                });
+            if (quantity == 0U || item == item_names.end())
+                return false;
+            item_name = item->name;
+            return true;
+        };
+    if (!decode_grant(
+            kMtMoonB2FDomeGrantOffset, result.dome_quantity,
+            result.dome_item_id, result.dome_item_name) ||
+        !decode_grant(
+            kMtMoonB2FHelixGrantOffset, result.helix_quantity,
+            result.helix_item_id, result.helix_item_name) ||
+        !decode_toggle_operation(
+            rom, kMtMoonB2FDomeToggleOffset, 0x11U,
+            toggle_actors, result.dome_actor, error) ||
+        !decode_toggle_operation(
+            rom, kMtMoonB2FHelixToggleOffset, 0x11U,
+            toggle_actors, result.helix_actor, error) ||
+        result.dome_actor.map_id != result.map_id ||
+        result.dome_actor.actor_index != result.dome_actor_index ||
+        result.helix_actor.map_id != result.map_id ||
+        result.helix_actor.actor_index != result.helix_actor_index) {
+        if (error.empty())
+            error =
+                "Mt. Moon fossil grants or actor toggles do not match the verified ROM";
+        return false;
+    }
+
+    DecodedTextProgram received;
+    const std::array<std::pair<std::size_t, DecodedTextProgram*>, 8>
+        text_programs{{
+            {kMtMoonB2FBothMineTextOffset, &result.both_mine},
+            {kMtMoonB2FOkShareTextOffset, &result.okay_share},
+            {kMtMoonB2FEachTakeOneTextOffset,
+             &result.each_take_one},
+            {kMtMoonB2FPokemonLabTextOffset, &result.pokemon_lab},
+            {kMtMoonB2FDomeQuestionTextOffset,
+             &result.dome_question},
+            {kMtMoonB2FHelixQuestionTextOffset,
+             &result.helix_question},
+            {kMtMoonB2FNoRoomTextOffset, &result.no_room},
+            {kMtMoonB2FThenMineTextOffset, &result.then_mine},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(rom, 0x12U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Mt. Moon fossil dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    if (!decode_text_program(
+            rom, 0x12U, kMtMoonB2FReceivedTextOffset,
+            received) ||
+        !received.complete || received.pages.empty()) {
+        error =
+            "Mt. Moon fossil receipt text could not be decoded from the pinned ROM";
+        return false;
+    }
+    result.dome_received = received;
+    result.helix_received = std::move(received);
+    resolve_item_name_buffer(
+        result.dome_received, result.dome_item_name);
+    resolve_item_name_buffer(
+        result.helix_received, result.helix_item_name);
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -3089,6 +3333,104 @@ GeneratedFile readable_pewter_city_source(
     };
 }
 
+GeneratedFile readable_mt_moon_fossil_source(
+    const MtMoonFossilProgram& fossil) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Mt. Moon B2F program.\n"
+        << "; Trainer binding, flags, item tuples, actor toggles, movement, and text are ROM-derived.\n\n"
+        << "campaign_program mt_moon_b2f_super_nerd_battle\n"
+        << "    triggers\n"
+        << "        actor_activation "
+        << static_cast<unsigned>(fossil.super_nerd_actor_index)
+        << "\n        player_cell "
+        << static_cast<unsigned>(fossil.trigger_x) << ' '
+        << static_cast<unsigned>(fossil.trigger_y) << '\n'
+        << "    absent_flag 0x" << std::hex
+        << fossil.beat_super_nerd_flag << std::dec << '\n'
+        << "    after_victory suppress_wild_encounters rectangle "
+        << static_cast<unsigned>(fossil.suppression_x) << ' '
+        << static_cast<unsigned>(fossil.suppression_y) << ' '
+        << static_cast<unsigned>(fossil.suppression_width) << ' '
+        << static_cast<unsigned>(fossil.suppression_height)
+        << '\n'
+        << "    say\n"
+        << page_source(fossil.both_mine.pages, "        ")
+        << "    start_trainer_battle class "
+        << static_cast<unsigned>(fossil.trainer_class)
+        << " party " << fossil.trainer_party << '\n'
+        << "    if_player_won\n"
+        << "        say\n"
+        << page_source(fossil.okay_share.pages, "            ")
+        << "        set_flag 0x" << std::hex
+        << fossil.beat_super_nerd_flag << std::dec << '\n'
+        << "\ninteraction super_nerd_before_choice\n"
+        << "    required_flag 0x" << std::hex
+        << fossil.beat_super_nerd_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(fossil.each_take_one.pages, "        ")
+        << "\ninteraction super_nerd_after_choice\n"
+        << "    required_any_flag 0x" << std::hex
+        << fossil.got_dome_flag << " 0x"
+        << fossil.got_helix_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(fossil.pokemon_lab.pages, "        ");
+
+    const auto write_choice =
+        [&](std::string_view key, std::uint8_t actor,
+            std::uint16_t item_id, std::uint8_t quantity,
+            std::uint32_t got_flag, std::string_view item_name,
+            const DecodedTextProgram& question,
+            const DecodedTextProgram& received,
+            std::string_view nerd_step) {
+            source
+                << "\ncampaign_program " << key << '\n'
+                << "    trigger actor_activation "
+                << static_cast<unsigned>(actor) << '\n'
+                << "    required_flag 0x" << std::hex
+                << fossil.beat_super_nerd_flag << std::dec << '\n'
+                << "    ask_yes_no\n"
+                << page_source(question.pages, "        ")
+                << "    if_yes\n"
+                << "        try_give_item "
+                << source_quote(item_name) << " rom_id "
+                << item_id << " quantity "
+                << static_cast<unsigned>(quantity) << '\n'
+                << "        if_item_grant_failed\n"
+                << "            say\n"
+                << page_source(fossil.no_room.pages, "                ")
+                << "        else\n"
+                << "            say\n"
+                << page_source(received.pages, "                ")
+                << "            set_flag 0x" << std::hex
+                << got_flag << std::dec << '\n'
+                << "            move_actor super_nerd "
+                << nerd_step << " 1 scripted\n"
+                << "            say\n"
+                << page_source(fossil.then_mine.pages, "                ")
+                << "            hide_both_fossil_actors\n";
+        };
+    write_choice(
+        "mt_moon_b2f_take_dome_fossil",
+        fossil.dome_actor_index, fossil.dome_item_id,
+        fossil.dome_quantity, fossil.got_dome_flag,
+        fossil.dome_item_name, fossil.dome_question,
+        fossil.dome_received, "right");
+    write_choice(
+        "mt_moon_b2f_take_helix_fossil",
+        fossil.helix_actor_index, fossil.helix_item_id,
+        fossil.helix_quantity, fossil.got_helix_flag,
+        fossil.helix_item_name, fossil.helix_question,
+        fossil.helix_received, "up");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/mt_moon_fossils.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -3344,6 +3686,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     PewterCityProgram pewter_city;
     if (!decode_pewter_city_program(
             rom, pewter_gym, pewter_city, error))
+        return false;
+    MtMoonFossilProgram mt_moon_fossils;
+    if (!decode_mt_moon_fossil_program(
+            rom, toggle_actors, item_names,
+            mt_moon_fossils, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -4455,7 +4802,182 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(east_gate));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'D'};
+    const auto fossil_nerd_battle_instructions = [&]() {
+        std::vector<Instruction> battle;
+        battle.push_back(operation(Opcode::lock_input));
+        battle.push_back(
+            dialogue(mt_moon_fossils.both_mine.pages));
+        battle.push_back(operation(
+            Opcode::start_trainer_battle,
+            mt_moon_fossils.trainer_class, 0U,
+            mt_moon_fossils.trainer_party));
+        Instruction share =
+            operation(Opcode::say_if_player_won);
+        share.pages = mt_moon_fossils.okay_share.pages;
+        battle.push_back(std::move(share));
+        battle.push_back(
+            operation(Opcode::end_if_player_lost));
+        battle.push_back(operation(
+            Opcode::set_flag, 0U, 0U,
+            mt_moon_fossils.beat_super_nerd_flag));
+        battle.push_back(operation(Opcode::unlock_input));
+        battle.push_back(operation(Opcode::end));
+        return battle;
+    };
+
+    Program fossil_nerd_activation;
+    fossil_nerd_activation.key =
+        "mt_moon_b2f_super_nerd_battle";
+    fossil_nerd_activation.trigger_kind =
+        TriggerKind::actor_activation;
+    fossil_nerd_activation.trigger_map =
+        mt_moon_fossils.map_id;
+    fossil_nerd_activation.trigger_x =
+        mt_moon_fossils.super_nerd_actor_index;
+    fossil_nerd_activation.absent_flag =
+        mt_moon_fossils.beat_super_nerd_flag;
+    fossil_nerd_activation.instructions =
+        fossil_nerd_battle_instructions();
+    programs.push_back(std::move(fossil_nerd_activation));
+
+    Program fossil_nerd_gate;
+    fossil_nerd_gate.key =
+        "mt_moon_b2f_super_nerd_gate";
+    fossil_nerd_gate.trigger_kind =
+        TriggerKind::player_rectangle;
+    fossil_nerd_gate.trigger_map =
+        mt_moon_fossils.map_id;
+    fossil_nerd_gate.trigger_x =
+        mt_moon_fossils.trigger_x;
+    fossil_nerd_gate.trigger_y =
+        mt_moon_fossils.trigger_y;
+    fossil_nerd_gate.trigger_width = 1U;
+    fossil_nerd_gate.trigger_height = 1U;
+    fossil_nerd_gate.absent_flag =
+        mt_moon_fossils.beat_super_nerd_flag;
+    fossil_nerd_gate.instructions =
+        fossil_nerd_battle_instructions();
+    programs.push_back(std::move(fossil_nerd_gate));
+
+    const auto fossil_nerd_response =
+        [&](std::string key, std::uint32_t required_flag,
+            const DecodedTextProgram& text) {
+            Program response;
+            response.key = std::move(key);
+            response.trigger_kind =
+                TriggerKind::actor_activation;
+            response.trigger_map =
+                mt_moon_fossils.map_id;
+            response.trigger_x =
+                mt_moon_fossils.super_nerd_actor_index;
+            response.required_flag = required_flag;
+            response.instructions.push_back(
+                operation(Opcode::lock_input));
+            response.instructions.push_back(
+                dialogue(text.pages));
+            response.instructions.push_back(
+                operation(Opcode::unlock_input));
+            response.instructions.push_back(
+                operation(Opcode::end));
+            return response;
+        };
+    programs.push_back(fossil_nerd_response(
+        "mt_moon_b2f_super_nerd_after_dome",
+        mt_moon_fossils.got_dome_flag,
+        mt_moon_fossils.pokemon_lab));
+    programs.push_back(fossil_nerd_response(
+        "mt_moon_b2f_super_nerd_after_helix",
+        mt_moon_fossils.got_helix_flag,
+        mt_moon_fossils.pokemon_lab));
+    programs.push_back(fossil_nerd_response(
+        "mt_moon_b2f_super_nerd_choose_one",
+        mt_moon_fossils.beat_super_nerd_flag,
+        mt_moon_fossils.each_take_one));
+
+    const auto fossil_choice =
+        [&](std::string key, std::uint8_t selected_actor,
+            std::uint8_t other_actor, std::uint8_t quantity,
+            std::uint16_t item_id, std::uint32_t got_flag,
+            const DecodedTextProgram& question,
+            const DecodedTextProgram& received,
+            PathCommand nerd_step) {
+            Program choice;
+            choice.key = std::move(key);
+            choice.trigger_kind =
+                TriggerKind::actor_activation;
+            choice.trigger_map = mt_moon_fossils.map_id;
+            choice.trigger_x = selected_actor;
+            choice.required_flag =
+                mt_moon_fossils.beat_super_nerd_flag;
+            choice.instructions.push_back(
+                operation(Opcode::lock_input));
+            Instruction prompt =
+                operation(Opcode::ask_yes_no);
+            prompt.pages = question.pages;
+            choice.instructions.push_back(std::move(prompt));
+            choice.instructions.push_back(
+                operation(Opcode::end_if_choice_no));
+            choice.instructions.push_back(operation(
+                Opcode::try_give_item, quantity, 0U, item_id));
+            const std::size_t fossil_bag_full_jump =
+                choice.instructions.size();
+            choice.instructions.push_back(
+                operation(Opcode::jump_if_item_grant_failed));
+            choice.instructions.push_back(
+                dialogue(received.pages));
+            choice.instructions.push_back(operation(
+                Opcode::hide_actor, selected_actor, 0U,
+                mt_moon_fossils.map_id));
+            choice.instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U, got_flag));
+            Instruction move_nerd =
+                operation(Opcode::actor_path,
+                          mt_moon_fossils.super_nerd_actor_index,
+                          mt_moon_fossils.map_id, 2U);
+            move_nerd.actor_path.push_back(nerd_step);
+            choice.instructions.push_back(std::move(move_nerd));
+            choice.instructions.push_back(
+                dialogue(mt_moon_fossils.then_mine.pages));
+            choice.instructions.push_back(operation(
+                Opcode::hide_actor, other_actor, 0U,
+                mt_moon_fossils.map_id));
+            choice.instructions.push_back(
+                operation(Opcode::unlock_input));
+            choice.instructions.push_back(
+                operation(Opcode::end));
+            choice.instructions[fossil_bag_full_jump].value =
+                static_cast<std::uint32_t>(
+                    choice.instructions.size());
+            choice.instructions.push_back(
+                dialogue(mt_moon_fossils.no_room.pages));
+            choice.instructions.push_back(
+                operation(Opcode::unlock_input));
+            choice.instructions.push_back(
+                operation(Opcode::end));
+            return choice;
+        };
+    programs.push_back(fossil_choice(
+        "mt_moon_b2f_take_dome_fossil",
+        mt_moon_fossils.dome_actor_index,
+        mt_moon_fossils.helix_actor_index,
+        mt_moon_fossils.dome_quantity,
+        mt_moon_fossils.dome_item_id,
+        mt_moon_fossils.got_dome_flag,
+        mt_moon_fossils.dome_question,
+        mt_moon_fossils.dome_received,
+        PathCommand::right));
+    programs.push_back(fossil_choice(
+        "mt_moon_b2f_take_helix_fossil",
+        mt_moon_fossils.helix_actor_index,
+        mt_moon_fossils.dome_actor_index,
+        mt_moon_fossils.helix_quantity,
+        mt_moon_fossils.helix_item_id,
+        mt_moon_fossils.got_helix_flag,
+        mt_moon_fossils.helix_question,
+        mt_moon_fossils.helix_received,
+        PathCommand::up));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'F'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u16(cache, item_names.size());
@@ -4465,6 +4987,14 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     }
     write_pages(cache, found_item.pages);
     write_pages(cache, no_item_room.pages);
+    write_u16(cache, 1U);
+    cache.push_back(mt_moon_fossils.map_id);
+    cache.push_back(mt_moon_fossils.suppression_x);
+    cache.push_back(mt_moon_fossils.suppression_y);
+    cache.push_back(mt_moon_fossils.suppression_width);
+    cache.push_back(mt_moon_fossils.suppression_height);
+    write_u32(
+        cache, mt_moon_fossils.beat_super_nerd_flag);
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
 
@@ -4513,6 +5043,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         readable_pewter_gym_source(pewter_gym));
     result.files.push_back(
         readable_pewter_city_source(pewter_city));
+    result.files.push_back(
+        readable_mt_moon_fossil_source(mt_moon_fossils));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

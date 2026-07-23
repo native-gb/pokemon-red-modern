@@ -6,6 +6,7 @@ namespace pokered {
 
 struct BattleAnimationLab;
 struct BattleRuleCatalog;
+struct CampaignProgramCatalog;
 struct CampaignState;
 struct EncounterCatalog;
 struct InteractionCatalog;
@@ -25,7 +26,8 @@ struct BattleControlResult {
 };
 
 bool begin_world_wild_battle(
-    const EncounterCatalog& encounters, WorldState& world,
+    const EncounterCatalog& encounters,
+    const CampaignProgramCatalog& programs, WorldState& world,
     const RuleCatalog& rules, const BattleRuleCatalog& battle_rules,
     CampaignState& campaign, BattleAnimationLab& view, bool& began,
     std::string& error);

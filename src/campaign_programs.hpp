@@ -100,6 +100,15 @@ struct CampaignItemName {
     std::string name;
 };
 
+struct CampaignEncounterSuppressionZone {
+    std::uint8_t map_id{};
+    std::uint8_t x{};
+    std::uint8_t y{};
+    std::uint8_t width{};
+    std::uint8_t height{};
+    std::uint32_t required_flag{0xFFFFFFFFU};
+};
+
 struct CampaignProgramCatalog {
     std::filesystem::path source;
     NamingProfile naming;
@@ -108,6 +117,8 @@ struct CampaignProgramCatalog {
     std::vector<CampaignItemName> item_names;
     std::vector<std::string> found_item_pages;
     std::vector<std::string> no_item_room_pages;
+    std::vector<CampaignEncounterSuppressionZone>
+        encounter_suppression_zones;
     std::vector<CampaignProgram> programs;
     bool loaded{};
 };
@@ -116,6 +127,9 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
                             std::string& error);
 bool initialize_campaign_program_runtime(const CampaignProgramCatalog& programs, WorldState& world,
                                          std::string& error);
+bool campaign_suppresses_wild_encounters(
+    const CampaignProgramCatalog& programs,
+    const CampaignState& campaign, const WorldState& world);
 bool service_campaign_programs(const CampaignProgramCatalog& programs, const RuleCatalog& rules,
                                const BattleRuleCatalog& battle_rules, WorldState& world,
                                CampaignState& campaign, std::string& error);

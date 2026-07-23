@@ -5,6 +5,7 @@
 #include "battle_rules.hpp"
 #include "battle_ui.hpp"
 #include "battle_view.hpp"
+#include "campaign_programs.hpp"
 #include "encounters.hpp"
 #include "interactions.hpp"
 #include "maps.hpp"
@@ -104,7 +105,8 @@ bool begin_actor_battle(
 } // namespace
 
 bool begin_world_wild_battle(
-    const EncounterCatalog& encounters, WorldState& world,
+    const EncounterCatalog& encounters,
+    const CampaignProgramCatalog& programs, WorldState& world,
     const RuleCatalog& rules, const BattleRuleCatalog& battle_rules,
     CampaignState& campaign, BattleAnimationLab& view, bool& began,
     std::string& error) {
@@ -112,6 +114,8 @@ bool begin_world_wild_battle(
     if (!world.player_completed_step ||
         world.trainer_approach.active ||
         world.opponent_request.pending ||
+        campaign_suppresses_wild_encounters(
+            programs, campaign, world) ||
         !party_has_usable_pokemon(campaign.party)) {
         error.clear();
         return true;

@@ -780,6 +780,24 @@ player and guide and feeds them to the existing smooth scripted-motion owner.
 The explicitly scripted `MoveSprite` exit retains its source ability to ignore
 ordinary terrain collision; autonomous NPC roaming remains collision-bound.
 
+Route 3 and Mt. Moon's ordinary content now use the exhaustive generic owners:
+all eight Route 3 trainers, seven Mt. Moon 1F trainers, four B2F Rockets,
+imported encounter tables, cave warps, and eight loose items resolve without
+map-specific engine code. The B2F fossil sequence is lifted separately because
+it is a real campaign gate. Walking onto the ROM trigger cell or activating the
+Super Nerd starts imported class 8, party 1 (Grimer, Voltorb, Koffing); defeat
+does not advance, while victory records the cartridge event and opens both
+fossil choices.
+
+Both Dome and Helix transactions use the imported item ID, quantity,
+confirmation, receipt, full-bag response, event bit, toggleable actors, and
+Super Nerd movement. Declining changes nothing. A full bag leaves both fossils
+available. Success grants the selected fossil, moves the Super Nerd, presents
+his final page, removes the unchosen fossil, and switches his later interaction
+to the Cinnabar laboratory text. The cartridge's post-victory 4-by-4
+no-encounter area is compiled as a content-authored suppression zone and
+checked before ordinary encounter rolls.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -812,10 +830,16 @@ badge, frees a slot, retries TM34, and verifies the final advice state.
 Before entering the gym, it also enters an exact imported east-gate cell,
 advances the smooth city escort, verifies the imported gym-door destination,
 and checks that the guide returns without leaving input locked.
+It then accounts for all ordinary Route 3/Mt. Moon trainer bindings, enters the
+exact B2F gate, verifies the imported three-Pokemon Super Nerd party, returns a
+victory, verifies the conditional encounter-suppression zone, takes the Dome
+Fossil, checks inventory and both actor removals, and verifies the Super Nerd's
+post-choice response.
 
 This is not full-campaign completion. The next campaign blocker begins with
-Route 3 and the Mt. Moon campaign slice. Every later map program still requires
-semantic lifting and the remaining acceptance gates above stay open.
+the Mt. Moon Pokecenter Magikarp sale and the Route 4/Cerulean campaign slice.
+Every later map program still requires semantic lifting and the remaining
+acceptance gates above stay open.
 
 ## Playable acceptance
 

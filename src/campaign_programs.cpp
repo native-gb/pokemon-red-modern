@@ -327,7 +327,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'D'}) {
+        magic != std::array{'P', 'C', 'P', 'F'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -380,6 +380,31 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
         loaded.no_item_room_pages.empty()) {
         error = "campaign loose-item presentation is invalid";
         return false;
+    }
+    std::uint16_t suppression_count = 0U;
+    if (!read_u16(input, suppression_count) ||
+        suppression_count > 1024U) {
+        error =
+            "campaign encounter-suppression count is invalid";
+        return false;
+    }
+    loaded.encounter_suppression_zones.reserve(
+        suppression_count);
+    for (std::uint16_t index = 0U; index < suppression_count;
+         ++index) {
+        CampaignEncounterSuppressionZone zone;
+        if (!read_u8(input, zone.map_id) ||
+            !read_u8(input, zone.x) ||
+            !read_u8(input, zone.y) ||
+            !read_u8(input, zone.width) ||
+            !read_u8(input, zone.height) ||
+            !read_u32(input, zone.required_flag) ||
+            zone.width == 0U || zone.height == 0U) {
+            error =
+                "campaign encounter-suppression zone is invalid";
+            return false;
+        }
+        loaded.encounter_suppression_zones.push_back(zone);
     }
     if (!read_u16(input, program_count) || program_count == 0U ||
         program_count > 4096U) {
@@ -508,6 +533,30 @@ bool initialize_campaign_program_runtime(const CampaignProgramCatalog& programs,
     }
     error.clear();
     return true;
+}
+
+bool campaign_suppresses_wild_encounters(
+    const CampaignProgramCatalog& programs,
+    const CampaignState& campaign, const WorldState& world) {
+    if (!world.player.initialized ||
+        world.player.map_index >= world.maps.size())
+        return false;
+    const std::uint8_t map_id =
+        world.maps[world.player.map_index].id;
+    return std::ranges::any_of(
+        programs.encounter_suppression_zones,
+        [&](const CampaignEncounterSuppressionZone& zone) {
+            return zone.map_id == map_id &&
+                   campaign_flag(campaign, zone.required_flag) &&
+                   world.player.x >= zone.x &&
+                   world.player.y >= zone.y &&
+                   world.player.x <
+                       static_cast<std::int32_t>(zone.x) +
+                           zone.width &&
+                   world.player.y <
+                       static_cast<std::int32_t>(zone.y) +
+                           zone.height;
+        });
 }
 
 bool service_campaign_programs(const CampaignProgramCatalog& programs,
