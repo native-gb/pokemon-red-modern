@@ -2,11 +2,14 @@
 #include "import_battle_animations_io.hpp"
 #include "import_maps.hpp"
 #include "import_pictures.hpp"
+#include "import_scripts.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -41,10 +44,12 @@ int main(int argc, char** argv) {
     pokered::import::BattleAnimationImport imported;
     pokered::import::MapImport maps;
     pokered::import::PictureImport pictures;
+    pokered::import::ScriptImport scripts;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
         !pokered::import::decode_picture_import(rom, pictures, error) ||
-        !pokered::import::decode_map_import(rom, maps, error)) {
+        !pokered::import::decode_map_import(rom, maps, error) ||
+        !pokered::import::decode_script_import(rom, scripts, error)) {
         std::cerr << error << '\n';
         return 1;
     }
@@ -52,6 +57,30 @@ int main(int argc, char** argv) {
                           std::make_move_iterator(pictures.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(maps.files.begin()),
                           std::make_move_iterator(maps.files.end()));
+    imported.files.insert(imported.files.end(), std::make_move_iterator(scripts.files.begin()),
+                          std::make_move_iterator(scripts.files.end()));
+    const auto manifest =
+        std::find_if(imported.files.begin(), imported.files.end(),
+                     [](const auto& file) { return file.relative_path == "import_manifest"; });
+    if (manifest == imported.files.end()) {
+        std::cerr << "import domains produced no manifest\n";
+        return 1;
+    }
+    std::ostringstream domain_manifest;
+    domain_manifest << "picture_importer_version 1\n"
+                    << "front_pictures " << pictures.front_pictures << '\n'
+                    << "back_pictures " << pictures.back_pictures << '\n'
+                    << "trainer_pictures " << pictures.trainer_classes << '\n'
+                    << "world_importer_version 1\n"
+                    << "outdoor_maps " << maps.maps << '\n'
+                    << "overworld_sprites " << maps.sprites << '\n'
+                    << "map_program_importer_version 1\n"
+                    << "map_slots " << scripts.map_slots << '\n'
+                    << "decoded_map_programs " << scripts.decoded_maps << '\n'
+                    << "unused_map_slots " << scripts.unresolved_slots << '\n';
+    const std::string domain_manifest_text = domain_manifest.str();
+    manifest->bytes.insert(manifest->bytes.end(), domain_manifest_text.begin(),
+                           domain_manifest_text.end());
     if (!pokered::import::write_battle_animation_import(imported, output_root, error)) {
         std::cerr << error << '\n';
         return 1;
@@ -74,5 +103,12 @@ int main(int argc, char** argv) {
               << " overworld sprites, " << maps.actors << " actor spawns, and " << maps.warps
               << " warps\n";
     std::cout << "World map cache: " << output_root / "compiled" / "world_maps.bin" << '\n';
+    std::cout << "Indexed " << scripts.script_entry_points << " map script entry points, "
+              << scripts.owned_text_entries << " owned text entries, "
+              << scripts.background_interactions << " background interactions, and "
+              << scripts.actor_interactions << " actor interactions across " << scripts.map_slots
+              << " ROM map slots (" << scripts.unresolved_slots << " unresolved slots)\n";
+    std::cout << "Script inventory: " << output_root / "reports" / "script_import_summary.txt"
+              << '\n';
     return 0;
 }

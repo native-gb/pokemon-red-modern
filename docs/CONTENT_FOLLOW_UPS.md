@@ -34,7 +34,7 @@ youngster` may be used by many unrelated people.
 
 ## Script import follow-up
 
-- [ ] Import every active map header before claiming complete script coverage,
+- [x] Import every active map header before claiming complete script coverage,
   including interiors, caves, dungeons, and special rooms.
 - [ ] Emit the ownership graph joining each map, actor, trigger, text entry,
   trainer, toggle, and script entry point.
@@ -54,3 +54,19 @@ youngster` may be used by many unrelated people.
 The first script milestone is ownership and entry-point completeness, not
 immediate execution. It should make every authored program discoverable and
 cross-referenced before the campaign VM begins running Pallet Town.
+
+The initial map-program inventory now classifies all 248 ROM map slots. It
+decodes 226 active map headers and identifies the remaining 22 invalid/unused
+slots without treating them as campaign content. The local generated tree
+contains one provenance record per slot plus:
+
+- 226 map load-script entry points;
+- 1,126 text entries directly owned by map objects and background events;
+- 202 background-event interaction bindings;
+- 924 actor interaction bindings;
+- header aliases and a complete unresolved translation queue.
+
+This is structural coverage, not semantic script coverage. Text referenced
+only from machine-code routines, trainer/event-flag ownership, movement paths,
+and each routine's campaign-ISA translation remain open. The importer must
+continue reporting those gaps explicitly.

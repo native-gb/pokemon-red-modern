@@ -1475,7 +1475,8 @@ bool decode_battle_animation_import(std::span<const std::uint8_t> rom,
     std::ostringstream manifest;
     manifest << "profile pokemon_red_us_rev_0\n"
              << "rom_sha1 " << digest << '\n'
-             << "importer battle_animations_v3_cpp\n"
+             << "importer pokemon_red_modern_cpp_v1\n"
+             << "battle_animation_importer_version 3\n"
              << "animation_programs " << result.animation_programs << '\n'
              << "subanimations " << result.subanimations << '\n'
              << "frame_blocks " << result.frame_blocks << '\n'

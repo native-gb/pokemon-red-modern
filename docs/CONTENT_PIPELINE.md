@@ -91,6 +91,32 @@ map geometry. Connections become explicit topology and coordinate transforms.
 Warps and map transitions remain semantic objects. Runtime camera and view size
 never determine which collision or actor data exists.
 
+## Script inventory staging
+
+Map scripting crosses two representation boundaries. Object records and text
+pointer tables are data languages and can be decoded immediately. Each map's
+load routine is Game Boy machine code and must be lifted into semantic campaign
+operations before the modern runtime may execute it.
+
+The importer therefore emits a deterministic intermediate inventory:
+
+```text
+source/scripts/maps/map_000.sexpr
+reports/script_import_summary.txt
+reports/unresolved_scripts.txt
+compiled/map_program_index.bin
+```
+
+An inventory record owns the map header, load-script entry point, text table,
+object table, directly referenced text entries, actor interactions, and
+background interactions. `decoded_untranslated` means those relationships are
+known but the routine is still queued for semantic lifting. It never means the
+engine can execute the original machine code.
+
+The numeric `map_NNN` keys are deliberate temporary fallbacks. The semantic
+naming pass replaces them atomically after enough ownership evidence exists;
+the ROM ID and source ranges remain as provenance.
+
 ## Graphics and audio
 
 Graphics import produces normalized images, sprite metadata, palette sets, and

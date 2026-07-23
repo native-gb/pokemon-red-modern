@@ -69,6 +69,7 @@ if(POKERED_MODERN_BUILD_IMPORTER)
         src/import_battle_animations_main.cpp
         src/import_maps.cpp
         src/import_pictures.cpp
+        src/import_scripts.cpp
     )
     target_include_directories(native-gb-pokemon-red-modern-import PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
