@@ -638,7 +638,7 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first eight imported story fibers are executable from the ordinary
+The first nine imported story fibers are executable from the ordinary
 overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
@@ -694,6 +694,23 @@ imported Oak's Parcel fiber. It:
 - grants the decoded item ID and quantity through the generic inventory owner;
 - records the decoded got-parcel event and returns control to the player.
 
+Returning through Pallet's ordinary lab warp and activating Oak with the
+parcel starts the imported request fiber. It:
+
+- requires the battled-rival state and decoded parcel stack, locks input,
+  presents Oak's complete delivery/thanks text, and removes the item;
+- brings Blue in through the cartridge's below/above/side branch selected from
+  the player's actual position, with normalized source placement and movement;
+- presents the complete request and Pokédex dialogue with imported waits,
+  removes both desk Pokédex actors, and records the Pokédex/parcel flags;
+- switches the Viridian sleeping/standing old-man actors and configures the
+  first Route 22 rival's three flags and visibility;
+- reverses the selected Blue path, hides him, and returns input ownership.
+
+Campaign initialization now consumes all 228 cartridge toggleable-object
+records rather than a handwritten opening list. All 32 source-default-hidden
+actors are hidden through generated map/actor references before play begins.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
 owners, flags, paths, text, choices, species, and readable
 `source/scripts/campaign/*.sexpr` files plus `source/menus/naming.sexpr`, then
@@ -704,11 +721,13 @@ the real battle engine, and verifies party construction, rival selection, ball
 visibility, battle outcome, healing, rival exit, final map, and progression
 state. The same check then uses the real Viridian City-to-Mart warp, advances
 the parcel interruption, and verifies movement, inventory, event state, and
-final placement.
+final placement. It returns through Pallet's real lab warp, walks the aisle,
+activates Oak from below, and verifies parcel removal, the selected Blue path,
+Pokédex progression, all affected actor toggles, and Route 22 gate state.
 
 This is not full-campaign completion. The next campaign blocker begins with
-the return to Oak, parcel removal, Pokédex/Poké Ball delivery, and the
-remaining Pallet actors and gates. Every later map program still requires
+the first Route 22 rival encounter, Oak's subsequent Poké Ball delivery, and
+the Blue's House/Town Map/Daisy gates. Every later map program still requires
 semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance

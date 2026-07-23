@@ -1770,7 +1770,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 8> source_names{
+    constexpr std::array<std::string_view, 9> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1779,6 +1779,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "oaks_lab_first_rival_after_squirtle.sexpr",
         "oaks_lab_first_rival_after_bulbasaur.sexpr",
         "viridian_mart_oaks_parcel.sexpr",
+        "oaks_lab_deliver_parcel_and_get_pokedex.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -1812,6 +1813,23 @@ void test_local_pallet_campaign_program(TestState& state) {
                   naming_source_path.string(), naming_source,
                   naming_document, naming_diagnostics),
           "generated naming profile reparses");
+    const std::filesystem::path visibility_source_path =
+        root.parent_path() / "source" / "world" /
+        "initial_actor_visibility.sexpr";
+    std::ifstream visibility_source_input(visibility_source_path);
+    const std::string visibility_source{
+        std::istreambuf_iterator<char>(visibility_source_input),
+        std::istreambuf_iterator<char>()};
+    pokered::sexpr::Document visibility_document;
+    pokered::Diagnostics visibility_diagnostics;
+    check(state,
+          (visibility_source_input.good() ||
+           visibility_source_input.eof()) &&
+              pokered::sexpr::parse(
+                  visibility_source_path.string(),
+                  visibility_source, visibility_document,
+                  visibility_diagnostics),
+          "generated initial actor visibility reparses");
     check(state,
           pokered::begin_new_campaign(campaign, "RED", "BLUE", {}, error),
           "campaign fixture owns New Game state");
@@ -1826,6 +1844,27 @@ void test_local_pallet_campaign_program(TestState& state) {
           pokered::initialize_campaign_program_runtime(programs, world,
                                                        error),
           "campaign fixture applies initial actor visibility");
+    const auto actor_visible =
+        [&](std::uint8_t map_id, std::uint8_t actor_index) {
+            for (const pokered::WorldActorState& actor :
+                 world.actors) {
+                const pokered::WorldMap& map =
+                    world.maps[actor.map_index];
+                const pokered::WorldActorSpawn& spawn =
+                    map.actors[actor.spawn_index];
+                if (map.id == map_id &&
+                    spawn.index == actor_index)
+                    return actor.visible;
+            }
+            return false;
+        };
+    check(state,
+          !actor_visible(0U, 1U) &&
+              actor_visible(1U, 5U) &&
+              !actor_visible(1U, 7U) &&
+              !actor_visible(33U, 1U) &&
+              !actor_visible(33U, 2U),
+          "cartridge toggle table initializes campaign actor visibility");
     check(state, pokered::enter_world_at(world, 0U, 10, 1, error),
           "campaign fixture enters Pallet north exit");
 
@@ -1938,19 +1977,10 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::campaign_flag(campaign, 0x6BA5AU),
           "accepted starter creates imported player/rival state");
 
-    const auto actor_visible = [&](std::uint8_t actor_index) {
-        for (const pokered::WorldActorState& actor : world.actors) {
-            const pokered::WorldMap& map = world.maps[actor.map_index];
-            const pokered::WorldActorSpawn& spawn =
-                map.actors[actor.spawn_index];
-            if (map.id == 40U && spawn.index == actor_index)
-                return actor.visible;
-        }
-        return false;
-    };
     check(state,
-          !actor_visible(2U) && !actor_visible(3U) &&
-              actor_visible(4U),
+          !actor_visible(40U, 2U) &&
+              !actor_visible(40U, 3U) &&
+              actor_visible(40U, 4U),
           "player and rival starter balls are removed from the lab");
 
     // Cross the imported y=6 challenge line, let Blue approach, hand the
@@ -2041,7 +2071,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::campaign_flag(campaign, 0x6BA5BU) &&
               campaign.party.members.front().current_hp ==
                   campaign.party.members.front().stats.hp &&
-              !actor_visible(1U),
+              !actor_visible(40U, 1U),
           "lab rival outcome heals the party and completes Blue's exit");
 
     // Enter the Viridian Mart through its real city warp. The imported
@@ -2090,6 +2120,84 @@ void test_local_pallet_campaign_program(TestState& state) {
               world.maps[world.player.map_index].id == 42U &&
               world.player.x == 2 && world.player.y == 5,
           "mart simulated joypad path ends beside the clerk");
+
+    // Return through Pallet's ordinary lab warp, walk up the central aisle,
+    // and activate Oak from below. The imported request program removes the
+    // parcel, brings Blue back through the position-dependent path, delivers
+    // the Pokedex, and opens the first Route 22 rival gate.
+    check(state, pokered::enter_world_at(world, 0U, 12, 12, error),
+          "campaign fixture reaches the Pallet lab entrance");
+    pokered::step_world(world, interactions, campaign, {.up = true});
+    check(state,
+          world.player.map_index < world.maps.size() &&
+              world.maps[world.player.map_index].id == 40U &&
+              world.player.x == 5 && world.player.y == 11,
+          "Pallet entrance performs the imported Oak's Lab warp");
+    for (std::size_t guard = 0U;
+         guard < 200U && world.player.y > 3; ++guard) {
+        pokered::step_world(world, interactions, campaign,
+                            {.up = true});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "campaign fixture walks the lab aisle");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() && world.player.x == 5 &&
+              world.player.y == 3 &&
+              world.player.facing ==
+                  pokered::WorldDirection::up,
+          "campaign fixture reaches Oak from below");
+    pokered::step_world(world, interactions, campaign,
+                        {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "activating Oak starts the imported parcel return");
+    check(state,
+          campaign.input_locked && world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "OAK: Oh, RED!") != std::string::npos,
+          "Oak return begins with imported delivery dialogue");
+
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Oak request and Pokedex fiber advances");
+        if (!error.empty()) break;
+    }
+    check(state, error.empty(),
+          "Oak request and Pokedex sequence reports no error");
+    check(state,
+          !campaign.fiber.active && !campaign.input_locked &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 0x46U) == 0U &&
+              pokered::campaign_flag(campaign, 0x6BA5DU) &&
+              pokered::campaign_flag(campaign, 0x6BA70U),
+          "Oak consumes the parcel and grants Pokedex progression");
+    check(state,
+          pokered::campaign_flag(campaign, 0x6BF58U) &&
+              !pokered::campaign_flag(campaign, 0x6BF59U) &&
+              pokered::campaign_flag(campaign, 0x6BF5FU),
+          "Oak request configures the imported first Route 22 rival flags");
+    check(state,
+          !actor_visible(40U, 1U) &&
+              !actor_visible(40U, 6U) &&
+              !actor_visible(40U, 7U) &&
+              !actor_visible(1U, 5U) &&
+              actor_visible(1U, 7U) &&
+              actor_visible(33U, 1U) &&
+              !actor_visible(33U, 2U),
+          "Pokedex, old-man, and Route 22 actor toggles match the cartridge");
 }
 
 } // namespace

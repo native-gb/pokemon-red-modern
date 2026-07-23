@@ -1185,6 +1185,46 @@ bool apply_player_path_command(WorldState& world, WorldPathCommand command,
 
 } // namespace
 
+bool place_world_actor(WorldState& world, std::uint8_t map_id,
+                       std::uint8_t actor_index, std::int32_t x,
+                       std::int32_t y, std::string& error) {
+    std::size_t runtime_index = 0U;
+    if (!find_runtime_actor(world, map_id, actor_index, runtime_index)) {
+        error = "campaign actor placement has an unavailable owner";
+        return false;
+    }
+    WorldActorState& actor = world.actors[runtime_index];
+    WorldMapCellIndex& cells = world.spatial[actor.map_index];
+    const WorldMap& map = world.maps[actor.map_index];
+    const std::int32_t global_x = map.global_x_tiles / 2 + x;
+    const std::int32_t global_y = map.global_y_tiles / 2 + y;
+    if (!inside(cells, x, y) ||
+        !is_passable(world, actor.map_index, global_x, global_y)) {
+        error = "campaign actor placement is outside passable terrain";
+        return false;
+    }
+    const std::int32_t occupant =
+        cells.actor_by_cell[cell_offset(cells, x, y)];
+    if ((occupant >= 0 &&
+         static_cast<std::size_t>(occupant) != runtime_index) ||
+        (world.player.map_index == actor.map_index &&
+         world.player.x == x && world.player.y == y)) {
+        error = "campaign actor placement is occupied";
+        return false;
+    }
+    if (actor.visible)
+        cells.actor_by_cell[cell_offset(cells, actor.x, actor.y)] = -1;
+    actor.x = x;
+    actor.y = y;
+    actor.visual_global_x = static_cast<float>(global_x);
+    actor.visual_global_y = static_cast<float>(global_y);
+    if (actor.visible)
+        cells.actor_by_cell[cell_offset(cells, x, y)] =
+            static_cast<std::int32_t>(runtime_index);
+    error.clear();
+    return true;
+}
+
 bool start_world_actor_to_player_motion(WorldState& world, std::uint8_t map_id,
                                         std::uint8_t actor_index, std::int8_t target_y_offset,
                                         std::string& error) {

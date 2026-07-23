@@ -151,9 +151,10 @@ through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
-eight programs import Pallet Town's Oak interception, all three Oak's Lab
-starter-ball branches, all three first-rival battle branches, and the Viridian
-Mart Oak's Parcel handoff. The Pallet and lab programs include
+nine programs import Pallet Town's Oak interception, all three Oak's Lab
+starter-ball branches, all three first-rival battle branches, the Viridian
+Mart Oak's Parcel handoff, and Oak's parcel-return/Pokédex request. The Pallet
+and opening-lab programs include
 both Pallet dialogue programs, Oak/player movement streams, the ordinary lab
 warp, Oak's two lab actor placements, both lab entry paths, the four
 choose-a-Pokemon speeches, each starter prompt, player/rival receipt text, both
@@ -172,6 +173,18 @@ the clerk interruption and parcel dialogue, the simulated player path, the
 three-frame delay, Oak's Parcel item ID and quantity, and both source event
 flags. A generic ordered inventory owns the resulting item stack; neither the
 inventory nor campaign executor recognizes Oak's Parcel by name.
+The return program requires that imported item through a generic inventory
+predicate, removes it transactionally, and executes all three cartridge
+player-position branches for Blue's entrance and exit. It imports the complete
+request dialogue, exact one/three-frame waits, both desk-Pokédex removals,
+Pokédex and parcel flags, the sleeping/standing Viridian old-man transition,
+and the first Route 22 rival flag/visibility setup. Generic bounded jumps,
+actor placement, actor-only paths, item removal, and flag mutation execute
+those records.
+The cache also initializes all 228 records from the cartridge toggleable-object
+table, including its 32 default-hidden actors. The readable accounting peer is
+`source/world/initial_actor_visibility.sexpr`; runtime initialization does not
+contain a handwritten list of Red actors.
 The same cache owns the cartridge-decoded English naming profile: both 45-cell
 case tables, the case-switch labels, END action, Pokemon name-length limit,
 nickname heading, and nickname question. Its readable peer is

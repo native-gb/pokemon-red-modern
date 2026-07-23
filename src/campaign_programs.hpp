@@ -23,6 +23,7 @@ enum class CampaignTriggerKind : std::uint8_t {
 enum class CampaignOpcode : std::uint8_t {
     lock_input,
     set_flag,
+    clear_flag,
     show_actor,
     hide_actor,
     say,
@@ -38,6 +39,11 @@ enum class CampaignOpcode : std::uint8_t {
     nickname_last_party_member_if_yes,
     player_path,
     give_item,
+    take_item,
+    place_actor,
+    actor_path,
+    jump_if_player_y,
+    jump,
     wait_ticks,
     actor_path_by_player_x,
     start_trainer_battle,
@@ -72,6 +78,8 @@ struct CampaignProgram {
     std::uint32_t absent_flag{0xFFFFFFFFU};
     std::uint16_t required_variable{0xFFFFU};
     std::uint16_t required_variable_value{};
+    std::uint16_t required_item_id{};
+    std::uint16_t required_item_quantity{};
     std::vector<CampaignActorRef> initially_hidden;
     std::vector<CampaignInstruction> instructions;
 };

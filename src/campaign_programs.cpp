@@ -112,6 +112,7 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                !instruction.player_path.empty();
     case CampaignOpcode::lock_input:
     case CampaignOpcode::set_flag:
+    case CampaignOpcode::clear_flag:
     case CampaignOpcode::end_if_choice_no:
     case CampaignOpcode::heal_party:
     case CampaignOpcode::unlock_input:
@@ -133,9 +134,29 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.actor_path.empty() &&
                !instruction.player_path.empty();
     case CampaignOpcode::give_item:
+    case CampaignOpcode::take_item:
         return instruction.a != 0U && instruction.b == 0U &&
                instruction.value != 0U &&
                instruction.value <= 0xFFFFU &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::place_actor:
+        return instruction.a != 0U &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::actor_path:
+        return instruction.a != 0U && instruction.value <= 1U &&
+               instruction.pages.empty() &&
+               !instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::jump_if_player_y:
+        return instruction.b == 0U && instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::jump:
+        return instruction.a == 0U && instruction.b == 0U &&
                instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
@@ -157,7 +178,11 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
          campaign_flag(campaign, program.absent_flag)) ||
         (program.required_variable != 0xFFFFU &&
          campaign_variable(campaign, program.required_variable) !=
-             program.required_variable_value))
+             program.required_variable_value) ||
+        (program.required_item_id != 0U &&
+         inventory_item_quantity(
+             campaign.inventory, program.required_item_id) <
+             program.required_item_quantity))
         return false;
     if (program.trigger_kind == CampaignTriggerKind::actor_activation)
         return world.last_actor_activation.occurred &&
@@ -214,7 +239,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '5'}) {
+        magic != std::array{'P', 'C', 'P', '6'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -260,12 +285,20 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
             !read_u32(input, program.absent_flag) ||
             !read_u16(input, program.required_variable) ||
             !read_u16(input, program.required_variable_value) ||
-            !read_u16(input, hidden_count) || hidden_count > 64U)
+            !read_u16(input, program.required_item_id) ||
+            !read_u16(input, program.required_item_quantity) ||
+            !read_u16(input, hidden_count) || hidden_count > 512U)
             return false;
         if (program.required_variable != 0xFFFFU &&
             program.required_variable >= 64U) {
             error =
                 "campaign program has an invalid required variable";
+            return false;
+        }
+        if ((program.required_item_id == 0U) !=
+            (program.required_item_quantity == 0U)) {
+            error =
+                "campaign program has an invalid required item";
             return false;
         }
         program.trigger_kind =
@@ -300,6 +333,17 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
                 return false;
             }
             program.instructions.push_back(std::move(instruction));
+        }
+        for (const CampaignInstruction& instruction :
+             program.instructions) {
+            if ((instruction.opcode == CampaignOpcode::jump ||
+                 instruction.opcode ==
+                     CampaignOpcode::jump_if_player_y) &&
+                instruction.value >= program.instructions.size()) {
+                error =
+                    "campaign program jump leaves its instruction range";
+                return false;
+            }
         }
         if (program.instructions.back().opcode != CampaignOpcode::end) {
             error = "campaign program is missing its end instruction";
@@ -452,6 +496,9 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
         case CampaignOpcode::set_flag:
             set_campaign_flag(campaign, instruction.value, true);
             break;
+        case CampaignOpcode::clear_flag:
+            set_campaign_flag(campaign, instruction.value, false);
+            break;
         case CampaignOpcode::show_actor:
         case CampaignOpcode::hide_actor:
             if (!set_world_actor_visible(world, static_cast<std::uint8_t>(instruction.value),
@@ -591,6 +638,46 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 error = "campaign could not add an inventory item";
                 return false;
             }
+            break;
+        case CampaignOpcode::take_item:
+            if (!take_inventory_item(
+                    campaign.inventory,
+                    static_cast<std::uint16_t>(instruction.value),
+                    instruction.a)) {
+                error = "campaign could not remove an inventory item";
+                return false;
+            }
+            break;
+        case CampaignOpcode::place_actor: {
+            const std::int32_t x = static_cast<std::int16_t>(
+                instruction.value & 0xFFFFU);
+            const std::int32_t y = static_cast<std::int16_t>(
+                instruction.value >> 16U);
+            if (!place_world_actor(world, instruction.b,
+                                   instruction.a, x, y, error))
+                return false;
+            break;
+        }
+        case CampaignOpcode::actor_path: {
+            const std::vector<WorldPathCommand> player_waits(
+                instruction.actor_path.size(),
+                WorldPathCommand::wait);
+            if (!start_world_parallel_motion(
+                    world, instruction.b, instruction.a,
+                    instruction.actor_path, player_waits,
+                    instruction.value != 0U, error))
+                return false;
+            fiber.waiting_motion = true;
+            error.clear();
+            return true;
+        }
+        case CampaignOpcode::jump_if_player_y:
+            if (world.player.y ==
+                static_cast<std::int32_t>(instruction.a))
+                fiber.instruction_index = instruction.value;
+            break;
+        case CampaignOpcode::jump:
+            fiber.instruction_index = instruction.value;
             break;
         case CampaignOpcode::wait_ticks:
             fiber.waiting_ticks = instruction.value;

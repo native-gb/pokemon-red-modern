@@ -54,6 +54,23 @@ constexpr std::size_t kViridianMartParcelGrantOffset = 0x01D4CFU;
 constexpr std::size_t kViridianMartParcelFlagOffset = 0x01D4D5U;
 constexpr std::size_t kViridianMartCameFromPalletTextOffset = 0x01D4F5U;
 constexpr std::size_t kViridianMartParcelQuestTextOffset = 0x01D4FAU;
+constexpr std::size_t kToggleableObjectStatesOffset = 0x00CAEAU;
+constexpr std::size_t kOakLabParcelItemCheckOffset = 0x01D2A9U;
+constexpr std::size_t kOakLabRemoveParcelOffset = 0x01D00AU;
+constexpr std::size_t kOakLabRivalMovementOffset = 0x01D02BU;
+constexpr std::size_t kOakLabPokedexToggleOffset = 0x01CF54U;
+constexpr std::size_t kOakLabProgressFlagsOffset = 0x01CF87U;
+constexpr std::size_t kOakLabOldManToggleOffset = 0x01CF91U;
+constexpr std::size_t kOakLabRouteFlagsOffset = 0x01CFE7U;
+constexpr std::size_t kOakLabRouteRivalToggleOffset = 0x01CFF0U;
+constexpr std::size_t kOakLabDeliverParcelTextOffset = 0x01D2FFU;
+constexpr std::size_t kOakLabRivalGrampsTextOffset = 0x01D3D7U;
+constexpr std::size_t kOakLabRivalWhatDidYouCallTextOffset = 0x01D3DCU;
+constexpr std::size_t kOakLabRequestTextOffset = 0x01D3E1U;
+constexpr std::size_t kOakLabPokedexInventionTextOffset = 0x01D3E6U;
+constexpr std::size_t kOakLabGotPokedexTextOffset = 0x01D3EBU;
+constexpr std::size_t kOakLabDreamTextOffset = 0x01D3F1U;
+constexpr std::size_t kOakLabRivalLeaveTextOffset = 0x01D3F6U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -77,6 +94,7 @@ enum class TriggerKind : std::uint8_t {
 enum class Opcode : std::uint8_t {
     lock_input,
     set_flag,
+    clear_flag,
     show_actor,
     hide_actor,
     say,
@@ -92,6 +110,11 @@ enum class Opcode : std::uint8_t {
     nickname_last_party_member_if_yes,
     player_path,
     give_item,
+    take_item,
+    place_actor,
+    actor_path,
+    jump_if_player_y,
+    jump,
     wait_ticks,
     actor_path_by_player_x,
     start_trainer_battle,
@@ -130,6 +153,8 @@ struct Program {
     std::uint32_t absent_flag{0xFFFFFFFFU};
     std::uint16_t required_variable{0xFFFFU};
     std::uint16_t required_variable_value{};
+    std::uint16_t required_item_id{};
+    std::uint16_t required_item_quantity{};
     std::vector<std::pair<std::uint8_t, std::uint8_t>> initially_hidden;
     std::vector<Instruction> instructions;
 };
@@ -155,6 +180,39 @@ struct ParcelProgram {
     std::vector<PathCommand> player_path;
     DecodedTextProgram came_from_pallet;
     DecodedTextProgram parcel_quest;
+};
+
+struct ToggleActor {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    bool initially_visible{};
+};
+
+struct OakReturnProgram {
+    std::uint16_t parcel_item_id{};
+    std::uint8_t parcel_quantity{};
+    std::uint32_t got_pokedex_flag{};
+    std::uint32_t oak_got_parcel_flag{};
+    std::uint32_t first_route_22_rival_flag{};
+    std::uint32_t second_route_22_rival_flag{};
+    std::uint32_t route_22_rival_wants_battle_flag{};
+    ToggleActor pokedex_1;
+    ToggleActor pokedex_2;
+    ToggleActor lying_old_man;
+    ToggleActor standing_old_man;
+    ToggleActor route_22_rival;
+    std::array<std::uint8_t, 3> player_y{3U, 1U, 2U};
+    std::array<std::uint8_t, 3> movement_steps{};
+    std::array<std::uint8_t, 3> spawn_y{};
+    std::uint8_t spawn_x{};
+    DecodedTextProgram deliver_parcel;
+    DecodedTextProgram rival_gramps;
+    DecodedTextProgram rival_what_did_you_call;
+    DecodedTextProgram oak_request;
+    DecodedTextProgram pokedex_invention;
+    DecodedTextProgram got_pokedex;
+    DecodedTextProgram oak_dream;
+    DecodedTextProgram rival_leave;
 };
 
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
@@ -239,6 +297,62 @@ bool decode_set_event(std::span<const std::uint8_t> rom,
         static_cast<std::uint16_t>(rom[offset + 2U]) << 8U);
     flag = static_cast<std::uint32_t>(address) * 8U + bit;
     return true;
+}
+
+bool decode_reused_event(std::span<const std::uint8_t> rom,
+                         std::size_t offset, std::uint16_t address,
+                         bool set, std::uint32_t& flag,
+                         std::string& error) {
+    const std::uint8_t base = set ? 0xC6U : 0x86U;
+    if (offset > rom.size() || 2U > rom.size() - offset ||
+        rom[offset] != 0xCBU || rom[offset + 1U] < base ||
+        (rom[offset + 1U] - base) % 8U != 0U) {
+        error = "campaign reused event mutation does not match the verified ROM";
+        return false;
+    }
+    const std::uint8_t bit =
+        static_cast<std::uint8_t>((rom[offset + 1U] - base) / 8U);
+    if (bit > 7U) {
+        error = "campaign reused event mutation has an invalid bit";
+        return false;
+    }
+    flag = static_cast<std::uint32_t>(address) * 8U + bit;
+    return true;
+}
+
+bool decode_toggle_actors(
+    std::span<const std::uint8_t> rom,
+    std::vector<ToggleActor>& actors, std::string& error) {
+    actors.clear();
+    std::size_t cursor = kToggleableObjectStatesOffset;
+    for (std::size_t index = 0U; index < 512U; ++index) {
+        if (cursor >= rom.size()) {
+            error =
+                "toggleable actor table extends outside the verified ROM";
+            return false;
+        }
+        const std::uint8_t map_id = rom[cursor++];
+        if (map_id == 0xFFU) return !actors.empty();
+        if (cursor + 1U >= rom.size()) {
+            error = "toggleable actor record is truncated";
+            return false;
+        }
+        const std::uint8_t actor_index = rom[cursor++];
+        const std::uint8_t state = rom[cursor++];
+        if (actor_index == 0U ||
+            (state != 0x11U && state != 0x15U)) {
+            error =
+                "toggleable actor record does not match the verified layout";
+            return false;
+        }
+        actors.push_back({
+            .map_id = map_id,
+            .actor_index = actor_index,
+            .initially_visible = state == 0x15U,
+        });
+    }
+    error = "toggleable actor table is missing its terminator";
+    return false;
 }
 
 bool decode_naming_string(std::span<const std::uint8_t> rom,
@@ -498,6 +612,8 @@ void write_program(std::vector<std::uint8_t>& bytes,
     write_u32(bytes, program.absent_flag);
     write_u16(bytes, program.required_variable);
     write_u16(bytes, program.required_variable_value);
+    write_u16(bytes, program.required_item_id);
+    write_u16(bytes, program.required_item_quantity);
     write_u16(bytes, program.initially_hidden.size());
     for (const auto& [map_id, actor_index] : program.initially_hidden) {
         bytes.push_back(map_id);
@@ -663,6 +779,213 @@ bool decode_viridian_mart_parcel(std::span<const std::uint8_t> rom,
         return false;
     }
     return true;
+}
+
+bool decode_toggle_operation(
+    std::span<const std::uint8_t> rom, std::size_t offset,
+    std::uint8_t expected_action,
+    const std::vector<ToggleActor>& toggle_actors,
+    ToggleActor& result, std::string& error) {
+    constexpr std::array<std::uint8_t, 3> store_toggle{
+        0xEAU, 0x4DU, 0xCCU};
+    constexpr std::array<std::uint8_t, 3> invoke_toggle{
+        0xCDU, 0x6DU, 0x3EU};
+    if (offset > rom.size() || 10U > rom.size() - offset ||
+        rom[offset] != 0x3EU ||
+        !has_bytes(rom, offset + 2U, store_toggle) ||
+        rom[offset + 5U] != 0x3EU ||
+        rom[offset + 6U] != expected_action ||
+        !has_bytes(rom, offset + 7U, invoke_toggle) ||
+        rom[offset + 1U] >= toggle_actors.size()) {
+        error =
+            "campaign toggle operation does not match the verified ROM";
+        return false;
+    }
+    result = toggle_actors[rom[offset + 1U]];
+    return true;
+}
+
+bool decode_oak_return_program(
+    std::span<const std::uint8_t> rom,
+    const ParcelProgram& parcel,
+    const std::vector<ToggleActor>& toggle_actors,
+    OakReturnProgram& result, std::string& error) {
+    constexpr std::array<std::uint8_t, 5> item_check_tail{
+        0xCDU, 0x93U, 0x34U, 0x20U, 0x08U};
+    constexpr std::array<std::uint8_t, 11> remove_prefix{
+        0x21U, 0x1EU, 0xD3U, 0x01U, 0x00U, 0x00U,
+        0x2AU, 0xFEU, 0xFFU, 0xC8U, 0xFEU};
+    constexpr std::array<std::uint8_t, 3> remove_index_store{
+        0xEAU, 0x92U, 0xCFU};
+    constexpr std::array<std::uint8_t, 3> remove_quantity_store{
+        0xEAU, 0x96U, 0xCFU};
+
+    result = {};
+    if (kOakLabParcelItemCheckOffset + 6U > rom.size() ||
+        rom[kOakLabParcelItemCheckOffset] != 0x06U ||
+        !has_bytes(rom, kOakLabParcelItemCheckOffset + 2U,
+                   item_check_tail) ||
+        !has_bytes(rom, kOakLabRemoveParcelOffset, remove_prefix) ||
+        kOakLabRemoveParcelOffset + 30U > rom.size() ||
+        !has_bytes(rom, kOakLabRemoveParcelOffset + 22U,
+                   remove_index_store) ||
+        rom[kOakLabRemoveParcelOffset + 25U] != 0x3EU ||
+        !has_bytes(rom, kOakLabRemoveParcelOffset + 27U,
+                   remove_quantity_store)) {
+        error =
+            "Oak parcel inventory program does not match the verified ROM";
+        return false;
+    }
+    result.parcel_item_id =
+        rom[kOakLabParcelItemCheckOffset + 1U];
+    result.parcel_quantity =
+        rom[kOakLabRemoveParcelOffset + 26U];
+    if (result.parcel_item_id !=
+            rom[kOakLabRemoveParcelOffset + 11U] ||
+        result.parcel_item_id != parcel.item_id ||
+        result.parcel_quantity != parcel.quantity ||
+        result.parcel_item_id == 0U ||
+        result.parcel_quantity == 0U) {
+        error =
+            "Oak parcel inventory paths disagree on item content";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 11> movement_prefix{
+        0x3EU, 0x7CU, 0xE0U, 0xEBU, 0x3EU, 0x08U,
+        0xE0U, 0xEEU, 0xFAU, 0x61U, 0xD3U};
+    if (!has_bytes(rom, kOakLabRivalMovementOffset,
+                   movement_prefix) ||
+        kOakLabRivalMovementOffset + 49U > rom.size() ||
+        rom[kOakLabRivalMovementOffset + 11U] != 0xFEU ||
+        rom[kOakLabRivalMovementOffset + 15U] != 0x3EU ||
+        rom[kOakLabRivalMovementOffset + 22U] != 0x06U ||
+        rom[kOakLabRivalMovementOffset + 26U] != 0xFEU ||
+        rom[kOakLabRivalMovementOffset + 30U] != 0x3EU ||
+        rom[kOakLabRivalMovementOffset + 37U] != 0x06U ||
+        rom[kOakLabRivalMovementOffset + 41U] != 0x3EU ||
+        rom[kOakLabRivalMovementOffset + 46U] != 0x06U) {
+        error =
+            "Oak request rival movement does not match the verified ROM";
+        return false;
+    }
+    constexpr std::uint8_t coordinate_padding = 4U;
+    const std::uint8_t encoded_x =
+        rom[kOakLabRivalMovementOffset + 5U];
+    const std::array<std::uint8_t, 3> encoded_y{
+        rom[kOakLabRivalMovementOffset + 23U],
+        rom[kOakLabRivalMovementOffset + 38U],
+        rom[kOakLabRivalMovementOffset + 47U],
+    };
+    if (encoded_x < coordinate_padding ||
+        std::ranges::any_of(
+            encoded_y, [](std::uint8_t value) {
+                return value < coordinate_padding;
+            })) {
+        error = "Oak request rival placement cannot be normalized";
+        return false;
+    }
+    result.player_y[0] =
+        rom[kOakLabRivalMovementOffset + 12U];
+    result.player_y[1] =
+        rom[kOakLabRivalMovementOffset + 27U];
+    result.movement_steps = {
+        rom[kOakLabRivalMovementOffset + 16U],
+        rom[kOakLabRivalMovementOffset + 31U],
+        rom[kOakLabRivalMovementOffset + 42U],
+    };
+    result.spawn_x =
+        static_cast<std::uint8_t>(encoded_x - coordinate_padding);
+    for (std::size_t index = 0U; index < encoded_y.size(); ++index)
+        result.spawn_y[index] = static_cast<std::uint8_t>(
+            encoded_y[index] - coordinate_padding);
+    if (result.player_y[0] == result.player_y[1] ||
+        std::ranges::any_of(
+            result.movement_steps,
+            [](std::uint8_t value) { return value == 0U; })) {
+        error = "Oak request rival movement has invalid branches";
+        return false;
+    }
+
+    if (!decode_set_event(
+            rom, kOakLabProgressFlagsOffset,
+            result.got_pokedex_flag, error) ||
+        !decode_set_event(
+            rom, kOakLabProgressFlagsOffset + 5U,
+            result.oak_got_parcel_flag, error) ||
+        result.oak_got_parcel_flag !=
+            parcel.oak_got_parcel_flag ||
+        !decode_set_event(
+            rom, kOakLabRouteFlagsOffset,
+            result.first_route_22_rival_flag, error)) {
+        if (error.empty())
+            error =
+                "Oak request progression flags do not match the verified ROM";
+        return false;
+    }
+    const std::uint16_t route_flag_address =
+        static_cast<std::uint16_t>(
+            rom[kOakLabRouteFlagsOffset + 1U] |
+            static_cast<std::uint16_t>(
+                rom[kOakLabRouteFlagsOffset + 2U])
+                << 8U);
+    if (!decode_reused_event(
+            rom, kOakLabRouteFlagsOffset + 5U,
+            route_flag_address, false,
+            result.second_route_22_rival_flag, error) ||
+        !decode_reused_event(
+            rom, kOakLabRouteFlagsOffset + 7U,
+            route_flag_address, true,
+            result.route_22_rival_wants_battle_flag, error))
+        return false;
+
+    if (!decode_toggle_operation(
+            rom, kOakLabPokedexToggleOffset, 0x11U,
+            toggle_actors, result.pokedex_1, error) ||
+        !decode_toggle_operation(
+            rom, kOakLabPokedexToggleOffset + 10U, 0x11U,
+            toggle_actors, result.pokedex_2, error) ||
+        !decode_toggle_operation(
+            rom, kOakLabOldManToggleOffset, 0x11U,
+            toggle_actors, result.lying_old_man, error) ||
+        !decode_toggle_operation(
+            rom, kOakLabOldManToggleOffset + 10U, 0x15U,
+            toggle_actors, result.standing_old_man, error) ||
+        !decode_toggle_operation(
+            rom, kOakLabRouteRivalToggleOffset, 0x15U,
+            toggle_actors, result.route_22_rival, error))
+        return false;
+
+    const std::array<std::pair<std::size_t, DecodedTextProgram*>, 8>
+        text_programs{{
+            {kOakLabDeliverParcelTextOffset,
+             &result.deliver_parcel},
+            {kOakLabRivalGrampsTextOffset,
+             &result.rival_gramps},
+            {kOakLabRivalWhatDidYouCallTextOffset,
+             &result.rival_what_did_you_call},
+            {kOakLabRequestTextOffset, &result.oak_request},
+            {kOakLabPokedexInventionTextOffset,
+             &result.pokedex_invention},
+            {kOakLabGotPokedexTextOffset,
+             &result.got_pokedex},
+            {kOakLabDreamTextOffset, &result.oak_dream},
+            {kOakLabRivalLeaveTextOffset,
+             &result.rival_leave},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(rom, 0x07U, offset, *text) ||
+            text->pages.empty()) {
+            error =
+                "Oak request dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    return true;
+}
+
+std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
+    return static_cast<std::uint32_t>(x) |
+           static_cast<std::uint32_t>(y) << 16U;
 }
 
 std::string source_quote(std::string_view value) {
@@ -1029,12 +1352,150 @@ GeneratedFile readable_viridian_mart_parcel_source(
     };
 }
 
+GeneratedFile readable_initial_actor_visibility_source(
+    const std::vector<ToggleActor>& actors) {
+    std::ostringstream source;
+    source
+        << "; Decoded from the verified cartridge toggleable-object table.\n"
+        << "; Map and actor IDs retain provenance until the shared naming pass owns this file.\n\n"
+        << "initial_actor_visibility pokemon_red\n";
+    for (std::size_t index = 0U; index < actors.size(); ++index) {
+        const ToggleActor& actor = actors[index];
+        source << "    actor map_" << static_cast<unsigned>(actor.map_id)
+               << ' ' << static_cast<unsigned>(actor.actor_index)
+               << ' '
+               << (actor.initially_visible ? "visible" : "hidden")
+               << " rom_toggle_index " << index << '\n';
+    }
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/world/initial_actor_visibility.sexpr",
+        .bytes = std::vector<std::uint8_t>(text.begin(), text.end()),
+    };
+}
+
+GeneratedFile readable_oak_return_source(
+    const OakReturnProgram& request) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Oak request program.\n"
+        << "; Inventory, flags, toggle actors, placement branches, paths, and text are ROM-derived.\n\n"
+        << "campaign_program oaks_lab_deliver_parcel_and_get_pokedex\n"
+        << "    source bank_07 0x01d2a9\n"
+        << "    trigger map oaks_lab actor_activation 5\n"
+        << "    required_flag 0x" << std::hex
+        << kBattledLabRivalFlag << '\n'
+        << "    absent_flag 0x" << request.oak_got_parcel_flag
+        << std::dec << '\n'
+        << "    required_item oaks_parcel quantity "
+        << static_cast<unsigned>(request.parcel_quantity)
+        << " rom_id " << request.parcel_item_id << '\n'
+        << "    lock_input\n"
+        << "    say\n"
+        << page_source(request.deliver_parcel.pages, "        ")
+        << "    take_item oaks_parcel quantity "
+        << static_cast<unsigned>(request.parcel_quantity)
+        << " rom_id " << request.parcel_item_id << '\n'
+        << "    say\n"
+        << page_source(request.rival_gramps.pages, "        ")
+        << "    choose_path player_y\n";
+    for (std::size_t index = 0U;
+         index < request.movement_steps.size(); ++index) {
+        source
+            << "        when "
+            << (index < 2U
+                    ? std::to_string(request.player_y[index])
+                    : "otherwise")
+            << " place_actor map oaks_lab actor 1 at "
+            << static_cast<unsigned>(request.spawn_x) << ' '
+            << static_cast<unsigned>(request.spawn_y[index])
+            << " show_then";
+        for (std::uint8_t step = 0U;
+             step < request.movement_steps[index]; ++step)
+            source << " up";
+        source << '\n';
+    }
+    source
+        << "    face_actor map oaks_lab actor 1 up\n"
+        << "    face_actor map oaks_lab actor 5 down\n"
+        << "    say\n"
+        << page_source(
+               request.rival_what_did_you_call.pages, "        ")
+        << "    wait_ticks 1\n"
+        << "    say\n"
+        << page_source(request.oak_request.pages, "        ")
+        << "    wait_ticks 1\n"
+        << "    say\n"
+        << page_source(
+               request.pokedex_invention.pages, "        ")
+        << "    wait_ticks 1\n"
+        << "    say\n"
+        << page_source(request.got_pokedex.pages, "        ")
+        << "    wait_ticks 3\n"
+        << "    hide_actor map_"
+        << static_cast<unsigned>(request.pokedex_1.map_id)
+        << " actor "
+        << static_cast<unsigned>(request.pokedex_1.actor_index)
+        << "\n"
+        << "    hide_actor map_"
+        << static_cast<unsigned>(request.pokedex_2.map_id)
+        << " actor "
+        << static_cast<unsigned>(request.pokedex_2.actor_index)
+        << "\n"
+        << "    say\n"
+        << page_source(request.oak_dream.pages, "        ")
+        << "    face_actor map oaks_lab actor 1 right\n"
+        << "    wait_ticks 3\n"
+        << "    say\n"
+        << page_source(request.rival_leave.pages, "        ")
+        << "    set_flag 0x" << std::hex
+        << request.got_pokedex_flag << '\n'
+        << "    set_flag 0x" << request.oak_got_parcel_flag
+        << std::dec << '\n'
+        << "    hide_actor map_"
+        << static_cast<unsigned>(request.lying_old_man.map_id)
+        << " actor "
+        << static_cast<unsigned>(request.lying_old_man.actor_index)
+        << "\n"
+        << "    show_actor map_"
+        << static_cast<unsigned>(request.standing_old_man.map_id)
+        << " actor "
+        << static_cast<unsigned>(request.standing_old_man.actor_index)
+        << "\n"
+        << "    reverse_selected_path_and_hide actor 1\n"
+        << "    set_flag 0x" << std::hex
+        << request.first_route_22_rival_flag << '\n'
+        << "    clear_flag 0x"
+        << request.second_route_22_rival_flag << '\n'
+        << "    set_flag 0x"
+        << request.route_22_rival_wants_battle_flag
+        << std::dec << '\n'
+        << "    show_actor map_"
+        << static_cast<unsigned>(request.route_22_rival.map_id)
+        << " actor "
+        << static_cast<unsigned>(request.route_22_rival.actor_index)
+        << "\n"
+        << "    unlock_input\n"
+        << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/oaks_lab_deliver_parcel_and_get_pokedex.sexpr",
+        .bytes = std::vector<std::uint8_t>(text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                                     CampaignProgramImport& result, std::string& error) {
     result = {};
     if (!verify_pokemon_red_us_rev_0(rom, error)) return false;
+
+    std::vector<ToggleActor> toggle_actors;
+    if (!decode_toggle_actors(rom, toggle_actors, error))
+        return false;
 
     NamingProfile naming_profile;
     std::string nickname_heading;
@@ -1138,6 +1599,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     ParcelProgram parcel;
     if (!decode_viridian_mart_parcel(rom, parcel, error))
         return false;
+    OakReturnProgram oak_return;
+    if (!decode_oak_return_program(
+            rom, parcel, toggle_actors, oak_return, error))
+        return false;
 
     std::vector<PathCommand> oak_path;
     std::vector<PathCommand> player_path;
@@ -1213,7 +1678,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     opening.trigger_map = 0U;
     opening.trigger_value = 1U;
     opening.absent_flag = kFollowedOakFlag;
-    opening.initially_hidden = {{0U, 1U}, {40U, 5U}, {40U, 8U}};
+    for (const ToggleActor& actor : toggle_actors)
+        if (!actor.initially_visible)
+            opening.initially_hidden.push_back(
+                {actor.map_id, actor.actor_index});
     opening.instructions = std::move(instructions);
 
     constexpr std::array<std::string_view, 3> starter_keys{
@@ -1227,7 +1695,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         "oaks_lab_first_rival_after_bulbasaur",
     };
     std::vector<Program> programs;
-    programs.reserve(2U + starter_choices.size() +
+    programs.reserve(3U + starter_choices.size() +
                      rival_battles.size());
     programs.push_back(std::move(opening));
     for (std::size_t index = 0U; index < starter_choices.size(); ++index) {
@@ -1364,7 +1832,161 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     parcel_program.instructions.push_back(operation(Opcode::end));
     programs.push_back(std::move(parcel_program));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '5'};
+    Program oak_request;
+    oak_request.key =
+        "oaks_lab_deliver_parcel_and_get_pokedex";
+    oak_request.trigger_kind = TriggerKind::actor_activation;
+    oak_request.trigger_map = 40U;
+    oak_request.trigger_value = 5U;
+    oak_request.required_flag = kBattledLabRivalFlag;
+    oak_request.absent_flag = oak_return.oak_got_parcel_flag;
+    oak_request.required_item_id = oak_return.parcel_item_id;
+    oak_request.required_item_quantity =
+        oak_return.parcel_quantity;
+    oak_request.instructions.push_back(
+        operation(Opcode::lock_input));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.deliver_parcel.pages));
+    oak_request.instructions.push_back(operation(
+        Opcode::take_item, oak_return.parcel_quantity, 0U,
+        oak_return.parcel_item_id));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.rival_gramps.pages));
+
+    const auto append_rival_path_branches =
+        [&](PathCommand direction, bool place, bool hide) {
+            const std::size_t first_condition =
+                oak_request.instructions.size();
+            oak_request.instructions.push_back(operation(
+                Opcode::jump_if_player_y,
+                oak_return.player_y[0]));
+            const std::size_t second_condition =
+                oak_request.instructions.size();
+            oak_request.instructions.push_back(operation(
+                Opcode::jump_if_player_y,
+                oak_return.player_y[1]));
+
+            std::array<std::size_t, 2> branch_targets{};
+            std::vector<std::size_t> exits;
+            const auto append_branch =
+                [&](std::size_t branch, bool final_branch) {
+                    if (branch == 0U)
+                        branch_targets[0] =
+                            oak_request.instructions.size();
+                    else if (branch == 1U)
+                        branch_targets[1] =
+                            oak_request.instructions.size();
+                    if (place) {
+                        oak_request.instructions.push_back(operation(
+                            Opcode::place_actor, 1U, 40U,
+                            packed_position(
+                                oak_return.spawn_x,
+                                oak_return.spawn_y[branch])));
+                        oak_request.instructions.push_back(operation(
+                            Opcode::show_actor, 1U, 0U, 40U));
+                    }
+                    Instruction path = operation(
+                        Opcode::actor_path, 1U, 40U,
+                        hide ? 1U : 0U);
+                    path.actor_path.assign(
+                        oak_return.movement_steps[branch],
+                        direction);
+                    oak_request.instructions.push_back(
+                        std::move(path));
+                    if (!final_branch) {
+                        exits.push_back(
+                            oak_request.instructions.size());
+                        oak_request.instructions.push_back(
+                            operation(Opcode::jump));
+                    }
+                };
+
+            // The source's third branch covers either side of Oak.
+            append_branch(2U, false);
+            append_branch(0U, false);
+            append_branch(1U, true);
+            const std::size_t join =
+                oak_request.instructions.size();
+            oak_request.instructions[first_condition].value =
+                static_cast<std::uint32_t>(branch_targets[0]);
+            oak_request.instructions[second_condition].value =
+                static_cast<std::uint32_t>(branch_targets[1]);
+            for (const std::size_t exit : exits)
+                oak_request.instructions[exit].value =
+                    static_cast<std::uint32_t>(join);
+        };
+
+    append_rival_path_branches(
+        PathCommand::up, true, false);
+    oak_request.instructions.push_back(
+        operation(Opcode::face_actor, 1U, 1U, 40U));
+    oak_request.instructions.push_back(
+        operation(Opcode::face_actor, 5U, 0U, 40U));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.rival_what_did_you_call.pages));
+    oak_request.instructions.push_back(
+        operation(Opcode::wait_ticks, 0U, 0U, 1U));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.oak_request.pages));
+    oak_request.instructions.push_back(
+        operation(Opcode::wait_ticks, 0U, 0U, 1U));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.pokedex_invention.pages));
+    oak_request.instructions.push_back(
+        operation(Opcode::wait_ticks, 0U, 0U, 1U));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.got_pokedex.pages));
+    oak_request.instructions.push_back(
+        operation(Opcode::wait_ticks, 0U, 0U, 3U));
+    oak_request.instructions.push_back(operation(
+        Opcode::hide_actor, oak_return.pokedex_1.actor_index,
+        0U, oak_return.pokedex_1.map_id));
+    oak_request.instructions.push_back(operation(
+        Opcode::hide_actor, oak_return.pokedex_2.actor_index,
+        0U, oak_return.pokedex_2.map_id));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.oak_dream.pages));
+    oak_request.instructions.push_back(
+        operation(Opcode::face_actor, 1U, 3U, 40U));
+    oak_request.instructions.push_back(
+        operation(Opcode::wait_ticks, 0U, 0U, 3U));
+    oak_request.instructions.push_back(
+        dialogue(oak_return.rival_leave.pages));
+    oak_request.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        oak_return.got_pokedex_flag));
+    oak_request.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        oak_return.oak_got_parcel_flag));
+    oak_request.instructions.push_back(operation(
+        Opcode::hide_actor,
+        oak_return.lying_old_man.actor_index, 0U,
+        oak_return.lying_old_man.map_id));
+    oak_request.instructions.push_back(operation(
+        Opcode::show_actor,
+        oak_return.standing_old_man.actor_index, 0U,
+        oak_return.standing_old_man.map_id));
+    append_rival_path_branches(
+        PathCommand::down, false, true);
+    oak_request.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        oak_return.first_route_22_rival_flag));
+    oak_request.instructions.push_back(operation(
+        Opcode::clear_flag, 0U, 0U,
+        oak_return.second_route_22_rival_flag));
+    oak_request.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        oak_return.route_22_rival_wants_battle_flag));
+    oak_request.instructions.push_back(operation(
+        Opcode::show_actor,
+        oak_return.route_22_rival.actor_index, 0U,
+        oak_return.route_22_rival.map_id));
+    oak_request.instructions.push_back(
+        operation(Opcode::unlock_input));
+    oak_request.instructions.push_back(operation(Opcode::end));
+    programs.push_back(std::move(oak_request));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '6'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, programs.size());
     for (const Program& program : programs) write_program(cache, program);
@@ -1388,6 +2010,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             rival_exit_text, rival_exit_path));
     result.files.push_back(
         readable_viridian_mart_parcel_source(parcel));
+    result.files.push_back(
+        readable_oak_return_source(oak_return));
+    result.files.push_back(
+        readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
     result.programs = programs.size();
     error.clear();

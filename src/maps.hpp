@@ -274,6 +274,9 @@ void open_world_dialogue(WorldState& world,
 bool set_world_actor_visible(WorldState& world, std::uint8_t map_id,
                              std::uint8_t actor_index, bool visible,
                              std::string& error);
+bool place_world_actor(WorldState& world, std::uint8_t map_id,
+                       std::uint8_t actor_index, std::int32_t x,
+                       std::int32_t y, std::string& error);
 bool face_world_actor(WorldState& world, std::uint8_t map_id,
                       std::uint8_t actor_index, WorldDirection direction,
                       std::string& error);
