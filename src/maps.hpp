@@ -161,6 +161,14 @@ struct DialogueState {
     bool open{};
 };
 
+struct WorldChoiceState {
+    std::vector<std::string> options;
+    std::size_t selected{};
+    std::uint8_t input_cooldown{};
+    bool open{};
+    bool decided{};
+};
+
 struct WorldActorActivation {
     std::uint8_t map_id{};
     std::uint8_t actor_index{};
@@ -211,6 +219,7 @@ struct WorldState {
     std::vector<std::vector<std::size_t>> roam_schedule;
     WorldPlayerState player;
     DialogueState dialogue;
+    WorldChoiceState choice;
     WorldWarpState last_warp;
     WorldActorActivation last_actor_activation;
     WorldOpponentRequest opponent_request;

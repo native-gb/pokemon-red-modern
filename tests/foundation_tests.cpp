@@ -1701,6 +1701,8 @@ void test_local_pallet_campaign_program(TestState& state) {
     pokered::WorldState world;
     pokered::InteractionCatalog interactions;
     pokered::CampaignProgramCatalog programs;
+    pokered::RuleCatalog rules;
+    pokered::BattleRuleCatalog battle_rules;
     pokered::CampaignState campaign;
     std::string error;
     check(state, pokered::load_world(root / "world_maps.bin", world, error),
@@ -1712,27 +1714,42 @@ void test_local_pallet_campaign_program(TestState& state) {
     check(state,
           pokered::load_campaign_programs(program_path, programs, error),
           "campaign fixture loads imported programs");
-    const std::filesystem::path source_path =
-        root.parent_path() / "source" / "scripts" / "campaign" /
-        "pallet_oak_interception.sexpr";
-    std::ifstream source_input(source_path);
-    const std::string source{
-        std::istreambuf_iterator<char>(source_input),
-        std::istreambuf_iterator<char>()};
-    pokered::sexpr::Document source_document;
-    pokered::Diagnostics source_diagnostics;
     check(state,
-          source_input.good() || source_input.eof(),
-          "campaign fixture reads generated source");
+          pokered::load_rules(root / "pokemon_rules.bin", rules, error),
+          "campaign fixture loads imported Pokemon rules");
     check(state,
-          pokered::sexpr::parse(source_path.string(), source,
-                                source_document, source_diagnostics),
-          "generated campaign source reparses");
+          pokered::load_battle_rules(root / "battle_rules.bin",
+                                     battle_rules, error),
+          "campaign fixture loads imported battle rules");
+    constexpr std::array<std::string_view, 4> source_names{
+        "pallet_oak_interception.sexpr",
+        "oaks_lab_choose_charmander.sexpr",
+        "oaks_lab_choose_squirtle.sexpr",
+        "oaks_lab_choose_bulbasaur.sexpr",
+    };
+    for (const std::string_view source_name : source_names) {
+        const std::filesystem::path source_path =
+            root.parent_path() / "source" / "scripts" / "campaign" /
+            source_name;
+        std::ifstream source_input(source_path);
+        const std::string source{
+            std::istreambuf_iterator<char>(source_input),
+            std::istreambuf_iterator<char>()};
+        pokered::sexpr::Document source_document;
+        pokered::Diagnostics source_diagnostics;
+        check(state, source_input.good() || source_input.eof(),
+              "campaign fixture reads generated source");
+        check(state,
+              pokered::sexpr::parse(source_path.string(), source,
+                                    source_document,
+                                    source_diagnostics),
+              "generated campaign source reparses");
+    }
     check(state,
           pokered::begin_new_campaign(campaign, "RED", "BLUE", {}, error),
           "campaign fixture owns New Game state");
     if (!world.loaded || !interactions.loaded || !programs.loaded ||
-        !campaign.initialized)
+        !rules.loaded || !battle_rules.loaded || !campaign.initialized)
         return;
     check(state,
           pokered::initialize_world_runtime(world, interactions, error),
@@ -1748,8 +1765,8 @@ void test_local_pallet_campaign_program(TestState& state) {
     constexpr std::uint32_t oak_appeared_flag = 0x6BA5FU;
     constexpr std::uint32_t oak_asked_to_choose_flag = 0x6BA59U;
     check(state,
-          pokered::service_campaign_programs(programs, world, campaign,
-                                             error),
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign, error),
           "Pallet trigger starts its campaign fiber");
     check(state,
           campaign.input_locked &&
@@ -1766,7 +1783,7 @@ void test_local_pallet_campaign_program(TestState& state) {
             {.activate = world.dialogue.open});
         check(state,
               pokered::service_campaign_programs(
-                  programs, world, campaign, error),
+                  programs, rules, battle_rules, world, campaign, error),
               "Pallet campaign fiber advances");
         if (!error.empty()) {
             std::fprintf(stderr, "Pallet campaign error: %s\n",
@@ -1786,6 +1803,80 @@ void test_local_pallet_campaign_program(TestState& state) {
               world.maps[world.player.map_index].id == 40U &&
               world.player.x == 5 && world.player.y == 3,
           "ROM movement streams walk the player through the lab warp to the starters");
+
+    // Exercise both answers on the imported Charmander-ball program. Declining
+    // must leave all campaign state untouched; accepting must construct the
+    // level-five party member and execute Blue's ROM-derived selection route.
+    world.player.facing = pokered::WorldDirection::right;
+    pokered::step_world(world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign, error),
+          "starter actor activation begins its campaign program");
+    check(state,
+          world.choice.open && world.choice.options.size() == 2U &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find("CHARMANDER") !=
+                  std::string::npos,
+          "starter program presents imported dialogue and a choice");
+    pokered::step_world(world, interactions, campaign, {.down = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign, error),
+          "starter choice accepts navigation");
+    pokered::step_world(world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign, error),
+          "declined starter choice exits its campaign program");
+    check(state,
+          !campaign.fiber.active && !campaign.input_locked &&
+              campaign.party.members.empty() &&
+              !pokered::campaign_flag(campaign, 0x6BA5AU),
+          "declining a starter has no progression side effects");
+
+    pokered::step_world(world, interactions, campaign, {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign, error),
+          "starter actor can be activated again after declining");
+    pokered::step_world(world, interactions, campaign, {.activate = true});
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world, campaign, error),
+              "accepted starter program advances");
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        if (!error.empty()) break;
+    }
+    check(state, error.empty(), "starter campaign program reports no error");
+    check(state,
+          !campaign.fiber.active && !campaign.input_locked &&
+              campaign.party.members.size() == 1U &&
+              campaign.party.members.front().species_dex == 4U &&
+              campaign.party.members.front().level == 5U &&
+              pokered::campaign_variable(campaign, 0U) == 4U &&
+              pokered::campaign_variable(campaign, 1U) == 7U &&
+              pokered::campaign_flag(campaign, 0x6BA5AU),
+          "accepted starter creates imported player/rival state");
+
+    const auto actor_visible = [&](std::uint8_t actor_index) {
+        for (const pokered::WorldActorState& actor : world.actors) {
+            const pokered::WorldMap& map = world.maps[actor.map_index];
+            const pokered::WorldActorSpawn& spawn =
+                map.actors[actor.spawn_index];
+            if (map.id == 40U && spawn.index == actor_index)
+                return actor.visible;
+        }
+        return false;
+    };
+    check(state,
+          !actor_visible(2U) && !actor_visible(3U) &&
+              actor_visible(4U),
+          "player and rival starter balls are removed from the lab");
 }
 
 } // namespace

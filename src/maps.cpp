@@ -740,6 +740,32 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         return;
     ++world.simulation_tick;
 
+    if (world.choice.open) {
+        if (world.choice.input_cooldown > 0U) {
+            --world.choice.input_cooldown;
+        } else if (!world.choice.options.empty() &&
+                   (input.left || input.up || input.right || input.down)) {
+            const bool previous = input.left || input.up;
+            if (previous) {
+                world.choice.selected =
+                    world.choice.selected == 0U
+                        ? world.choice.options.size() - 1U
+                        : world.choice.selected - 1U;
+            } else {
+                world.choice.selected =
+                    (world.choice.selected + 1U) %
+                    world.choice.options.size();
+            }
+            world.choice.input_cooldown = 8U;
+        }
+        if (input.activate && !world.choice.options.empty()) {
+            world.choice.open = false;
+            world.choice.decided = true;
+            world.dialogue = {};
+        }
+        return;
+    }
+
     if (world.dialogue.open) {
         if (input.activate) {
             if (world.dialogue.page + 1U < world.dialogue.pages.size())

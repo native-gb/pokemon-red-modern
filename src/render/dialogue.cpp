@@ -28,6 +28,37 @@ void draw_dialogue_overlay(const WorldState& world) {
     draw->AddTriangleFilled({arrow_x - 8.0F, arrow_y - 5.0F},
                             {arrow_x + 8.0F, arrow_y - 5.0F}, {arrow_x, arrow_y + 5.0F},
                             IM_COL32(35, 25, 35, 255));
+
+    if (!world.choice.open || world.choice.options.empty()) return;
+    const float choice_width = 180.0F;
+    const float choice_height =
+        28.0F + static_cast<float>(world.choice.options.size()) * 34.0F;
+    const ImVec2 choice_minimum{
+        maximum.x - choice_width - 18.0F,
+        minimum.y - choice_height - 12.0F};
+    const ImVec2 choice_maximum{
+        choice_minimum.x + choice_width,
+        choice_minimum.y + choice_height};
+    draw->AddRectFilled(choice_minimum, choice_maximum,
+                        IM_COL32(246, 238, 242, 248), 7.0F);
+    draw->AddRect(choice_minimum, choice_maximum,
+                  IM_COL32(42, 29, 42, 255), 7.0F, 0, 4.0F);
+    for (std::size_t index = 0U; index < world.choice.options.size();
+         ++index) {
+        const float y =
+            choice_minimum.y + 15.0F + static_cast<float>(index) * 34.0F;
+        if (index == world.choice.selected)
+            draw->AddTriangleFilled(
+                {choice_minimum.x + 16.0F, y + 5.0F},
+                {choice_minimum.x + 26.0F, y},
+                {choice_minimum.x + 26.0F, y + 10.0F},
+                IM_COL32(35, 25, 35, 255));
+        const std::string& option = world.choice.options[index];
+        draw->AddText(ImGui::GetFont(), 25.0F,
+                      {choice_minimum.x + 38.0F, y - 7.0F},
+                      IM_COL32(35, 25, 35, 255), option.data(),
+                      option.data() + option.size());
+    }
 }
 
 } // namespace pokered::render

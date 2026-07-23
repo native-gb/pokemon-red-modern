@@ -150,14 +150,19 @@ internal-species-to-Dex mapping. All 346 map-owned opponent actors resolve
 through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
-`campaign_programs.bin` contains semantically lifted story fibers. The first
-executable slice imports Pallet Town's Oak interception, both ROM dialogue
-programs, Oak/player movement streams, the ordinary lab warp, Oak's two lab
-actor placements, both lab entry paths, the four starter-choice speeches, and
-their progression flags. Its readable peer is
-`source/scripts/campaign/pallet_oak_interception.sexpr`. Map IDs, actor IDs,
-flags, source addresses, paths, and text are owned by the generated pack; the
-runtime implements only generic fiber and world-motion operations.
+`campaign_programs.bin` contains semantically lifted story fibers. Its first
+four programs import Pallet Town's Oak interception and all three Oak's Lab
+starter-ball branches. They include both Pallet dialogue programs, Oak/player
+movement streams, the ordinary lab warp, Oak's two lab actor placements, both
+lab entry paths, the four choose-a-Pokemon speeches, each starter prompt,
+player/rival receipt text, both selected-ball removals, rival movement, and
+their progression flags and variables. The importer decodes the starter and
+counter-starter species from the cartridge program and resolves internal
+species IDs through the imported Pokédex-order table. Readable peers live under
+`source/scripts/campaign/`. Map IDs, actor IDs, flags, source addresses, paths,
+text, species, and branch ownership are generated-pack content; the runtime
+implements only generic fiber, choice, owned-Pokemon creation, and world-motion
+operations.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Its imported trainer-header index covers all 322 ordinary and
 static trainer interactions, including sight range, defeated flag, and

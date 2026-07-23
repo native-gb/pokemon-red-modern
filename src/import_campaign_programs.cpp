@@ -26,10 +26,30 @@ constexpr std::size_t kOakLabEntryPathOffset = 0x01CB7EU;
 constexpr std::size_t kOakLabPlayerPathOffset = 0x01CBCFU;
 constexpr std::array<std::size_t, 4> kOakLabChoiceTextOffsets{0x01D34FU, 0x01D35EU, 0x01D36DU,
                                                               0x01D37CU};
+constexpr std::array<std::size_t, 3> kStarterPromptTextOffsets{
+    0x01D19AU, 0x01D1A4U, 0x01D1AEU};
+constexpr std::size_t kStarterEnergeticTextOffset = 0x01D222U;
+constexpr std::size_t kPlayerReceivedStarterTextOffset = 0x094EA0U;
+constexpr std::size_t kRivalTakesStarterTextOffset = 0x095444U;
+constexpr std::size_t kRivalReceivedStarterTextOffset = 0x095461U;
+constexpr std::array<std::size_t, 3> kStarterChoiceCodeOffsets{
+    0x01D102U, 0x01D113U, 0x01D124U};
+constexpr std::array<std::size_t, 3> kRivalStarterPathOffsets{
+    0x01CC9CU, 0x01CCB7U, 0x01CCEFU};
+constexpr std::size_t kPokedexOrderOffset = 0x041024U;
+constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint32_t kFollowedOakFlag = static_cast<std::uint32_t>(0xD747U * 8U);
 constexpr std::uint32_t kFollowedOakSecondFlag = kFollowedOakFlag + 32U;
 constexpr std::uint32_t kOakAskedToChooseFlag = kFollowedOakFlag + 33U;
+constexpr std::uint32_t kGotStarterFlag = kFollowedOakFlag + 34U;
 constexpr std::uint32_t kOakAppearedFlag = static_cast<std::uint32_t>(0xD74BU * 8U + 7U);
+constexpr std::uint8_t kPlayerStarterVariable = 0U;
+constexpr std::uint8_t kRivalStarterVariable = 1U;
+
+enum class TriggerKind : std::uint8_t {
+    player_y,
+    actor_activation,
+};
 
 enum class Opcode : std::uint8_t {
     lock_input,
@@ -42,6 +62,10 @@ enum class Opcode : std::uint8_t {
     move_actor_to_player,
     align_pair_x,
     parallel_path,
+    ask_yes_no,
+    end_if_choice_no,
+    set_variable,
+    give_pokemon,
     unlock_input,
     end,
 };
@@ -65,6 +89,24 @@ struct Instruction {
     std::vector<PathCommand> player_path;
 };
 
+struct Program {
+    std::string key;
+    TriggerKind trigger_kind{TriggerKind::player_y};
+    std::uint8_t trigger_map{};
+    std::uint8_t trigger_value{};
+    std::uint32_t required_flag{0xFFFFFFFFU};
+    std::uint32_t absent_flag{0xFFFFFFFFU};
+    std::vector<std::pair<std::uint8_t, std::uint8_t>> initially_hidden;
+    std::vector<Instruction> instructions;
+};
+
+struct StarterChoice {
+    std::uint8_t player_species{};
+    std::uint8_t rival_species{};
+    std::uint8_t selected_ball{};
+    std::uint8_t rival_ball{};
+};
+
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
                       std::uint32_t value = 0U) {
     Instruction result;
@@ -81,11 +123,72 @@ Instruction dialogue(std::vector<std::string> pages) {
     return result;
 }
 
+Instruction species_dialogue(std::vector<std::string> pages,
+                             std::uint8_t species_dex) {
+    Instruction result = dialogue(std::move(pages));
+    result.value = species_dex;
+    return result;
+}
+
+Instruction ask_yes_no(std::vector<std::string> pages,
+                       std::uint8_t species_dex) {
+    Instruction result = operation(Opcode::ask_yes_no, 0U, 0U,
+                                   species_dex);
+    result.pages = std::move(pages);
+    return result;
+}
+
 bool has_bytes(std::span<const std::uint8_t> rom, std::size_t offset,
                std::span<const std::uint8_t> expected) {
     return offset <= rom.size() && expected.size() <= rom.size() - offset &&
            std::equal(expected.begin(), expected.end(),
                       rom.begin() + static_cast<std::ptrdiff_t>(offset));
+}
+
+bool decode_starter_choice(std::span<const std::uint8_t> rom,
+                           std::size_t offset, StarterChoice& result,
+                           std::string& error) {
+    constexpr std::array<std::uint8_t, 12> signature{
+        0x08U, 0x3EU, 0x00U, 0xEAU, 0x3DU, 0xCDU,
+        0x3EU, 0x00U, 0xEAU, 0x3EU, 0xCDU, 0x3EU};
+    if (offset > rom.size() || 17U > rom.size() - offset) {
+        error = "starter choice program extends outside the verified ROM";
+        return false;
+    }
+    for (std::size_t index = 0U; index < signature.size(); ++index)
+        if ((index != 2U && index != 7U) &&
+            rom[offset + index] != signature[index]) {
+            error = "starter choice program signature does not match the pinned ROM";
+            return false;
+        }
+    if (rom[offset + 13U] != 0x06U ||
+        (rom[offset + 15U] != 0x18U &&
+         rom[offset + 15U] != 0xEAU)) {
+        error = "starter choice program has an unknown selection tail";
+        return false;
+    }
+
+    const auto dex_for_internal = [&](std::uint8_t internal) {
+        if (internal == 0U ||
+            internal > kInternalSpeciesCount ||
+            kPokedexOrderOffset + internal > rom.size())
+            return static_cast<std::uint8_t>(0U);
+        return rom[kPokedexOrderOffset +
+                   static_cast<std::size_t>(internal - 1U)];
+    };
+    result = {
+        .player_species = dex_for_internal(rom[offset + 12U]),
+        .rival_species = dex_for_internal(rom[offset + 2U]),
+        .selected_ball = rom[offset + 14U],
+        .rival_ball = rom[offset + 7U],
+    };
+    if (result.player_species == 0U || result.player_species > 151U ||
+        result.rival_species == 0U || result.rival_species > 151U ||
+        result.selected_ball == 0U || result.rival_ball == 0U) {
+        error = "starter choice program resolves invalid species or actors";
+        return false;
+    }
+    return true;
 }
 
 void write_u16(std::vector<std::uint8_t>& bytes, std::size_t value) {
@@ -113,6 +216,31 @@ void write_path(std::vector<std::uint8_t>& bytes, const std::vector<PathCommand>
     write_u16(bytes, path.size());
     for (const PathCommand command : path)
         bytes.push_back(static_cast<std::uint8_t>(command));
+}
+
+void write_program(std::vector<std::uint8_t>& bytes,
+                   const Program& program) {
+    write_string(bytes, program.key);
+    bytes.push_back(static_cast<std::uint8_t>(program.trigger_kind));
+    bytes.push_back(program.trigger_map);
+    bytes.push_back(program.trigger_value);
+    write_u32(bytes, program.required_flag);
+    write_u32(bytes, program.absent_flag);
+    write_u16(bytes, program.initially_hidden.size());
+    for (const auto& [map_id, actor_index] : program.initially_hidden) {
+        bytes.push_back(map_id);
+        bytes.push_back(actor_index);
+    }
+    write_u16(bytes, program.instructions.size());
+    for (const Instruction& instruction : program.instructions) {
+        bytes.push_back(static_cast<std::uint8_t>(instruction.opcode));
+        bytes.push_back(instruction.a);
+        bytes.push_back(instruction.b);
+        write_u32(bytes, instruction.value);
+        write_pages(bytes, instruction.pages);
+        write_path(bytes, instruction.actor_path);
+        write_path(bytes, instruction.player_path);
+    }
 }
 
 bool decode_rle_path(std::span<const std::uint8_t> rom, std::size_t offset, bool joypad,
@@ -317,6 +445,89 @@ GeneratedFile readable_pallet_source(const std::vector<std::string>& hey_wait,
     };
 }
 
+GeneratedFile readable_starter_source(
+    std::string_view key, const StarterChoice& choice,
+    const DecodedTextProgram& prompt,
+    const DecodedTextProgram& energetic,
+    const DecodedTextProgram& player_received,
+    const DecodedTextProgram& rival_takes,
+    const DecodedTextProgram& rival_received,
+    const std::vector<PathCommand>& rival_path) {
+    const auto path_name = [](PathCommand command) {
+        switch (command) {
+        case PathCommand::down:
+            return "down";
+        case PathCommand::up:
+            return "up";
+        case PathCommand::left:
+            return "left";
+        case PathCommand::right:
+            return "right";
+        case PathCommand::wait:
+            return "wait";
+        case PathCommand::face_down:
+            return "face_down";
+        }
+        return "invalid";
+    };
+
+    std::ostringstream source;
+    source << "; Lifted from the verified Pokemon Red US rev 0 starter program.\n"
+           << "; Species and ball actor IDs below were decoded from the ROM program.\n\n"
+           << "campaign_program " << key << '\n'
+           << "    source bank_07 actor " << static_cast<unsigned>(choice.selected_ball)
+           << '\n'
+           << "    trigger map oaks_lab actor_activation "
+           << static_cast<unsigned>(choice.selected_ball) << '\n'
+           << "    required_flag 0x" << std::hex << kOakAskedToChooseFlag << '\n'
+           << "    absent_flag 0x" << kGotStarterFlag << std::dec << '\n'
+           << "    lock_input\n"
+           << "    ask_yes_no species_dex "
+           << static_cast<unsigned>(choice.player_species) << '\n'
+           << page_source(prompt.pages, "        ")
+           << "    end_if_choice_no\n"
+           << "    hide_actor map oaks_lab actor "
+           << static_cast<unsigned>(choice.selected_ball) << '\n'
+           << "    say species_dex "
+           << static_cast<unsigned>(choice.player_species) << '\n'
+           << page_source(energetic.pages, "        ")
+           << "    say species_dex "
+           << static_cast<unsigned>(choice.player_species) << '\n'
+           << page_source(player_received.pages, "        ")
+           << "    give_pokemon species_dex "
+           << static_cast<unsigned>(choice.player_species)
+           << " level 5\n"
+           << "    set_variable player_starter "
+           << static_cast<unsigned>(choice.player_species) << '\n'
+           << "    set_variable rival_starter "
+           << static_cast<unsigned>(choice.rival_species) << '\n'
+           << "    parallel_path map oaks_lab actor 1\n"
+           << "        actor";
+    for (const PathCommand command : rival_path)
+        source << ' ' << path_name(command);
+    source << "\n        player";
+    for (std::size_t index = 0U; index < rival_path.size(); ++index)
+        source << " wait";
+    source << "\n"
+           << "    face_actor map oaks_lab actor 1 up\n"
+           << "    say\n"
+           << page_source(rival_takes.pages, "        ")
+           << "    hide_actor map oaks_lab actor "
+           << static_cast<unsigned>(choice.rival_ball) << '\n'
+           << "    say species_dex "
+           << static_cast<unsigned>(choice.rival_species) << '\n'
+           << page_source(rival_received.pages, "        ")
+           << "    set_flag 0x" << std::hex << kGotStarterFlag << std::dec << '\n'
+           << "    unlock_input\n"
+           << "    end\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/" + std::string(key) + ".sexpr",
+        .bytes = std::vector<std::uint8_t>(text.begin(), text.end()),
+    };
+}
+
 } // namespace
 
 bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
@@ -350,6 +561,44 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             return false;
         }
     }
+    std::array<DecodedTextProgram, 3> starter_prompts;
+    for (std::size_t index = 0U; index < starter_prompts.size(); ++index) {
+        if (!decode_text_program(rom, 0x07U,
+                                 kStarterPromptTextOffsets[index],
+                                 starter_prompts[index]) ||
+            starter_prompts[index].pages.empty()) {
+            error =
+                "Oak's Lab starter prompt could not be decoded from the pinned ROM";
+            return false;
+        }
+    }
+    DecodedTextProgram starter_energetic;
+    DecodedTextProgram player_received;
+    DecodedTextProgram rival_takes;
+    DecodedTextProgram rival_received;
+    if (!decode_text_program(rom, 0x07U, kStarterEnergeticTextOffset,
+                             starter_energetic) ||
+        !decode_text_program(rom, 0x25U,
+                             kPlayerReceivedStarterTextOffset,
+                             player_received) ||
+        !decode_text_program(rom, 0x25U,
+                             kRivalTakesStarterTextOffset, rival_takes) ||
+        !decode_text_program(rom, 0x25U,
+                             kRivalReceivedStarterTextOffset,
+                             rival_received) ||
+        starter_energetic.pages.empty() ||
+        player_received.pages.empty() || rival_takes.pages.empty() ||
+        rival_received.pages.empty()) {
+        error =
+            "Oak's Lab starter result dialogue could not be decoded from the pinned ROM";
+        return false;
+    }
+
+    std::array<StarterChoice, 3> starter_choices;
+    for (std::size_t index = 0U; index < starter_choices.size(); ++index)
+        if (!decode_starter_choice(rom, kStarterChoiceCodeOffsets[index],
+                                   starter_choices[index], error))
+            return false;
 
     std::vector<PathCommand> oak_path;
     std::vector<PathCommand> player_path;
@@ -360,6 +609,13 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         !decode_direct_npc_path(rom, kOakLabEntryPathOffset, lab_oak_path, error) ||
         !decode_rle_path(rom, kOakLabPlayerPathOffset, true, lab_player_path, error))
         return false;
+    std::array<std::vector<PathCommand>, 3> rival_starter_paths;
+    for (std::size_t index = 0U; index < rival_starter_paths.size();
+         ++index)
+        if (!decode_direct_npc_path(
+                rom, kRivalStarterPathOffsets[index],
+                rival_starter_paths[index], error))
+            return false;
 
     // The simulated joypad buffer is consumed from its final index toward zero.
     // Reverse its decoded command stream; MoveSprite consumes Oak's stream forward.
@@ -409,35 +665,88 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     instructions.push_back(operation(Opcode::unlock_input));
     instructions.push_back(operation(Opcode::end));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', '1'};
-    write_u16(cache, 1U);
-    write_string(cache, "pallet_oak_interception");
-    cache.push_back(0U);
-    cache.push_back(1U);
-    write_u32(cache, kFollowedOakFlag);
-    write_u16(cache, 3U);
-    cache.push_back(0U);
-    cache.push_back(1U);
-    cache.push_back(40U);
-    cache.push_back(5U);
-    cache.push_back(40U);
-    cache.push_back(8U);
-    write_u16(cache, instructions.size());
-    for (const Instruction& instruction : instructions) {
-        cache.push_back(static_cast<std::uint8_t>(instruction.opcode));
-        cache.push_back(instruction.a);
-        cache.push_back(instruction.b);
-        write_u32(cache, instruction.value);
-        write_pages(cache, instruction.pages);
-        write_path(cache, instruction.actor_path);
-        write_path(cache, instruction.player_path);
+    Program opening;
+    opening.key = "pallet_oak_interception";
+    opening.trigger_map = 0U;
+    opening.trigger_value = 1U;
+    opening.absent_flag = kFollowedOakFlag;
+    opening.initially_hidden = {{0U, 1U}, {40U, 5U}, {40U, 8U}};
+    opening.instructions = std::move(instructions);
+
+    constexpr std::array<std::string_view, 3> starter_keys{
+        "oaks_lab_choose_charmander",
+        "oaks_lab_choose_squirtle",
+        "oaks_lab_choose_bulbasaur",
+    };
+    std::vector<Program> programs;
+    programs.reserve(1U + starter_choices.size());
+    programs.push_back(std::move(opening));
+    for (std::size_t index = 0U; index < starter_choices.size(); ++index) {
+        const StarterChoice& choice = starter_choices[index];
+        Program starter;
+        starter.key = starter_keys[index];
+        starter.trigger_kind = TriggerKind::actor_activation;
+        starter.trigger_map = 40U;
+        starter.trigger_value = choice.selected_ball;
+        starter.required_flag = kOakAskedToChooseFlag;
+        starter.absent_flag = kGotStarterFlag;
+
+        starter.instructions.push_back(operation(Opcode::lock_input));
+        starter.instructions.push_back(
+            ask_yes_no(starter_prompts[index].pages,
+                       choice.player_species));
+        starter.instructions.push_back(
+            operation(Opcode::end_if_choice_no));
+        starter.instructions.push_back(operation(
+            Opcode::hide_actor, choice.selected_ball, 0U, 40U));
+        starter.instructions.push_back(species_dialogue(
+            starter_energetic.pages, choice.player_species));
+        starter.instructions.push_back(species_dialogue(
+            player_received.pages, choice.player_species));
+        starter.instructions.push_back(operation(
+            Opcode::give_pokemon, 5U, 0U, choice.player_species));
+        starter.instructions.push_back(operation(
+            Opcode::set_variable, kPlayerStarterVariable, 0U,
+            choice.player_species));
+        starter.instructions.push_back(operation(
+            Opcode::set_variable, kRivalStarterVariable, 0U,
+            choice.rival_species));
+
+        Instruction rival_walk =
+            operation(Opcode::parallel_path, 1U, 0U, 40U);
+        rival_walk.actor_path = rival_starter_paths[index];
+        rival_walk.player_path = std::vector<PathCommand>(
+            rival_walk.actor_path.size(), PathCommand::wait);
+        starter.instructions.push_back(std::move(rival_walk));
+        starter.instructions.push_back(
+            operation(Opcode::face_actor, 1U, 1U, 40U));
+        starter.instructions.push_back(dialogue(rival_takes.pages));
+        starter.instructions.push_back(operation(
+            Opcode::hide_actor, choice.rival_ball, 0U, 40U));
+        starter.instructions.push_back(species_dialogue(
+            rival_received.pages, choice.rival_species));
+        starter.instructions.push_back(
+            operation(Opcode::set_flag, 0U, 0U, kGotStarterFlag));
+        starter.instructions.push_back(operation(Opcode::unlock_input));
+        starter.instructions.push_back(operation(Opcode::end));
+        programs.push_back(std::move(starter));
     }
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', '2'};
+    write_u16(cache, programs.size());
+    for (const Program& program : programs) write_program(cache, program);
 
     result.files.push_back(readable_pallet_source(hey_wait.pages, unsafe.pages, oak_path,
                                                   player_path, lab_oak_path, lab_player_path,
                                                   lab_choice_text));
+    for (std::size_t index = 0U; index < starter_choices.size(); ++index)
+        result.files.push_back(readable_starter_source(
+            starter_keys[index], starter_choices[index],
+            starter_prompts[index], starter_energetic,
+            player_received, rival_takes, rival_received,
+            rival_starter_paths[index]));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
-    result.programs = 1U;
+    result.programs = programs.size();
     error.clear();
     return true;
 }

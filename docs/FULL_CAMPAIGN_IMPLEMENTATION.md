@@ -638,8 +638,8 @@ Future local native link features require compatible campaign/rule manifests.
 
 ## Current campaign integration evidence
 
-The first imported story fiber is executable from the ordinary overworld. On
-the north edge of Pallet Town it:
+The first four imported story fibers are executable from the ordinary
+overworld. On the north edge of Pallet Town the opening fiber:
 
 - evaluates the imported followed-Oak flag and locks player input;
 - reveals Oak, presents both cartridge dialogue programs, and moves him to the
@@ -651,17 +651,33 @@ the north edge of Pallet Town it:
 - presents the four imported starter-choice speeches and records the two
   followed-Oak flags plus the choose-a-Pokemon gate.
 
+Each of the three starter-ball fibers then:
+
+- activates through the imported ball actor owner and requires the imported
+  choose-a-Pokemon gate;
+- shows the cartridge prompt through the generic choice executor and permits a
+  side-effect-free refusal;
+- decodes the player starter, rival counter-starter, and both ball actors from
+  the cartridge program;
+- removes the chosen ball, presents the imported energetic/receipt text, and
+  constructs the level-five owned Pokemon through the imported stat,
+  learnset, move, and growth rules;
+- records player/rival starter variables, walks the rival through the
+  ROM-derived route, removes his selected ball, and records the got-starter
+  flag.
+
 The runtime operations are generic. The C++ ROM importer emits the actor/map
-owners, flags, paths, text, and readable
-`source/scripts/campaign/pallet_oak_interception.sexpr`, then compiles the same
-records into `campaign_programs.bin`. A focused headless check drives this
-slice through its real warp and verifies its final map and progression state.
+owners, flags, paths, text, choices, species, and readable
+`source/scripts/campaign/*.sexpr` files, then compiles the same records into
+`campaign_programs.bin`. A focused headless check drives the slice through its
+real warp, declines once, accepts Charmander, and verifies party construction,
+rival selection, ball visibility, final map, and progression state.
 
 This is not full-campaign completion. The next campaign blocker begins with
-the three starter-ball interactions, starter ownership/naming, rival choice,
-the first rival battle, and the rival exit sequence. Every later map program
-still requires semantic lifting and the remaining acceptance gates above stay
-open.
+starter nickname handling, the lab-exit challenge trigger, the first rival
+battle, party restoration, and the rival exit sequence. Every later map
+program still requires semantic lifting and the remaining acceptance gates
+above stay open.
 
 ## Playable acceptance
 

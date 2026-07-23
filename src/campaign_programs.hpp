@@ -10,7 +10,15 @@
 
 namespace pokered {
 
+struct BattleRuleCatalog;
 struct CampaignState;
+struct RuleCatalog;
+
+enum class CampaignTriggerKind : std::uint8_t {
+    player_y,
+    actor_activation,
+};
+
 enum class CampaignOpcode : std::uint8_t {
     lock_input,
     set_flag,
@@ -22,6 +30,10 @@ enum class CampaignOpcode : std::uint8_t {
     move_actor_to_player,
     align_pair_x,
     parallel_path,
+    ask_yes_no,
+    end_if_choice_no,
+    set_variable,
+    give_pokemon,
     unlock_input,
     end,
 };
@@ -43,9 +55,11 @@ struct CampaignInstruction {
 
 struct CampaignProgram {
     std::string key;
+    CampaignTriggerKind trigger_kind{CampaignTriggerKind::player_y};
     std::uint8_t trigger_map_id{};
-    std::uint8_t trigger_y{};
-    std::uint32_t absent_flag{};
+    std::uint8_t trigger_value{};
+    std::uint32_t required_flag{0xFFFFFFFFU};
+    std::uint32_t absent_flag{0xFFFFFFFFU};
     std::vector<CampaignActorRef> initially_hidden;
     std::vector<CampaignInstruction> instructions;
 };
@@ -60,7 +74,8 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
                             std::string& error);
 bool initialize_campaign_program_runtime(const CampaignProgramCatalog& programs, WorldState& world,
                                          std::string& error);
-bool service_campaign_programs(const CampaignProgramCatalog& programs, WorldState& world,
+bool service_campaign_programs(const CampaignProgramCatalog& programs, const RuleCatalog& rules,
+                               const BattleRuleCatalog& battle_rules, WorldState& world,
                                CampaignState& campaign, std::string& error);
 
 } // namespace pokered

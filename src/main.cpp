@@ -448,7 +448,7 @@ int main(int argc, char** argv) {
                 pending_world_activation = false;
                 std::string campaign_step_error;
                 if (!pokered::service_campaign_programs(
-                        campaign_programs, world, campaign,
+                        campaign_programs, rules, battle_rules, world, campaign,
                         campaign_step_error)) {
                     std::fprintf(stderr, "%s\n",
                                  campaign_step_error.c_str());

@@ -1,6 +1,9 @@
 #include "campaign_programs.hpp"
 
+#include "battle_rules.hpp"
 #include "maps.hpp"
+#include "pokemon.hpp"
+#include "rules.hpp"
 #include "state.hpp"
 
 #include <array>
@@ -95,24 +98,72 @@ bool valid_instruction(const CampaignInstruction& instruction) {
         return instruction.a <= 3U;
     case CampaignOpcode::say:
         return !instruction.pages.empty();
+    case CampaignOpcode::ask_yes_no:
+        return !instruction.pages.empty();
     case CampaignOpcode::parallel_path:
         return owns_actor() && instruction.b <= 1U &&
                !instruction.actor_path.empty() &&
                !instruction.player_path.empty();
     case CampaignOpcode::lock_input:
     case CampaignOpcode::set_flag:
+    case CampaignOpcode::end_if_choice_no:
     case CampaignOpcode::unlock_input:
     case CampaignOpcode::end:
         return true;
+    case CampaignOpcode::set_variable:
+        return instruction.a < 64U && instruction.value <= 0xFFFFU;
+    case CampaignOpcode::give_pokemon:
+        return instruction.a != 0U && instruction.a <= 100U &&
+               instruction.value != 0U && instruction.value <= 0xFFU;
     }
     return false;
 }
 
 bool trigger_ready(const CampaignProgram& program, const WorldState& world,
                    const CampaignState& campaign) {
-    return world.player.initialized && world.player.map_index < world.maps.size() &&
-           world.maps[world.player.map_index].id == program.trigger_map_id &&
-           world.player.y == program.trigger_y && !campaign_flag(campaign, program.absent_flag);
+    if (!world.player.initialized ||
+        (program.required_flag != 0xFFFFFFFFU &&
+         !campaign_flag(campaign, program.required_flag)) ||
+        (program.absent_flag != 0xFFFFFFFFU &&
+         campaign_flag(campaign, program.absent_flag)))
+        return false;
+    if (program.trigger_kind == CampaignTriggerKind::actor_activation)
+        return world.last_actor_activation.occurred &&
+               world.last_actor_activation.map_id ==
+                   program.trigger_map_id &&
+               world.last_actor_activation.actor_index ==
+                   program.trigger_value;
+    return world.player.map_index < world.maps.size() &&
+           world.maps[world.player.map_index].id ==
+               program.trigger_map_id &&
+           world.player.y == program.trigger_value;
+}
+
+void replace_all(std::string& text, std::string_view token,
+                 std::string_view value) {
+    std::size_t position = 0U;
+    while ((position = text.find(token, position)) != std::string::npos) {
+        text.replace(position, token.size(), value);
+        position += value.size();
+    }
+}
+
+void open_program_dialogue(WorldState& world,
+                           const CampaignState& campaign,
+                           const RuleCatalog& rules,
+                           const CampaignInstruction& instruction) {
+    std::vector<std::string> pages = instruction.pages;
+    if (instruction.value != 0U) {
+        const SpeciesRule* species = find_species(
+            rules, static_cast<std::uint8_t>(instruction.value));
+        if (species != nullptr) {
+            for (std::string& page : pages) {
+                replace_all(page, "{species_name}", species->name);
+                replace_all(page, "{name_buffer}", species->name);
+            }
+        }
+    }
+    open_world_dialogue(world, campaign, pages);
 }
 
 } // namespace
@@ -123,7 +174,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::array<char, 4> magic{};
     std::uint16_t program_count = 0U;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', '1'} || !read_u16(input, program_count) ||
+        magic != std::array{'P', 'C', 'P', '2'} || !read_u16(input, program_count) ||
         program_count == 0U || program_count > 4096U) {
         error = "campaign program cache has an invalid header";
         return false;
@@ -134,12 +185,22 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     loaded.programs.reserve(program_count);
     for (std::uint16_t index = 0U; index < program_count; ++index) {
         CampaignProgram program;
+        std::uint8_t trigger_kind = 0U;
         std::uint16_t hidden_count = 0U;
         std::uint16_t instruction_count = 0U;
-        if (!read_string(input, program.key) || !read_u8(input, program.trigger_map_id) ||
-            !read_u8(input, program.trigger_y) || !read_u32(input, program.absent_flag) ||
+        if (!read_string(input, program.key) ||
+            !read_u8(input, trigger_kind) ||
+            trigger_kind >
+                static_cast<std::uint8_t>(
+                    CampaignTriggerKind::actor_activation) ||
+            !read_u8(input, program.trigger_map_id) ||
+            !read_u8(input, program.trigger_value) ||
+            !read_u32(input, program.required_flag) ||
+            !read_u32(input, program.absent_flag) ||
             !read_u16(input, hidden_count) || hidden_count > 64U)
             return false;
+        program.trigger_kind =
+            static_cast<CampaignTriggerKind>(trigger_kind);
         program.initially_hidden.reserve(hidden_count);
         for (std::uint16_t hidden = 0U; hidden < hidden_count; ++hidden) {
             CampaignActorRef actor;
@@ -203,8 +264,11 @@ bool initialize_campaign_program_runtime(const CampaignProgramCatalog& programs,
     return true;
 }
 
-bool service_campaign_programs(const CampaignProgramCatalog& programs, WorldState& world,
-                               CampaignState& campaign, std::string& error) {
+bool service_campaign_programs(const CampaignProgramCatalog& programs,
+                               const RuleCatalog& rules,
+                               const BattleRuleCatalog& battle_rules,
+                               WorldState& world, CampaignState& campaign,
+                               std::string& error) {
     if (!programs.loaded || !world.loaded || !campaign.initialized) {
         error.clear();
         return true;
@@ -219,6 +283,8 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs, WorldStat
                 .instruction_index = 0U,
                 .waiting_dialogue = false,
                 .waiting_motion = false,
+                .waiting_choice = false,
+                .last_choice = 0U,
                 .active = true,
             };
             break;
@@ -249,6 +315,20 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs, WorldStat
         }
         fiber.waiting_motion = false;
     }
+    if (fiber.waiting_choice) {
+        if (world.choice.open) {
+            error.clear();
+            return true;
+        }
+        if (!world.choice.decided) {
+            error = "campaign choice closed without a result";
+            return false;
+        }
+        fiber.last_choice =
+            static_cast<std::uint8_t>(world.choice.selected);
+        world.choice = {};
+        fiber.waiting_choice = false;
+    }
 
     for (std::size_t operations = 0U; operations < 64U; ++operations) {
         if (fiber.instruction_index >= program.instructions.size()) {
@@ -271,7 +351,7 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs, WorldStat
                 return false;
             break;
         case CampaignOpcode::say:
-            open_world_dialogue(world, campaign, instruction.pages);
+            open_program_dialogue(world, campaign, rules, instruction);
             fiber.waiting_dialogue = world.dialogue.open;
             error.clear();
             return true;
@@ -309,6 +389,61 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs, WorldStat
             fiber.waiting_motion = true;
             error.clear();
             return true;
+        case CampaignOpcode::ask_yes_no:
+            open_program_dialogue(world, campaign, rules, instruction);
+            world.choice = {
+                .options = {"YES", "NO"},
+                .selected = 0U,
+                .input_cooldown = 0U,
+                .open = true,
+                .decided = false,
+            };
+            fiber.waiting_choice = true;
+            error.clear();
+            return true;
+        case CampaignOpcode::end_if_choice_no:
+            if (fiber.last_choice != 0U) {
+                campaign.input_locked = false;
+                fiber = {};
+                error.clear();
+                return true;
+            }
+            break;
+        case CampaignOpcode::set_variable:
+            set_campaign_variable(
+                campaign, instruction.a,
+                static_cast<std::uint16_t>(instruction.value));
+            break;
+        case CampaignOpcode::give_pokemon: {
+            if (campaign.party.members.size() >= 6U) {
+                error = "campaign cannot add a Pokemon to a full party";
+                return false;
+            }
+            const StatFormulaProgram* stat_formula = find_stat_formula(
+                battle_rules, battle_rules.original_stat_formula);
+            if (stat_formula == nullptr) {
+                error = "campaign Pokemon creation lost its stat formula";
+                return false;
+            }
+            const std::uint8_t first = next_world_random_byte(world);
+            const std::uint8_t second = next_world_random_byte(world);
+            PokemonState pokemon;
+            if (!build_pokemon(
+                    rules, *stat_formula,
+                    static_cast<std::uint8_t>(instruction.value),
+                    instruction.a,
+                    {
+                        static_cast<std::uint8_t>(first >> 4U),
+                        static_cast<std::uint8_t>(first & 0x0FU),
+                        static_cast<std::uint8_t>(second >> 4U),
+                        static_cast<std::uint8_t>(second & 0x0FU),
+                    },
+                    campaign.trainer_id, campaign.player_name, pokemon,
+                    error))
+                return false;
+            campaign.party.members.push_back(std::move(pokemon));
+            break;
+        }
         case CampaignOpcode::unlock_input:
             campaign.input_locked = false;
             break;

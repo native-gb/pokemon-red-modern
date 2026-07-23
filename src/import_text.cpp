@@ -312,9 +312,20 @@ bool decode_commands(DecodeState& state, std::uint8_t bank, std::size_t offset, 
                 state.reason = "text_pointer_operand_out_of_range";
                 return false;
             }
+            const std::uint16_t address = read_u16(state.rom, cursor);
             state.operations << "    " << (command == 0x01U ? "insert_ram" : "move_cursor") << " 0x"
                              << std::hex << std::setfill('0') << std::setw(4)
-                             << read_u16(state.rom, cursor) << std::dec << '\n';
+                             << address << std::dec << '\n';
+            if (command == 0x01U) {
+                if (address == 0xCD6DU)
+                    state.pages.back() += "{name_buffer}";
+                else {
+                    std::ostringstream token;
+                    token << "{ram_" << std::hex << std::setfill('0')
+                          << std::setw(4) << address << '}';
+                    state.pages.back() += token.str();
+                }
+            }
             cursor += 2U;
             state.bytes += 2U;
             continue;
