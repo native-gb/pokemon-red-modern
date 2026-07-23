@@ -1,6 +1,8 @@
 #include "battle_animation_lab.hpp"
 #include "catalog.hpp"
+#include "maps.hpp"
 #include "render/frame.hpp"
+#include "render/maps.hpp"
 #include "src/imgui_layer.hpp"
 #include "state.hpp"
 #include "tools.hpp"
@@ -79,8 +81,27 @@ int main(int argc, char** argv) {
         std::printf("Loaded %zu battle animation lab programs from %s\n",
                     animation_lab.entries.size(), generated_animation_root.c_str());
     }
+
+    pokered::MapBrowser map_browser;
+    std::string map_error;
+    const std::filesystem::path map_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" / "map_browser.bin";
+    if (!pokered::load_map_browser(map_cache, map_browser, map_error))
+        std::fprintf(stderr, "%s\n", map_error.c_str());
+
     pokered::HostWindow window;
     if (!pokered::initialize_window(window, data_root)) return 1;
+    pokered::render::MapRenderResources map_resources;
+    if (map_browser.loaded) {
+        if (!pokered::render::upload_map_textures(window.frame.renderer, map_browser,
+                                                  map_resources)) {
+            std::fprintf(stderr, "could not upload imported map textures: %s\n",
+                         SDL_GetError());
+            map_browser.loaded = false;
+        } else {
+            game.mode = pokered::Mode::overworld;
+        }
+    }
 
     pokered::ToolState tools{
         .layout =
@@ -101,10 +122,25 @@ int main(int argc, char** argv) {
         const pokered::WindowInput input = pokered::poll_window_events(window);
         if (input.quit) break;
         pokered::apply_tool_shortcuts(tools, input);
-        if (input.previous_animation) pokered::previous_battle_animation_lab(animation_lab);
-        if (input.next_animation) pokered::next_battle_animation_lab(animation_lab);
-        if (input.previous_species) pokered::previous_battle_species(animation_lab);
-        if (input.next_species) pokered::next_battle_species(animation_lab);
+        if (input.toggle_lab_view && map_browser.loaded && animation_lab.loaded)
+            game.mode = game.mode == pokered::Mode::overworld ? pokered::Mode::battle
+                                                              : pokered::Mode::overworld;
+        if (input.previous_animation) {
+            if (game.mode == pokered::Mode::overworld)
+                pokered::previous_map(map_browser);
+            else
+                pokered::previous_battle_animation_lab(animation_lab);
+        }
+        if (input.next_animation) {
+            if (game.mode == pokered::Mode::overworld)
+                pokered::next_map(map_browser);
+            else
+                pokered::next_battle_animation_lab(animation_lab);
+        }
+        if (game.mode == pokered::Mode::battle && input.previous_species)
+            pokered::previous_battle_species(animation_lab);
+        if (game.mode == pokered::Mode::battle && input.next_species)
+            pokered::next_battle_species(animation_lab);
         if (input.cycle_battle_ui) pokered::cycle_battle_ui_mode(animation_lab);
         if (input.previous_battle_ui_selection)
             pokered::previous_battle_ui_menu_selection(animation_lab);
@@ -127,7 +163,8 @@ int main(int argc, char** argv) {
         accumulator = std::min(accumulator + elapsed, 0.25);
         while (accumulator >= step_seconds) {
             pokered::step_game(game);
-            if (!game.paused) pokered::step_battle_animation_lab(animation_lab);
+            if (!game.paused && game.mode == pokered::Mode::battle)
+                pokered::step_battle_animation_lab(animation_lab);
             accumulator -= step_seconds;
         }
 
@@ -135,14 +172,15 @@ int main(int argc, char** argv) {
         imgui_new_frame();
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
                                            window.frame.render_width, window.frame.render_height,
-                                           game, catalog, animation_lab) ||
+                                           game, catalog, animation_lab, map_browser,
+                                           map_resources) ||
             !pokered::draw_window(window)) {
             std::fprintf(stderr, "could not render frame: %s\n", SDL_GetError());
             render_failed = true;
             break;
         }
 
-        pokered::draw_tools(tools, game, catalog, animation_lab,
+        pokered::draw_tools(tools, game, catalog, animation_lab, map_browser,
                             renderer_name != nullptr ? renderer_name : "unknown");
         imgui_render_layer();
         pokered::present_window(window);
@@ -151,6 +189,7 @@ int main(int argc, char** argv) {
         if (options.render_smoke && rendered_frames >= 3) running = false;
     }
 
+    pokered::render::destroy_map_textures(map_resources);
     pokered::shutdown_window(window);
     return render_failed ? 1 : 0;
 }

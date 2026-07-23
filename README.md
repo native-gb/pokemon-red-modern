@@ -31,6 +31,8 @@ The repository currently provides:
 - a portable Gen I picture decoder which emits readable species/trainer
   bindings and a decoded local runtime cache for 151 species and 47 trainer
   classes;
+- a GPU map browser for the first four connected outdoor maps, with locally
+  imported block grids expanded into complete tile layers;
 - architecture, coding, distribution, and extraction plans.
 
 No cartridge is required for the scaffold to open.

@@ -10,6 +10,7 @@ struct WindowInput {
     bool quit{};
     bool toggle_player_tools{};
     bool toggle_developer_tools{};
+    bool toggle_lab_view{};
     bool previous_animation{};
     bool next_animation{};
     bool previous_species{};

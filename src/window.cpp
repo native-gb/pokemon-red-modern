@@ -62,6 +62,8 @@ WindowInput poll_window_events(HostWindow& window) {
             input.toggle_player_tools = true;
         else if (event.key.key == SDLK_F2)
             input.toggle_developer_tools = true;
+        else if (event.key.key == SDLK_B)
+            input.toggle_lab_view = true;
         else if (event.key.key == SDLK_LEFT)
             input.previous_animation = true;
         else if (event.key.key == SDLK_RIGHT)

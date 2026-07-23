@@ -51,7 +51,8 @@ void draw_player_tools(ToolState& tools, const content::CatalogSummary& catalog)
 }
 
 void draw_developer_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                          BattleAnimationLab& lab, const char* renderer_name) {
+                          BattleAnimationLab& lab, MapBrowser& maps,
+                          const char* renderer_name) {
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     constexpr float margin = 12.0F;
     constexpr float top = 42.0F;
@@ -70,6 +71,25 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
         ImGui::Separator();
         ImGui::Text("Renderer: %s", renderer_name);
         ImGui::TextUnformatted("Fixed simulation: 60 Hz");
+        ImGui::Separator();
+        const WorldMap* map = current_map(maps);
+        ImGui::Text("Map: %.*s", static_cast<int>(current_map_name(maps).size()),
+                    current_map_name(maps).data());
+        ImGui::Text("Map record: %zu / %zu", maps.maps.empty() ? 0 : maps.current + 1,
+                    maps.maps.size());
+        if (map != nullptr) {
+            ImGui::Text("ROM ID: 0x%02X", static_cast<unsigned>(map->id));
+            ImGui::Text("Blocks: %u x %u", static_cast<unsigned>(map->width_blocks),
+                        static_cast<unsigned>(map->height_blocks));
+            ImGui::Text("Tiles: %u x %u", static_cast<unsigned>(map->width_tiles),
+                        static_cast<unsigned>(map->height_tiles));
+            ImGui::Text("Tileset: %u", static_cast<unsigned>(map->tileset_id));
+        }
+        if (ImGui::Button("Previous Map")) previous_map(maps);
+        ImGui::SameLine();
+        if (ImGui::Button("Next Map")) next_map(maps);
+        if (maps.loaded && lab.loaded && ImGui::Button("Toggle Map / Battle"))
+            game.mode = game.mode == Mode::overworld ? Mode::battle : Mode::overworld;
         ImGui::Separator();
         ImGui::Text("Animation: %.*s", static_cast<int>(battle_animation_lab_name(lab).size()),
                     battle_animation_lab_name(lab).data());
@@ -101,7 +121,7 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
     if (ImGui::Begin("Content Indexes", nullptr, kFixedTools)) {
         ImGui::Text("Pack: %s", content::label(catalog.state));
         ImGui::Separator();
-        ImGui::Text("Maps             %zu", catalog.maps);
+        ImGui::Text("Imported maps    %zu", maps.maps.size());
         ImGui::Text("Scripts          %zu", catalog.scripts);
         ImGui::Text("Species          %zu", catalog.species);
         ImGui::Text("Moves            %zu", catalog.moves);
@@ -146,29 +166,39 @@ void apply_tool_shortcuts(ToolState& tools, const WindowInput& input) {
 }
 
 void draw_tools(ToolState& tools, GameState& game, const content::CatalogSummary& catalog,
-                BattleAnimationLab& lab, const char* renderer_name) {
+                BattleAnimationLab& lab, MapBrowser& maps, const char* renderer_name) {
     if (ImGui::BeginMainMenuBar()) {
         ImGui::TextUnformatted("Pokemon Red Modern");
         ImGui::Separator();
-        const std::string_view animation = battle_animation_lab_name(lab);
-        ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()), animation.data());
-        ImGui::Separator();
-        const std::string_view species = battle_animation_lab_species_name(lab);
-        ImGui::Text("Pokemon: %.*s", static_cast<int>(species.size()), species.data());
-        ImGui::Separator();
-        ImGui::Text("UI: %.*s", static_cast<int>(label(lab.ui.mode).size()),
-                    label(lab.ui.mode).data());
-        ImGui::Separator();
-        ImGui::TextUnformatted("Left/Right Animation   Up/Down Pokemon   R Restart   F5 Reload   "
-                               "M UI   PgUp/PgDn Select   S Status   Space Auto   F1/F2 Tools   "
-                               "F11 Fullscreen");
+        if (game.mode == Mode::overworld) {
+            const std::string_view map = current_map_name(maps);
+            ImGui::Text("Map: %.*s", static_cast<int>(map.size()), map.data());
+            ImGui::Separator();
+            ImGui::TextUnformatted(
+                "Left/Right Map   B Battle Lab   F1/F2 Tools   F11 Fullscreen");
+        } else {
+            const std::string_view animation = battle_animation_lab_name(lab);
+            ImGui::Text("Animation: %.*s", static_cast<int>(animation.size()),
+                        animation.data());
+            ImGui::Separator();
+            const std::string_view species = battle_animation_lab_species_name(lab);
+            ImGui::Text("Pokemon: %.*s", static_cast<int>(species.size()), species.data());
+            ImGui::Separator();
+            ImGui::Text("UI: %.*s", static_cast<int>(label(lab.ui.mode).size()),
+                        label(lab.ui.mode).data());
+            ImGui::Separator();
+            ImGui::TextUnformatted(
+                "Left/Right Animation   Up/Down Pokemon   B Maps   R Restart   F5 Reload   "
+                "M UI   PgUp/PgDn Select   S Status   Space Auto   F1/F2 Tools   "
+                "F11 Fullscreen");
+        }
         ImGui::EndMainMenuBar();
     }
 
     if (tools.layout == ToolLayout::player)
         draw_player_tools(tools, catalog);
     else if (tools.layout == ToolLayout::developer)
-        draw_developer_tools(tools, game, catalog, lab, renderer_name);
+        draw_developer_tools(tools, game, catalog, lab, maps, renderer_name);
     tools.arrange = false;
 }
 

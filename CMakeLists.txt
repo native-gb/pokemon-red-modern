@@ -67,6 +67,7 @@ if(POKERED_MODERN_BUILD_IMPORTER)
         src/import_battle_animations.cpp
         src/import_battle_animations_io.cpp
         src/import_battle_animations_main.cpp
+        src/import_maps.cpp
         src/import_pictures.cpp
     )
     target_include_directories(native-gb-pokemon-red-modern-import PRIVATE
@@ -81,9 +82,11 @@ add_executable(native-gb-pokemon-red-modern
     src/catalog.cpp
     src/diagnostics.cpp
     src/main.cpp
+    src/maps.cpp
     src/overlays.cpp
     src/predicates.cpp
     src/render/frame.cpp
+    src/render/maps.cpp
     src/sexpr.cpp
     src/source_loader.cpp
     src/state.cpp

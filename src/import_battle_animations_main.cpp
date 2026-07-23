@@ -1,5 +1,6 @@
 #include "import_battle_animations.hpp"
 #include "import_battle_animations_io.hpp"
+#include "import_maps.hpp"
 #include "import_pictures.hpp"
 
 #include <filesystem>
@@ -38,15 +39,19 @@ int main(int argc, char** argv) {
     }
 
     pokered::import::BattleAnimationImport imported;
+    pokered::import::MapImport maps;
     pokered::import::PictureImport pictures;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
-        !pokered::import::decode_picture_import(rom, pictures, error)) {
+        !pokered::import::decode_picture_import(rom, pictures, error) ||
+        !pokered::import::decode_map_import(rom, maps, error)) {
         std::cerr << error << '\n';
         return 1;
     }
     imported.files.insert(imported.files.end(), std::make_move_iterator(pictures.files.begin()),
                           std::make_move_iterator(pictures.files.end()));
+    imported.files.insert(imported.files.end(), std::make_move_iterator(maps.files.begin()),
+                          std::make_move_iterator(maps.files.end()));
     if (!pokered::import::write_battle_animation_import(imported, output_root, error)) {
         std::cerr << error << '\n';
         return 1;
@@ -64,5 +69,8 @@ int main(int argc, char** argv) {
               << " trainer-class portraits\n";
     std::cout << "Picture cache: " << output_root / "compiled" / "battle_pictures.bin" << '\n';
     std::cout << "Battle UI cache: " << output_root / "compiled" / "battle_ui_tiles.bin" << '\n';
+    std::cout << "Imported " << maps.maps << " maps through " << maps.tilesets
+              << " tileset into " << maps.expanded_tiles << " expanded tiles\n";
+    std::cout << "Map browser cache: " << output_root / "compiled" / "map_browser.bin" << '\n';
     return 0;
 }
