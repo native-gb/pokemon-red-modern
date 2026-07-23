@@ -319,37 +319,44 @@ def transformed_piece(
     return x - 8, y - 16, tile, attributes
 
 
-def player_transform(subanimation_type: int) -> int:
-    # On the player's turn only enemy-authored subanimations use the HFLIP transform.
-    return 2 if subanimation_type == 5 else 0
+def resolved_transform(subanimation_type: int, enemy_turn: bool) -> int:
+    # Red resolves authored transform types through hWhoseTurn at playback.
+    if subanimation_type == 5:
+        return 0 if enemy_turn else 2
+    return subanimation_type if enemy_turn else 0
 
 
-def append_special_effect(lines: list[str], effect: int, sound: int) -> None:
+def append_special_effect(
+    lines: list[str], effect: int, sound: int, enemy_turn: bool
+) -> None:
     name = SPECIAL_EFFECT_NAMES[effect - FIRST_SPECIAL_EFFECT]
+    actor = "defender" if enemy_turn else "attacker"
+    toward_opponent = -24 if enemy_turn else 24
+    offscreen = 64 if enemy_turn else -64
     lines.append(f"    ; special_effect {name} id {effect:#04x} sound {sound}")
     if sound:
         lines.append(f"    signal imported_sound_{sound:03d}")
     if name == "delay_animation_10":
         lines.append("    wait 10")
     elif name == "reset_mon_position":
-        lines.append("    set_offset attacker 0 0 native_canvas")
+        lines.append(f"    set_offset {actor} 0 0 native_canvas")
     elif name == "move_mon_horizontally":
         lines.extend(
             (
-                "    tween_offset attacker 24 0 6 ease_in native_canvas",
-                "    tween_offset attacker 0 0 6 ease_out native_canvas",
+                f"    tween_offset {actor} {toward_opponent} 0 6 ease_in native_canvas",
+                f"    tween_offset {actor} 0 0 6 ease_out native_canvas",
             )
         )
     elif name in ("blink_mon", "flash_mon_pic"):
         lines.extend(
             (
-                "    hide attacker",
+                f"    hide {actor}",
                 "    wait 2",
-                "    show attacker",
+                f"    show {actor}",
                 "    wait 2",
-                "    hide attacker",
+                f"    hide {actor}",
                 "    wait 2",
-                "    show attacker",
+                f"    show {actor}",
             )
         )
     elif name in ("blink_enemy_mon", "flash_enemy_mon_pic"):
@@ -367,8 +374,8 @@ def append_special_effect(lines: list[str], effect: int, sound: int) -> None:
     elif name == "bounce_up_and_down":
         lines.extend(
             (
-                "    tween_offset attacker 0 -12 5 ease_out native_canvas",
-                "    tween_offset attacker 0 0 5 ease_in native_canvas",
+                f"    tween_offset {actor} 0 -12 5 ease_out native_canvas",
+                f"    tween_offset {actor} 0 0 5 ease_in native_canvas",
             )
         )
     elif name == "slide_enemy_mon_off":
@@ -376,21 +383,27 @@ def append_special_effect(lines: list[str], effect: int, sound: int) -> None:
     elif name == "show_enemy_mon_pic":
         lines.append("    show defender")
     elif name == "show_mon_pic":
-        lines.append("    show attacker")
+        lines.append(f"    show {actor}")
     elif name == "hide_enemy_mon_pic":
         lines.append("    hide defender")
     elif name == "hide_mon_pic":
-        lines.append("    hide attacker")
+        lines.append(f"    hide {actor}")
     elif name == "slide_mon_down_and_hide":
-        lines.extend(("    tween_offset attacker 0 48 12 linear native_canvas", "    hide attacker"))
+        lines.extend(
+            (f"    tween_offset {actor} 0 48 12 linear native_canvas", f"    hide {actor}")
+        )
     elif name == "slide_mon_half_off":
-        lines.append("    tween_offset attacker -24 0 12 linear native_canvas")
+        lines.append(
+            f"    tween_offset {actor} {offscreen // 2} 0 12 linear native_canvas"
+        )
     elif name == "slide_mon_off":
-        lines.extend(("    tween_offset attacker -64 0 16 linear native_canvas", "    hide attacker"))
+        lines.extend(
+            (f"    tween_offset {actor} {offscreen} 0 16 linear native_canvas", f"    hide {actor}")
+        )
     elif name == "slide_mon_down":
-        lines.append("    tween_offset attacker 0 16 8 linear native_canvas")
+        lines.append(f"    tween_offset {actor} 0 16 8 linear native_canvas")
     elif name == "slide_mon_up":
-        lines.append("    tween_offset attacker 0 -16 8 linear native_canvas")
+        lines.append(f"    tween_offset {actor} 0 -16 8 linear native_canvas")
     else:
         lines.extend((f"    signal special_{name}", "    wait 1"))
 
@@ -415,12 +428,14 @@ def emit_programs(
         return name
 
     for program in programs:
+        enemy_turn = program["name"].startswith("enemy_")
         lines = [
             "; Generated locally from Pokemon Red US Rev 0. Do not distribute.",
             (
                 f"; animation_id {program['id']} rom "
                 f"0x{program['offset']:05x}..0x{program['end']:05x}"
             ),
+            f"; playback_side {'enemy' if enemy_turn else 'player'}",
             f"animation {program['name']}",
         ]
         oam: list[tuple[int, int, int, int, int] | None] = [None] * 40
@@ -430,12 +445,14 @@ def emit_programs(
                 if active_visual:
                     lines.append("    destroy imported_frame")
                     active_visual = False
-                append_special_effect(lines, command["effect"], command["sound"])
+                append_special_effect(
+                    lines, command["effect"], command["sound"], enemy_turn
+                )
                 continue
 
             tile_set = 0 if command["tile_set"] == 2 else command["tile_set"]
             subanimation = subanimations[command["subanimation"]]
-            transform = player_transform(subanimation["transform"])
+            transform = resolved_transform(subanimation["transform"], enemy_turn)
             lines.append(
                 (
                     f"    ; command {command_index} subanimation "
