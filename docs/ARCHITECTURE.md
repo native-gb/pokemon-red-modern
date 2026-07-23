@@ -32,17 +32,20 @@ small domain-owned handles. Shutdown follows the visible ownership order.
 
 ### Importer boundary
 
-Importers are C++ and split at the I/O boundary. A shared import core accepts a
-read-only byte span and returns deterministic generated files as relative path
-strings plus byte buffers. It does not open files, start processes, or assume a
-desktop filesystem.
+Importers are C++ and split at the I/O boundary. The import implementation
+accepts a read-only byte span and returns deterministic generated files as
+relative path strings plus byte buffers. Its decoding code does not open files,
+start processes, or assume a desktop filesystem.
 
-The native importer executable is a thin adapter which reads the selected ROM,
-calls the shared core, and transactionally installs its output. A WebAssembly
-host supplies browser-selected ROM bytes to that same core and stores the
-returned files in browser persistence. Import logic is not duplicated between
-native and web builds, and the normal game startup path never invokes an
-external importer process.
+The native importer is a dedicated executable. All ROM-profile offsets,
+cartridge decoders, extraction logic, and importer I/O are compiled into that
+tool and are not linked into the game executable. The game only reads the
+generated source or compiled content pack.
+
+A browser build may compile the same decoding sources into a separate importer
+WebAssembly module. The normal gameplay module must not contain or invoke the
+importer. Import logic is shared at the source level without making it part of
+the game engine or its steady-state startup path.
 
 ## Source layout
 

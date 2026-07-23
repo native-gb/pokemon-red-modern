@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(POKERED_MODERN_STRICT "Enable strict compiler warnings" ON)
 option(POKERED_MODERN_WARN_AS_ERROR "Treat compiler warnings as errors" ON)
 option(POKERED_MODERN_SANITIZERS "Enable address and undefined sanitizers" OFF)
+option(POKERED_MODERN_BUILD_IMPORTER "Build the standalone ROM importer" ON)
 
 function(pokered_modern_target_defaults target)
     if(MSVC)
@@ -60,24 +61,18 @@ else()
     set(POKERED_MODERN_GUBSY_DIR "${gubsy_SOURCE_DIR}")
 endif()
 
-add_library(pokered-modern-import-core STATIC
-    src/gen1_picture_codec.cpp
-    src/import_battle_animations.cpp
-    src/import_pictures.cpp
-)
-target_include_directories(pokered-modern-import-core PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/src")
-pokered_modern_target_defaults(pokered-modern-import-core)
-
-add_executable(native-gb-pokemon-red-modern-import
-    src/import_battle_animations_io.cpp
-    src/import_battle_animations_main.cpp
-)
-target_include_directories(native-gb-pokemon-red-modern-import PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(native-gb-pokemon-red-modern-import PRIVATE
-    pokered-modern-import-core)
-pokered_modern_target_defaults(native-gb-pokemon-red-modern-import)
+if(POKERED_MODERN_BUILD_IMPORTER)
+    add_executable(native-gb-pokemon-red-modern-import
+        src/gen1_picture_codec.cpp
+        src/import_battle_animations.cpp
+        src/import_battle_animations_io.cpp
+        src/import_battle_animations_main.cpp
+        src/import_pictures.cpp
+    )
+    target_include_directories(native-gb-pokemon-red-modern-import PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    pokered_modern_target_defaults(native-gb-pokemon-red-modern-import)
+endif()
 
 add_executable(native-gb-pokemon-red-modern
     src/animations.cpp
@@ -105,7 +100,7 @@ target_compile_definitions(native-gb-pokemon-red-modern PRIVATE
     POKERED_MODERN_SOURCE_DIR="${POKERED_MODERN_RUNTIME_PROJECT_ROOT}"
     POKERED_MODERN_GUBSY_ASSETS_DIR="${POKERED_MODERN_GUBSY_DIR}/src/assets")
 target_link_libraries(native-gb-pokemon-red-modern PRIVATE
-    gubsy::engine SDL3::SDL3 pokered-modern-import-core)
+    gubsy::engine SDL3::SDL3)
 pokered_modern_target_defaults(native-gb-pokemon-red-modern)
 
 if(BUILD_TESTING)

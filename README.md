@@ -25,8 +25,9 @@ The repository currently provides:
 - a hot-reloadable, isolated battle-animation lab with all 151 imported
   front/back picture pairs, readable source fixtures, and independent
   animation/species browsing;
-- a portable C++ Pokemon Red battle-animation importer shared by the native
-  command-line tool and future WebAssembly file import;
+- a standalone C++ Pokemon Red importer which is not linked into the game
+  executable; its decoding sources can later build a separate WebAssembly
+  importer module;
 - a portable Gen I picture decoder which emits readable species/trainer
   bindings and a decoded local runtime cache for 151 species and 47 trainer
   classes;
