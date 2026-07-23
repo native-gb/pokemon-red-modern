@@ -31,6 +31,7 @@ TILE_SET_0 = 0x781FE
 TILE_SET_1 = 0x786EE
 TILE_COUNT = 79
 FIRST_SPECIAL_EFFECT = 0xD8
+SPIRAL_COORDINATES = 0x79476
 
 EXTRA_ANIMATION_NAMES = (
     "show_pic",
@@ -297,6 +298,18 @@ def decode_base_coordinates(rom: bytes) -> list[tuple[int, int]]:
     ]
 
 
+def decode_spiral_coordinates(rom: bytes) -> list[tuple[int, int]]:
+    coordinates = []
+    cursor = SPIRAL_COORDINATES
+    while cursor < BANK_END and rom[cursor] != 0xFF:
+        require_range(rom, cursor, 2, "spiral-ball coordinate")
+        coordinates.append((rom[cursor], rom[cursor + 1]))
+        cursor += 2
+    if cursor >= BANK_END or len(coordinates) < 3:
+        raise ValueError("spiral-ball coordinate table is invalid")
+    return coordinates
+
+
 def transformed_piece(
     base: tuple[int, int], piece: tuple[int, int, int, int], transform: int
 ) -> tuple[int, int, int, int]:
@@ -334,6 +347,7 @@ def append_special_effect(
     screen_palette: str,
     intern_visual,
     unresolved_effects: set[str],
+    spiral_coordinates: list[tuple[int, int]],
 ) -> str:
     name = SPECIAL_EFFECT_NAMES[effect - FIRST_SPECIAL_EFFECT]
     actor = "defender" if enemy_turn else "attacker"
@@ -384,20 +398,12 @@ def append_special_effect(
             )
         return screen_palette
     if name == "spiral_balls_inward":
-        coordinates = (
-            (0x38, 0x28), (0x40, 0x18), (0x50, 0x10), (0x60, 0x18),
-            (0x68, 0x28), (0x60, 0x38), (0x50, 0x40), (0x40, 0x38),
-            (0x40, 0x28), (0x46, 0x1E), (0x50, 0x18), (0x5B, 0x1E),
-            (0x60, 0x28), (0x5B, 0x32), (0x50, 0x38), (0x46, 0x32),
-            (0x48, 0x28), (0x50, 0x20), (0x58, 0x28), (0x50, 0x30),
-            (0x50, 0x28),
-        )
         base_y = -40 if enemy_turn else 0
         base_x = 80 if enemy_turn else 0
-        for frame in range(len(coordinates) - 2):
+        for frame in range(len(spiral_coordinates) - 2):
             pieces = [
                 (x + base_x - 8, y + base_y - 16, 0, 73, 0)
-                for y, x in coordinates[frame : frame + 3]
+                for y, x in spiral_coordinates[frame : frame + 3]
             ]
             visual = intern_visual(pieces)
             lines.extend(
@@ -485,6 +491,7 @@ def emit_programs(
     subanimations: list[dict],
     frame_blocks: list[list[tuple[int, int, int, int]]],
     base_coordinates: list[tuple[int, int]],
+    spiral_coordinates: list[tuple[int, int]],
 ) -> tuple[list[tuple[str, list[tuple[int, int, int, int, int]]]], set[str]]:
     visuals: list[tuple[str, list[tuple[int, int, int, int, int]]]] = []
     visual_ids: dict[tuple[tuple[int, int, int, int, int], ...], str] = {}
@@ -526,6 +533,7 @@ def emit_programs(
                     screen_palette,
                     intern_visual,
                     unresolved_effects,
+                    spiral_coordinates,
                 )
                 continue
 
@@ -632,6 +640,7 @@ def main() -> int:
     subanimations = decode_subanimations(rom)
     frame_blocks = decode_frame_blocks(rom)
     base_coordinates = decode_base_coordinates(rom)
+    spiral_coordinates = decode_spiral_coordinates(rom)
 
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(
@@ -645,7 +654,12 @@ def main() -> int:
         compiled_root.mkdir(parents=True)
         reports_root.mkdir(parents=True)
         visuals, unresolved_effects = emit_programs(
-            source_root, programs, subanimations, frame_blocks, base_coordinates
+            source_root,
+            programs,
+            subanimations,
+            frame_blocks,
+            base_coordinates,
+            spiral_coordinates,
         )
         write_assets(compiled_root / "battle_animation_frames.bin", rom, visuals)
         (temporary / "import_manifest").write_text(

@@ -23,6 +23,20 @@ Clean architecture still matters after local import:
 - provenance makes the origin of imported records auditable;
 - generated packs stay ignored by version control.
 
+Public importers may contain bounded decoders, ROM-profile offsets, validation
+rules, and independently written semantic lowering logic. They should not
+embed cartridge-authored catalogues merely because those catalogues are small
+or stored beside executable code. Exact coordinate paths, palette sequences,
+frame data, scripts, text, maps, encounter data, graphics, and audio are read
+from the user's verified ROM and emitted only into ignored local output.
+
+An executor may implement the functional meaning of an operation such as
+`set_palette`, `wait`, or “move three particles inward.” The coordinates,
+timings, colors, and sequence records which make a particular Pokemon Red
+effect are import data whenever the cartridge provides them. When a value is
+inseparable from executable control flow, prefer a small semantic decoder or
+validated routine translator over copying a disassembly into engine source.
+
 This boundary reduces what the project redistributes. It is not a guarantee
 that every importer, compatibility behavior, name, or use of a third-party
 property is legally risk-free. Public releases require jurisdiction-appropriate
