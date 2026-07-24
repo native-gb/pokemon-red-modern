@@ -873,7 +873,8 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
     }
     if (fiber.waiting_motion) {
         if (!step_world_script_motion(world, error)) return false;
-        if (world.script_motion.active) {
+        if (world.script_motion.active ||
+            world.player.warp_pending) {
             error.clear();
             return true;
         }

@@ -177,6 +177,7 @@ struct WorldPlayerState {
     std::size_t last_outdoor_map_index{};
     bool moving{};
     bool ledge_hop{};
+    bool alternate_foot{};
     bool warp_pending{};
     bool initialized{};
 };

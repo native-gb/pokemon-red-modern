@@ -1152,7 +1152,17 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         return;
     }
 
-    if (campaign.input_locked) return;
+    // Scripted paths may end on a warp while campaign input remains locked.
+    // The warp is part of the motion contract and must finish before the
+    // owning script is allowed to advance.
+    if (campaign.input_locked) {
+        if (world.player.move_cooldown > 0U) {
+            --world.player.move_cooldown;
+        } else if (world.player.warp_pending) {
+            (void)activate_world_warp(world);
+        }
+        return;
+    }
 
     if (input.activate) {
         std::int32_t dx = 0;
@@ -2090,11 +2100,13 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
                 world.player.ledge_hop
                     ? -32.0F * amount * (1.0F - amount)
                     : 0.0F;
+            // Red shows one foot frame per cell and alternates feet between
+            // cells: idle -> foot -> idle, then the other foot next cell.
             world.player.animation_phase =
-                amount >= 1.0F
-                    ? 0U
-                    : static_cast<std::uint8_t>(
-                          std::min(3, static_cast<int>(amount * 4.0F)));
+                amount >= 0.25F && amount < 0.75F
+                    ? static_cast<std::uint8_t>(
+                          world.player.alternate_foot ? 3U : 1U)
+                    : 0U;
             if (amount < 1.0F) break;
             world.player.visual_global_x =
                 world.player.movement_to_x;
@@ -2103,6 +2115,8 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
             world.player.visual_offset_y_pixels = 0.0F;
             world.player.moving = false;
             world.player.ledge_hop = false;
+            world.player.alternate_foot =
+                !world.player.alternate_foot;
             world.player.movement_queue.pop_front();
         }
         // Direct state restoration/teleportation is never synthesized as an
