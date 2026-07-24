@@ -101,6 +101,7 @@ add_executable(native-gb-pokemon-red-modern
     src/clocks.cpp
     src/controls.cpp
     src/controls_menu.cpp
+    src/dev_input.cpp
     src/diagnostics.cpp
     src/encounters.cpp
     src/experience_rules.cpp

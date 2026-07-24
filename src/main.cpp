@@ -6,6 +6,7 @@
 #include "catalog.hpp"
 #include "clocks.hpp"
 #include "controls.hpp"
+#include "dev_input.hpp"
 #include "encounters.hpp"
 #include "interactions.hpp"
 #include "maps.hpp"
@@ -30,6 +31,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -38,6 +40,7 @@ struct LaunchOptions {
     bool help{};
     bool render_smoke{};
     bool developer_tools{};
+    std::filesystem::path input_socket;
 };
 
 bool parse_options(int argc, char** argv, LaunchOptions& options) {
@@ -49,6 +52,8 @@ bool parse_options(int argc, char** argv, LaunchOptions& options) {
             options.render_smoke = true;
         else if (argument == "--tools")
             options.developer_tools = true;
+        else if (argument == "--input-socket" && i + 1 < argc)
+            options.input_socket = argv[++i];
         else
             return false;
     }
@@ -56,7 +61,9 @@ bool parse_options(int argc, char** argv, LaunchOptions& options) {
 }
 
 void print_usage(const char* executable) {
-    std::printf("Usage: %s [--render-smoke] [--tools]\n", executable);
+    std::printf(
+        "Usage: %s [--render-smoke] [--tools] [--input-socket PATH]\n",
+        executable);
 }
 
 } // namespace
@@ -188,6 +195,17 @@ int main(int argc, char** argv) {
 
     pokered::HostWindow window;
     if (!pokered::initialize_window(window, data_root, presentation.control_profile)) return 1;
+    pokered::DevInputSocket dev_input;
+    if (!options.input_socket.empty()) {
+        std::string input_error;
+        if (!dev_input.open(options.input_socket, input_error)) {
+            std::fprintf(stderr, "%s\n", input_error.c_str());
+            pokered::shutdown_window(window);
+            return 1;
+        }
+        std::printf("Developer input socket: %s\n",
+                    options.input_socket.c_str());
+    }
     pokered::render::BootRenderResources boot_resources;
     if (boot_content.loaded &&
         !pokered::render::upload_boot_textures(window.frame.renderer, boot_content,
@@ -272,13 +290,42 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "could not change text input: %s\n",
                          SDL_GetError());
         const pokered::WindowInput input = pokered::poll_window_events(window);
-        if (input.quit) break;
+        const pokered::DevInputFrame injected = dev_input.poll();
+        if (input.quit || injected.quit) break;
         pokered::update_window(window, bounded_elapsed);
-        pokered::apply_tool_shortcuts(tools, input);
+        pokered::WindowInput host_input = input;
+        host_input.toggle_player_tools |= injected.toggle_player_tools;
+        host_input.toggle_developer_tools |=
+            injected.toggle_developer_tools;
+        host_input.toggle_world_annotations |=
+            injected.toggle_world_annotations;
+        host_input.erase_text |= injected.erase_text;
+        host_input.submit_text |= injected.submit_text;
+        host_input.text += injected.text;
+        pokered::apply_tool_shortcuts(tools, host_input);
 
         // Semantic controls are shared by keyboard and every assigned
         // controller. Menu and Start+Select provide controller-only tool access.
-        const pokered::ControlButtons controls = pokered::read_controls(window.runtime);
+        pokered::ControlButtons controls = pokered::read_controls(window.runtime);
+        controls.left |= input.move_player_left;
+        controls.right |= input.move_player_right;
+        controls.up |= input.move_player_up;
+        controls.down |= input.move_player_down;
+        controls.confirm |= input.confirm_pressed;
+        controls.back |= input.back_pressed;
+        controls.start |= input.start_pressed;
+        controls.select |= input.select_pressed;
+        controls.left |= injected.controls.left;
+        controls.right |= injected.controls.right;
+        controls.up |= injected.controls.up;
+        controls.down |= injected.controls.down;
+        controls.confirm |= injected.controls.confirm;
+        controls.back |= injected.controls.back;
+        controls.start |= injected.controls.start;
+        controls.select |= injected.controls.select;
+        controls.menu |= injected.controls.menu;
+        controls.quit |= injected.controls.quit;
+        controls.fast_forward |= injected.controls.fast_forward;
         const bool menu_pressed = controls.menu && !previous_controls.menu;
         const bool tools_chord = controls.start && controls.select;
         const bool tools_chord_pressed = tools_chord && !tools_chord_down;
@@ -296,14 +343,14 @@ int main(int argc, char** argv) {
             game.mode == pokered::Mode::overworld) {
             pending_world_activation |= confirm_pressed;
             pending_world_erase |=
-                input.erase_text ||
+                host_input.erase_text ||
                 (controls.back && !previous_controls.back);
             pending_world_submit |=
-                input.submit_text ||
+                host_input.submit_text ||
                 (controls.start && !previous_controls.start);
             pending_world_toggle_case |=
                 controls.select && !previous_controls.select;
-            pending_world_text += input.text;
+            pending_world_text += host_input.text;
         }
         if (!tools_own_input && game.mode == pokered::Mode::title) {
             pending_boot_input.up_pressed |= controls.up && !previous_controls.up;
@@ -317,9 +364,9 @@ int main(int argc, char** argv) {
                 controls.start && !previous_controls.start;
             pending_boot_input.select_pressed |=
                 controls.select && !previous_controls.select;
-            pending_boot_input.erase_pressed |= input.erase_text;
-            pending_boot_input.submit_pressed |= input.submit_text;
-            pending_boot_text += input.text;
+            pending_boot_input.erase_pressed |= host_input.erase_text;
+            pending_boot_input.submit_pressed |= host_input.submit_text;
+            pending_boot_text += host_input.text;
             pending_boot_input.random =
                 static_cast<std::uint8_t>((game.step * 73U + 41U) & 0xFFU);
         }
@@ -337,28 +384,29 @@ int main(int argc, char** argv) {
             (presentation.fast_forward_toggle ? fast_forward_toggle_active : controls.fast_forward);
         clocks.fast_forward = fast_forward;
 
-        if (input.toggle_lab_view && world.loaded && animation_lab.loaded &&
+        if (host_input.toggle_lab_view && world.loaded && animation_lab.loaded &&
             (game.mode == pokered::Mode::overworld ||
              game.mode == pokered::Mode::battle_lab))
             game.mode =
                 game.mode == pokered::Mode::battle_lab
                     ? pokered::Mode::overworld
                     : pokered::Mode::battle_lab;
-        if (input.previous_animation) {
+        if (host_input.previous_animation) {
             if (game.mode == pokered::Mode::overworld)
                 pokered::select_previous_map(world);
             else
                 pokered::previous_battle_animation_lab(animation_lab);
         }
-        if (input.next_animation) {
+        if (host_input.next_animation) {
             if (game.mode == pokered::Mode::overworld)
                 pokered::select_next_map(world);
             else
                 pokered::next_battle_animation_lab(animation_lab);
         }
         if (game.mode == pokered::Mode::overworld) {
-            if (input.toggle_world_view) pokered::toggle_world_view(world);
-            if (input.toggle_world_annotations) world.show_annotations = !world.show_annotations;
+            if (host_input.toggle_world_view) pokered::toggle_world_view(world);
+            if (host_input.toggle_world_annotations)
+                world.show_annotations = !world.show_annotations;
             constexpr float zoom_speed = 2.0F;
             if (input.zoom_world_in)
                 pokered::zoom_world_view(world, std::exp(zoom_speed * frame_seconds));

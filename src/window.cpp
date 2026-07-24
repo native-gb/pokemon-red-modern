@@ -95,12 +95,32 @@ WindowInput poll_window_events(HostWindow& window) {
             input.gamepad_changed = true;
         }
         if (event.type != SDL_EVENT_KEY_DOWN) continue;
+        if (event.key.key == SDLK_A || event.key.key == SDLK_LEFT)
+            input.move_player_left = true;
+        if (event.key.key == SDLK_D || event.key.key == SDLK_RIGHT)
+            input.move_player_right = true;
+        if (event.key.key == SDLK_W || event.key.key == SDLK_UP)
+            input.move_player_up = true;
+        if (event.key.key == SDLK_S || event.key.key == SDLK_DOWN)
+            input.move_player_down = true;
         if (!event.key.repeat && event.key.key == SDLK_BACKSPACE)
             input.erase_text = true;
         if (!event.key.repeat &&
             (event.key.key == SDLK_RETURN ||
              event.key.key == SDLK_KP_ENTER))
             input.submit_text = true;
+        if (!event.key.repeat &&
+            (event.key.key == SDLK_E || event.key.key == SDLK_Z ||
+             event.key.key == SDLK_SPACE))
+            input.confirm_pressed = true;
+        if (!event.key.repeat && event.key.key == SDLK_X)
+            input.back_pressed = true;
+        if (!event.key.repeat &&
+            (event.key.key == SDLK_RETURN ||
+             event.key.key == SDLK_KP_ENTER))
+            input.start_pressed = true;
+        if (!event.key.repeat && event.key.key == SDLK_BACKSPACE)
+            input.select_pressed = true;
         if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_PLUS ||
                  event.key.key == SDLK_KP_PLUS)
             input.zoom_world_in = true;
@@ -137,9 +157,6 @@ WindowInput poll_window_events(HostWindow& window) {
             input.reload_animation_sources = true;
         else if (event.key.key == SDLK_SPACE)
             input.toggle_animation_auto_advance = true;
-        else if (event.key.key == SDLK_E || event.key.key == SDLK_Z ||
-                 event.key.key == SDLK_X || event.key.key == SDLK_RETURN)
-            input.activate_world = true;
         else if (event.key.key == SDLK_TAB)
             input.toggle_world_view = true;
         else if (event.key.key == SDLK_0 || event.key.key == SDLK_KP_0)

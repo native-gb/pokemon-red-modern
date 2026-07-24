@@ -34,7 +34,10 @@ struct WindowInput {
     bool move_player_right{};
     bool move_player_up{};
     bool move_player_down{};
-    bool activate_world{};
+    bool confirm_pressed{};
+    bool back_pressed{};
+    bool start_pressed{};
+    bool select_pressed{};
     bool pan_world_left{};
     bool pan_world_right{};
     bool pan_world_up{};

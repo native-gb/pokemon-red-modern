@@ -332,8 +332,16 @@ bool draw_options(SDL_Renderer* renderer, const ViewLayout& view,
                   const BootRenderResources& resources) {
     if (!draw_box(renderer, view, resources, 0U, 0U, 20U, 18U)) return false;
     for (std::size_t row = 0U; row < content.menu.option_rows.size(); ++row) {
-        if (!draw_text(renderer, view, resources, content.menu.option_rows[row],
-                       2U, 2U + row * 4U, 16U, 2U))
+        std::string text = content.menu.option_rows[row];
+        const std::size_t choices = text.find("  ");
+        if (choices != std::string::npos) {
+            text.replace(choices, 2U, "\n");
+            while (choices + 1U < text.size() &&
+                   text[choices + 1U] == ' ')
+                text.erase(choices + 1U, 1U);
+        }
+        if (!draw_text(renderer, view, resources, text, 2U,
+                       2U + row * 4U, 17U, 2U))
             return false;
     }
     if (!draw_text(renderer, view, resources, content.menu.option_cancel, 2U, 14U,
@@ -350,7 +358,7 @@ bool draw_oak_picture(SDL_Renderer* renderer, const ViewLayout& view,
     if (image == std::numeric_limits<std::uint16_t>::max()) return true;
     const bool nidorino = image == content.oak.picture_images[1];
     float left = static_cast<float>(state.picture_left_tiles) * 8.0F;
-    float top = 32.0F;
+    float top = 16.0F;
     if (nidorino) {
         left += static_cast<float>((64U - content.images[image].width) / 2U);
         top += static_cast<float>(56U - content.images[image].height);
@@ -377,18 +385,18 @@ bool draw_name_menu(SDL_Renderer* renderer, const ViewLayout& view,
                     const BootContent& content, const BootState& state,
                     const BootRenderResources& resources) {
     if (!draw_oak_picture(renderer, view, content, state, resources) ||
-        !draw_box(renderer, view, resources, 0U, 0U, 12U, 12U) ||
-        !draw_text(renderer, view, resources, "NAME", 3U, 0U, 8U, 1U))
+        !draw_box(renderer, view, resources, 0U, 1U, 12U, 12U) ||
+        !draw_text(renderer, view, resources, "NAME", 3U, 1U, 8U, 1U))
         return false;
     const bool player = state.oak_stage == BootOakStage::player_name;
     const auto& names = player ? content.oak.player_names : content.oak.rival_names;
     for (std::size_t index = 0U; index < names.size(); ++index) {
         if (!draw_text(renderer, view, resources, names[index], 2U,
-                       2U + index * 2U, 9U, 1U))
+                       3U + index * 2U, 9U, 1U))
             return false;
     }
     return draw_tile(renderer, view, resources, 0xED, 8.0F,
-                     static_cast<float>((2U + state.name_selection * 2U) * 8U));
+                     static_cast<float>((3U + state.name_selection * 2U) * 8U));
 }
 
 bool draw_naming(SDL_Renderer* renderer, const ViewLayout& view,

@@ -465,7 +465,7 @@ void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
             const std::string_view map = selected_map_name(maps);
             ImGui::Text("Map: %.*s", static_cast<int>(map.size()), map.data());
             ImGui::Separator();
-            ImGui::TextUnformatted("WASD/Arrows Move   E/Z/X/Enter Talk   [] Map   Tab World/Map   "
+            ImGui::TextUnformatted("WASD/Arrows Move   E/Z/Space Talk   X Back   [] Map   Tab World/Map   "
                                    "IJKL Pan   +/- Zoom   0 Reset   "
                                    "F3 Annotations   B Battle Lab   F1/F2 Tools   F11 Fullscreen");
         } else {

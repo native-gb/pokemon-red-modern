@@ -70,3 +70,25 @@ Fast-forward must never change music pitch or tempo. Future audio integration
 must schedule music against `music_time`, not `game_time`, while deterministic
 game events continue to publish their sound and music commands from simulation
 steps.
+
+## Isolated developer input
+
+Automated live playtests must not synthesize desktop keyboard input or take
+window focus. An opt-in local Unix datagram socket feeds semantic actions at
+the same host boundary as keyboard and controller input:
+
+```sh
+./scripts/run.sh --input-socket /tmp/pokered-modern-input.sock
+./scripts/input.sh tap confirm
+./scripts/input.sh down right
+./scripts/input.sh up right
+./scripts/input.sh text RED
+./scripts/input.sh submit
+```
+
+`POKERED_MODERN_INPUT_SOCKET` selects a different path for the sender helper.
+The receiver is disabled unless `--input-socket` is supplied, accepts only
+local filesystem-socket traffic, and removes its socket on shutdown. Supported
+commands are `tap`, `down`, and `up` for semantic controls; `text`, `erase`,
+and `submit` for text entry; tool/annotation toggles; and `quit`. This is host
+test instrumentation, not campaign content or a gameplay executor.

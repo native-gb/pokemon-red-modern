@@ -56,8 +56,16 @@ No cartridge is required for the scaffold to open.
 ```sh
 ./scripts/run.sh
 ./scripts/run.sh --tools
+./scripts/run.sh --input-socket /tmp/pokered-modern-input.sock
 ./scripts/run.sh --render-smoke
 ./scripts/test.sh
+```
+
+An isolated live test can then send semantic input without taking desktop
+focus:
+
+```sh
+./scripts/input.sh tap confirm
 ```
 
 To replace original development fixtures with locally imported Red content:
