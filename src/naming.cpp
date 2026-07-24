@@ -84,6 +84,14 @@ void begin_naming(const NamingProfile& profile, std::string heading,
 void step_naming(const NamingInput& input, NamingState& state) {
     if (!state.open || !valid_naming_profile(state.profile)) return;
 
+    // Start is the controller shortcut for END. Keep the same non-empty
+    // invariant as selecting END from the grid.
+    if (input.submit && !state.value.empty()) {
+        state.open = false;
+        state.decided = true;
+        return;
+    }
+
     // The modern host keeps the cartridge grid predictable: direction,
     // confirm, and back are the only naming controls. This prevents ordinary
     // gameplay bindings from also becoming text or case-toggle commands.

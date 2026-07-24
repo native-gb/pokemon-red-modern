@@ -203,11 +203,24 @@ simulation step count or environmental animation timing.
 - `F2` shows map provenance, world-space placement, last-warp state, camera
   controls, and selection.
 
-Stepping onto an authored warp resolves its destination map and zero-based
-destination warp endpoint. `LAST_MAP` exits return through the remembered
-outdoor map. A space change switches the resident actor set and camera surface;
-authored edge connections remain ordinary smooth movement and never invoke
-this warp path.
+Stepping onto an authored warp first completes the cardinal entry movement,
+then resolves its destination map and zero-based destination warp endpoint.
+Generic warps place the player standing on the destination endpoint; any
+walk-off is an explicit content script rather than an engine assumption.
+`LAST_MAP` exits return through the remembered outdoor map. A space change
+switches the resident actor set and camera surface; authored edge connections
+remain ordinary smooth movement and never invoke this warp path.
+
+Player presentation consumes an explicit queue of cardinal movement segments.
+A newer logical step therefore cannot retarget an unfinished segment into a
+diagonal slide, including during fast-forward and with render interpolation
+disabled. The imported eight-record ledge table identifies standing/ledge tile
+pairs and permitted directions. A valid ledge input lands two cells away and
+renders one 16-tick cardinal hop with an eight-pixel arc.
+
+Entering a map or crossing a connected-map ownership boundary shows that
+map's imported display name in a small top-left native-tile billboard. It
+slides in and out on unscaled presentation time.
 
 Camera position and absolute zoom move smoothly toward target values. The
 overview is the same renderer and terrain data observed by a distant camera.
@@ -231,10 +244,10 @@ does not mutate or participate in world simulation.
 ## Remaining world domains
 
 This slice displays every active map, environmental tile animation,
-current-space resident actors, imported collision, background triggers,
-faced-cell dialogue, ambient roaming, ordinary direct warps, and `LAST_MAP`
-returns. Script-selected destinations, special transition policies, campaign
-visibility predicates, mutable blocks, ledges and field moves, indexed
-automatic triggers, and authored cutscene movement remain campaign-executor
-work. Persistent whole-zone NPC simulation uses this same coordinate system
-and camera rather than cartridge-style screen streaming.
+current-space resident actors, imported collision and ledges, background
+triggers, faced-cell dialogue, ambient roaming, ordinary direct warps, and
+`LAST_MAP` returns. Script-selected destinations, special transition policies,
+campaign visibility predicates, mutable blocks, remaining field moves,
+indexed automatic triggers, and authored cutscene movement remain
+campaign-executor work. Persistent whole-zone NPC simulation uses this same
+coordinate system and camera rather than cartridge-style screen streaming.

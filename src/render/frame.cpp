@@ -1,4 +1,5 @@
 #include "render/frame.hpp"
+#include "render/naming.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -384,8 +385,39 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     (void)SDL_SetRenderClipRect(renderer, &clip);
 
     // Draw a fixed Pokémon battle composition; animation state supplies only overrides.
-    const AnimationTarget* attacker = find_animation_target(lab.animation, Symbol{"attacker"});
-    const AnimationTarget* defender = find_animation_target(lab.animation, Symbol{"defender"});
+    const AnimationTarget* attacker_source =
+        find_animation_target(lab.animation, Symbol{"attacker"});
+    const AnimationTarget* defender_source =
+        find_animation_target(lab.animation, Symbol{"defender"});
+    AnimationTarget attacker_storage =
+        attacker_source != nullptr ? *attacker_source : AnimationTarget{};
+    AnimationTarget defender_storage =
+        defender_source != nullptr ? *defender_source : AnimationTarget{};
+    const BattlePresentationPhase phase =
+        lab.presentation.phase;
+    if (phase == BattlePresentationPhase::opening_wipe) {
+        attacker_storage.visible = false;
+        defender_storage.visible = false;
+    } else if (phase ==
+               BattlePresentationPhase::opponent_arrival) {
+        attacker_storage.visible = false;
+        const float progress = std::clamp(
+            static_cast<float>(lab.presentation.tick) / 10.0F,
+            0.0F, 1.0F);
+        defender_storage.offset_x +=
+            (1.0F - progress) * 48.0F;
+    } else if (phase ==
+               BattlePresentationPhase::player_deployment) {
+        const float progress = std::clamp(
+            static_cast<float>(lab.presentation.tick) / 14.0F,
+            0.0F, 1.0F);
+        attacker_storage.offset_x -=
+            (1.0F - progress) * 52.0F;
+    }
+    const AnimationTarget* attacker =
+        attacker_source != nullptr ? &attacker_storage : nullptr;
+    const AnimationTarget* defender =
+        defender_source != nullptr ? &defender_storage : nullptr;
     const ImportedPokemonVisual* player_pokemon =
         battle_view_player_species(lab);
     const ImportedPokemonVisual* enemy_pokemon =
@@ -401,7 +433,12 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
                      enemy_pokemon);
 
     // Draw the battle interface before transient effects so attacks can cross its region.
-    if (!draw_battle_ui(renderer, scene_view, lab, screen_palette)) {
+    const bool show_interface =
+        phase == BattlePresentationPhase::inactive ||
+        phase == BattlePresentationPhase::active ||
+        phase == BattlePresentationPhase::closing_wipe;
+    if (show_interface &&
+        !draw_battle_ui(renderer, scene_view, lab, screen_palette)) {
         set_draw_color(renderer, screen_palette, 54, 47, 58);
         fill_native_rect(renderer, scene_view, 0.0F, 96.0F, 160.0F, 48.0F);
         set_draw_color(renderer, screen_palette, 250, 247, 238);
@@ -410,6 +447,51 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     for (const AnimationEffect& effect : lab.animation.effects)
         draw_effect(renderer, scene_view, effect, lab.imported_assets,
                     screen_palette, lab.gameplay_enemy_turn);
+
+    if (phase == BattlePresentationPhase::player_deployment) {
+        const float progress = std::clamp(
+            static_cast<float>(lab.presentation.tick) / 14.0F,
+            0.0F, 1.0F);
+        const float ball_x = std::lerp(8.0F, 36.0F, progress);
+        const float ball_y =
+            std::lerp(82.0F, 66.0F, progress) -
+            20.0F * 4.0F * progress * (1.0F - progress);
+        set_draw_color(renderer, screen_palette, 54, 47, 58);
+        fill_native_rect(renderer, scene_view, ball_x, ball_y,
+                         4.0F, 4.0F);
+        set_draw_color(renderer, screen_palette, 246, 238, 230);
+        fill_native_rect(renderer, scene_view, ball_x + 1.0F,
+                         ball_y + 1.0F, 2.0F, 1.0F);
+    }
+    if (phase == BattlePresentationPhase::opening_wipe ||
+        phase == BattlePresentationPhase::closing_wipe) {
+        const float progress = std::clamp(
+            static_cast<float>(lab.presentation.tick) / 12.0F,
+            0.0F, 1.0F);
+        const float amount =
+            phase == BattlePresentationPhase::opening_wipe
+                ? 1.0F - progress
+                : progress;
+        set_draw_color(renderer, screen_palette, 54, 47, 58);
+        if (lab.presentation.trainer_battle) {
+            for (int band = 0; band < 10; ++band) {
+                const float height = 72.0F * amount;
+                fill_native_rect(
+                    renderer, scene_view,
+                    static_cast<float>(band * 16),
+                    band % 2 == 0 ? 0.0F : 144.0F - height,
+                    16.0F, height);
+            }
+        } else {
+            for (int band = 0; band < 8; ++band) {
+                const float width = 80.0F * amount;
+                fill_native_rect(
+                    renderer, scene_view,
+                    band % 2 == 0 ? 0.0F : 160.0F - width,
+                    static_cast<float>(band * 18), width, 18.0F);
+            }
+        }
+    }
     (void)SDL_SetRenderClipRect(renderer, nullptr);
 }
 
@@ -448,10 +530,16 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
     (void)SDL_SetRenderDrawColor(renderer, 15, 18, 25, 255);
     if (!SDL_RenderClear(renderer)) return false;
 
-    if (game.mode == Mode::overworld && maps.loaded)
-        return draw_world(renderer, output_width, output_height, maps, world_resources);
-
     const ViewLayout view = layout_view(output_width, output_height);
+
+    if (game.mode == Mode::overworld && maps.loaded) {
+        if (!draw_world(renderer, output_width, output_height, maps,
+                        world_resources))
+            return false;
+        return draw_area_banner(renderer, maps, boot_resources) &&
+               draw_naming_overlay(renderer, view, maps, boot_resources);
+    }
+
     const SDL_FRect shadow{view.x - 8.0F, view.y - 8.0F, view.width + 16.0F, view.height + 16.0F};
     (void)SDL_SetRenderDrawColor(renderer, 5, 6, 9, 255);
     (void)SDL_RenderFillRect(renderer, &shadow);

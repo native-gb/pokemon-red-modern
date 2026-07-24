@@ -155,6 +155,8 @@ bool begin_actor_battle(
         campaign.battle = {};
         return false;
     }
+    begin_battle_presentation(
+        view, binding.kind == ActorOpponentKind::trainer);
     campaign.battle_owner = {
         .map_id = world.opponent_request.map_id,
         .actor_index = world.opponent_request.actor_index,
@@ -208,6 +210,7 @@ bool begin_world_wild_battle(
         campaign.battle = {};
         return false;
     }
+    begin_battle_presentation(view, false);
     began = true;
     error.clear();
     return true;
@@ -312,6 +315,7 @@ bool begin_campaign_trainer_battle(
         campaign.battle = {};
         return false;
     }
+    begin_battle_presentation(view, true);
     campaign.trainer_battle_request = {};
     campaign.battle_owner = {};
     began = true;
@@ -348,6 +352,10 @@ bool control_battle(const RuleCatalog& rules,
     if (!campaign.battle.active) {
         error = "battle controls require an active owned battle";
         return false;
+    }
+    if (!battle_accepts_input(view)) {
+        error.clear();
+        return true;
     }
     if (view.gameplay_animation_active) {
         error.clear();

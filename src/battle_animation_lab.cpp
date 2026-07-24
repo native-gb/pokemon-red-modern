@@ -478,6 +478,7 @@ void cycle_battle_ui_status(BattleAnimationLab& lab) {
 
 void prepare_battle_view(BattleAnimationLab& lab) {
     if (!lab.loaded) return;
+    lab.presentation = {};
     lab.animation = {};
     const auto targets = battle_targets();
     lab.animation.targets.assign(targets.begin(), targets.end());
@@ -489,6 +490,34 @@ void prepare_battle_view(BattleAnimationLab& lab) {
     lab.gameplay_queue_cursor = 0U;
     lab.gameplay_animation_active = false;
     lab.gameplay_enemy_turn = false;
+}
+
+void begin_battle_presentation(BattleAnimationLab& lab,
+                               bool trainer_battle) {
+    lab.presentation = {
+        .phase = BattlePresentationPhase::opening_wipe,
+        .tick = 0U,
+        .trainer_battle = trainer_battle,
+        .return_to_world = false,
+    };
+}
+
+void begin_battle_exit_presentation(BattleAnimationLab& lab) {
+    lab.presentation.phase =
+        BattlePresentationPhase::closing_wipe;
+    lab.presentation.tick = 0U;
+    lab.presentation.return_to_world = false;
+}
+
+bool battle_accepts_input(const BattleAnimationLab& lab) {
+    return lab.presentation.phase ==
+           BattlePresentationPhase::active;
+}
+
+bool consume_battle_return_to_world(BattleAnimationLab& lab) {
+    const bool ready = lab.presentation.return_to_world;
+    lab.presentation.return_to_world = false;
+    return ready;
 }
 
 bool begin_gameplay_battle_animations(
@@ -518,7 +547,42 @@ bool begin_gameplay_battle_animations(
 }
 
 void step_gameplay_battle_animations(BattleAnimationLab& lab) {
-    if (!lab.loaded || !lab.gameplay_animation_active) return;
+    if (!lab.loaded) return;
+    switch (lab.presentation.phase) {
+    case BattlePresentationPhase::opening_wipe:
+        if (++lab.presentation.tick >= 12U) {
+            lab.presentation.phase =
+                BattlePresentationPhase::opponent_arrival;
+            lab.presentation.tick = 0U;
+        }
+        return;
+    case BattlePresentationPhase::opponent_arrival:
+        if (++lab.presentation.tick >= 10U) {
+            lab.presentation.phase =
+                BattlePresentationPhase::player_deployment;
+            lab.presentation.tick = 0U;
+        }
+        return;
+    case BattlePresentationPhase::player_deployment:
+        if (++lab.presentation.tick >= 14U) {
+            lab.presentation.phase =
+                BattlePresentationPhase::active;
+            lab.presentation.tick = 0U;
+        }
+        return;
+    case BattlePresentationPhase::closing_wipe:
+        if (++lab.presentation.tick >= 12U) {
+            lab.presentation.phase =
+                BattlePresentationPhase::inactive;
+            lab.presentation.tick = 0U;
+            lab.presentation.return_to_world = true;
+        }
+        return;
+    case BattlePresentationPhase::inactive:
+    case BattlePresentationPhase::active:
+        break;
+    }
+    if (!lab.gameplay_animation_active) return;
     if (!lab.animation.finished) {
         step_animation(lab.animation);
         return;

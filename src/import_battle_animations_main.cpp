@@ -139,12 +139,13 @@ int main(int argc, char** argv) {
                     << "front_pictures " << pictures.front_pictures << '\n'
                     << "back_pictures " << pictures.back_pictures << '\n'
                     << "trainer_pictures " << pictures.trainer_classes << '\n'
-                    << "world_importer_version 2\n"
+                    << "world_importer_version 3\n"
                     << "map_slots 248\n"
                     << "active_maps " << maps.maps << '\n'
                     << "unused_map_slots " << maps.unused_map_slots << '\n'
                     << "world_spaces " << maps.world_spaces << '\n'
                     << "overworld_sprites " << maps.sprites << '\n'
+                    << "ledge_rules " << maps.ledges << '\n'
                     << "rule_importer_version 1\n"
                     << "types " << rules.types << '\n'
                     << "type_interactions " << rules.type_interactions << '\n'
@@ -223,7 +224,8 @@ int main(int argc, char** argv) {
     std::cout << "Imported " << maps.maps << " active maps in " << maps.world_spaces
               << " world spaces through " << maps.tilesets << " tilesets into "
               << maps.expanded_tiles << " expanded tiles, " << maps.sprites
-              << " overworld sprites, " << maps.actors << " actor spawns, and " << maps.warps
+              << " overworld sprites, " << maps.actors << " actor spawns, "
+              << maps.ledges << " ledge rules, and " << maps.warps
               << " warps\n";
     std::cout << "World map cache: " << output_root / "compiled" / "world_maps.bin" << '\n';
     std::cout << "Imported " << rules.types << " types, " << rules.type_interactions

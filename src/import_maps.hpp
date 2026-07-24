@@ -17,6 +17,7 @@ struct MapImport {
     std::size_t unused_map_slots{};
     std::size_t tilesets{};
     std::size_t sprites{};
+    std::size_t ledges{};
     std::size_t warps{};
     std::size_t actors{};
     std::size_t expanded_tiles{};

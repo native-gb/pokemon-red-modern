@@ -406,11 +406,29 @@ The visual asset import and animation indexes include:
 - grass, water, terrain, healing, and other movement-coupled effects.
 
 Walking animation phase follows distance traveled, not render-frame count.
-Fixed-step positions retain previous/current transforms and the renderer
-interpolates them using the unscaled presentation clock. Scripted movement and
-ambient NPC movement use the same movement operation and clip selection as
-player movement. Entering a connected map cannot reset the foot phase or cause
-a one-cell visual stop.
+Each fixed-step player move emits one cardinal presentation segment. The
+renderer consumes those segments on scaled game time so fast-forward cannot
+let logical movement outrun presentation or splice two directions into a
+diagonal. Camera easing and area billboards remain on unscaled presentation
+time. Scripted movement and ambient NPC movement use the same movement
+operation and clip selection as player movement. Entering a connected map
+cannot reset the foot phase or cause a one-cell visual stop.
+
+Ordinary ledges are data, not engine coordinates: the importer decodes Red's
+direction/standing-tile/ledge-tile rules into `source/world/ledges.sexpr` and
+the compiled world index. The engine validates the landing cell, executes a
+two-cell cardinal move, and adds the presentation arc.
+
+## Battle entry and exit presentation
+
+Owned battles use a short generic presentation state machine before battle
+input becomes active: an opening wipe, opponent arrival, and player
+Poké Ball deployment/reveal. Wild and trainer ownership are distinguished in
+the presentation state so later content-defined variants can select different
+clips without map or trainer IDs in the renderer. Finished battles run a short
+closing wipe before returning control to the overworld. Imported move
+animations remain the separate battle-animation executor used once command
+input is active.
 
 ## Spatial indexes and triggers
 

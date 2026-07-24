@@ -183,6 +183,30 @@ bool read_world_spaces(std::istream& input, WorldState& world, std::string& erro
     return true;
 }
 
+bool read_ledges(std::istream& input, WorldState& world,
+                 std::string& error) {
+    std::uint8_t count = 0U;
+    if (!read_u8(input, count) || count == 0U || count > 32U) {
+        error = "world map cache has an invalid ledge count";
+        return false;
+    }
+    world.ledges.reserve(count);
+    for (std::uint8_t index = 0U; index < count; ++index) {
+        std::uint8_t direction = 0U;
+        WorldLedge ledge;
+        if (!read_u8(input, direction) || direction > 3U ||
+            !read_u8(input, ledge.standing_tile) ||
+            !read_u8(input, ledge.ledge_tile) ||
+            !read_u8(input, ledge.required_input_mask)) {
+            error = "world map cache has an invalid ledge record";
+            return false;
+        }
+        ledge.direction = static_cast<WorldDirection>(direction);
+        world.ledges.push_back(ledge);
+    }
+    return true;
+}
+
 bool read_map(std::istream& input, const WorldState& world, WorldMap& map, std::string& error) {
     std::uint8_t key_size = 0;
     std::uint8_t name_size = 0;
@@ -412,6 +436,8 @@ const WorldWarp* warp_at(const WorldMap& map, std::int32_t x, std::int32_t y) {
     return found == map.warps.end() ? nullptr : &*found;
 }
 
+void show_area_banner(WorldState& world, std::size_t map_index);
+
 bool activate_world_warp(WorldState& world) {
     if (world.player.map_index >= world.maps.size()) return false;
     const std::size_t source_index = world.player.map_index;
@@ -446,7 +472,11 @@ bool activate_world_warp(WorldState& world) {
         static_cast<float>(destination.global_x_tiles / 2 + world.player.x);
     world.player.visual_global_y =
         static_cast<float>(destination.global_y_tiles / 2 + world.player.y);
+    world.player.movement_queue.clear();
     world.player.moving = false;
+    world.player.ledge_hop = false;
+    world.player.warp_pending = false;
+    world.player.visual_offset_y_pixels = 0.0F;
     world.player.animation_phase = 0U;
     world.camera_initialized = false;
     world.last_warp = {
@@ -457,6 +487,7 @@ bool activate_world_warp(WorldState& world) {
         .simulation_tick = world.simulation_tick,
         .occurred = true,
     };
+    show_area_banner(world, destination_index);
     return true;
 }
 
@@ -477,6 +508,70 @@ bool is_passable(const WorldState& world, std::size_t map_index, std::int32_t gl
     return tileset != nullptr &&
            std::find(tileset->passable_tiles.begin(), tileset->passable_tiles.end(),
                      map.tiles[offset]) != tileset->passable_tiles.end();
+}
+
+std::optional<std::uint8_t> collision_tile(
+    const WorldState& world, std::size_t map_index,
+    std::int32_t global_x, std::int32_t global_y) {
+    if (map_index >= world.maps.size()) return std::nullopt;
+    const WorldMap& map = world.maps[map_index];
+    const std::int32_t local_x =
+        global_x - map.global_x_tiles / 2;
+    const std::int32_t local_y =
+        global_y - map.global_y_tiles / 2;
+    if (local_x < 0 || local_y < 0 ||
+        local_x >= map.width_blocks * 2 ||
+        local_y >= map.height_blocks * 2)
+        return std::nullopt;
+    const std::size_t tile_x =
+        static_cast<std::size_t>(local_x) * 2U;
+    const std::size_t tile_y =
+        static_cast<std::size_t>(local_y) * 2U + 1U;
+    const std::size_t offset =
+        tile_y * map.width_tiles + tile_x;
+    if (offset >= map.tiles.size()) return std::nullopt;
+    return map.tiles[offset];
+}
+
+void queue_player_segment(WorldState& world, float global_x,
+                          float global_y, bool ledge_hop = false) {
+    world.player.movement_queue.push_back({
+        .target_x = global_x,
+        .target_y = global_y,
+        .ledge_hop = ledge_hop,
+    });
+}
+
+void show_area_banner(WorldState& world, std::size_t map_index) {
+    if (map_index >= world.maps.size()) return;
+    world.area_banner = {
+        .text = world.maps[map_index].display_name,
+        .elapsed = 0.0F,
+        .active = true,
+    };
+}
+
+const WorldLedge* matching_ledge(
+    const WorldState& world, std::size_t map_index,
+    std::int32_t current_x, std::int32_t current_y,
+    std::int32_t next_x, std::int32_t next_y,
+    WorldDirection direction) {
+    if (map_index >= world.maps.size() ||
+        world.maps[map_index].tileset_id != 0U)
+        return nullptr;
+    const auto standing =
+        collision_tile(world, map_index, current_x, current_y);
+    const auto ledge =
+        collision_tile(world, map_index, next_x, next_y);
+    if (!standing.has_value() || !ledge.has_value())
+        return nullptr;
+    const auto found = std::ranges::find_if(
+        world.ledges, [&](const WorldLedge& candidate) {
+            return candidate.direction == direction &&
+                   candidate.standing_tile == *standing &&
+                   candidate.ledge_tile == *ledge;
+        });
+    return found == world.ledges.end() ? nullptr : &*found;
 }
 
 std::string substitute_campaign_text(std::string text,
@@ -539,7 +634,7 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', 'B'}) {
+        magic != std::array{'P', 'M', 'V', 'C'}) {
         error = "world map cache is missing or has an invalid header";
         return false;
     }
@@ -547,7 +642,8 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     WorldState loaded;
     loaded.source = path;
     if (!read_tilesets(input, loaded, error) || !read_sprites(input, loaded, error) ||
-        !read_world_spaces(input, loaded, error))
+        !read_world_spaces(input, loaded, error) ||
+        !read_ledges(input, loaded, error))
         return false;
     std::uint16_t map_count = 0;
     if (!read_u16(input, map_count) || map_count != 226) {
@@ -854,6 +950,10 @@ bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
         world.player.movement_to_y =
             world.player.visual_global_y;
     world.player.moving = false;
+    world.player.movement_queue.clear();
+    world.player.ledge_hop = false;
+    world.player.warp_pending = false;
+    world.player.visual_offset_y_pixels = 0.0F;
     world.player.animation_phase = 0U;
     world.player.facing = WorldDirection::down;
     world.player.move_cooldown = 0U;
@@ -869,6 +969,7 @@ bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
     world.camera_y = world.target_camera_y =
         world.player.visual_global_y * 16.0F + 8.0F;
     world.camera_initialized = false;
+    show_area_banner(world, map_index);
     error.clear();
     return true;
 }
@@ -1100,6 +1201,10 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
 
     if (world.player.move_cooldown > 0U) {
         --world.player.move_cooldown;
+    } else if (world.player.warp_pending) {
+        // The entry step owns a complete movement interval. Transfer only
+        // after the player has visibly arrived on the warp cell.
+        (void)activate_world_warp(world);
     } else {
         std::optional<WorldDirection> direction;
         if (input.left)
@@ -1116,27 +1221,52 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
             std::int32_t dy = 0;
             direction_delta(*direction, dx, dy);
             const WorldMap& map = world.maps[world.player.map_index];
-            const std::int32_t global_x = map.global_x_tiles / 2 + world.player.x + dx;
-            const std::int32_t global_y = map.global_y_tiles / 2 + world.player.y + dy;
+            const std::int32_t current_global_x =
+                map.global_x_tiles / 2 + world.player.x;
+            const std::int32_t current_global_y =
+                map.global_y_tiles / 2 + world.player.y;
+            std::int32_t global_x = current_global_x + dx;
+            std::int32_t global_y = current_global_y + dy;
             const std::size_t target_map =
                 find_map_for_global_cell(world, world.player.map_index, global_x, global_y);
-            if (target_map < world.maps.size() && is_passable(world, target_map, global_x, global_y)) {
-                const WorldMap& target = world.maps[target_map];
+            bool ledge_hop = false;
+            std::size_t resolved_map = target_map;
+            if (matching_ledge(
+                    world, world.player.map_index,
+                    current_global_x, current_global_y,
+                    global_x, global_y, *direction) != nullptr) {
+                global_x += dx;
+                global_y += dy;
+                resolved_map = find_map_for_global_cell(
+                    world, world.player.map_index,
+                    global_x, global_y);
+                ledge_hop = true;
+            }
+            if (resolved_map < world.maps.size() &&
+                is_passable(world, resolved_map, global_x, global_y)) {
+                const WorldMap& target = world.maps[resolved_map];
                 const std::int32_t local_x = global_x - target.global_x_tiles / 2;
                 const std::int32_t local_y = global_y - target.global_y_tiles / 2;
-                const WorldMapCellIndex& cells = world.spatial[target_map];
+                const WorldMapCellIndex& cells = world.spatial[resolved_map];
                 if (cells.actor_by_cell[cell_offset(cells, local_x, local_y)] < 0) {
                     const std::size_t previous_map =
                         world.player.map_index;
-                    world.player.map_index = target_map;
+                    world.player.map_index = resolved_map;
                     world.player.x = local_x;
                     world.player.y = local_y;
-                    world.current = target_map;
-                    if (previous_map != target_map)
+                    world.current = resolved_map;
+                    if (previous_map != resolved_map) {
                         world.camera_region_dirty = true;
+                        show_area_banner(world, resolved_map);
+                    }
                     world.player.move_cooldown = 15U;
+                    queue_player_segment(
+                        world, static_cast<float>(global_x),
+                        static_cast<float>(global_y), ledge_hop);
+                    world.player.warp_pending =
+                        warp_at(target, local_x, local_y) != nullptr;
                     world.player_completed_step =
-                        !activate_world_warp(world);
+                        !world.player.warp_pending;
                 }
             }
         }
@@ -1501,9 +1631,17 @@ bool apply_player_path_command(WorldState& world, WorldPathCommand command,
     world.player.facing = facing;
     world.current = target_map;
     world.current_space = target.world_space;
-    if (previous_map != target_map)
+    if (previous_map != target_map) {
         world.camera_region_dirty = true;
-    world.player_completed_step = !activate_world_warp(world);
+        show_area_banner(world, target_map);
+    }
+    queue_player_segment(
+        world, static_cast<float>(global_x),
+        static_cast<float>(global_y));
+    world.player.move_cooldown = 15U;
+    world.player.warp_pending =
+        warp_at(target, local_x, local_y) != nullptr;
+    world.player_completed_step = !world.player.warp_pending;
     return true;
 }
 
@@ -1908,7 +2046,7 @@ void update_world_camera_region(WorldState& world, int output_width,
 }
 
 void update_world_view(WorldState& world, double elapsed_seconds) {
-    const double bounded = std::clamp(elapsed_seconds, 0.0, 0.1);
+    const double bounded = std::clamp(elapsed_seconds, 0.0, 0.5);
     const float response = 1.0F - std::exp(static_cast<float>(-12.0 * bounded));
     if (world.player.initialized) {
         const WorldMap& map = world.maps[world.player.map_index];
@@ -1916,32 +2054,29 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
             static_cast<float>(map.global_x_tiles / 2 + world.player.x);
         const float target_y =
             static_cast<float>(map.global_y_tiles / 2 + world.player.y);
-        if (!world.player.moving &&
-            (world.player.visual_global_x != target_x ||
-             world.player.visual_global_y != target_y)) {
-            world.player.movement_from_x =
-                world.player.visual_global_x;
-            world.player.movement_from_y =
-                world.player.visual_global_y;
-            world.player.movement_to_x = target_x;
-            world.player.movement_to_y = target_y;
-            world.player.movement_elapsed = 0.0F;
-            world.player.moving = true;
-        } else if (world.player.moving &&
-                   (world.player.movement_to_x != target_x ||
-                    world.player.movement_to_y != target_y)) {
-            world.player.movement_from_x =
-                world.player.visual_global_x;
-            world.player.movement_from_y =
-                world.player.visual_global_y;
-            world.player.movement_to_x = target_x;
-            world.player.movement_to_y = target_y;
-            world.player.movement_elapsed = 0.0F;
-        }
-        if (world.player.moving) {
-            constexpr float duration = 16.0F / 60.0F;
-            world.player.movement_elapsed +=
-                static_cast<float>(bounded);
+        constexpr float duration = 16.0F / 60.0F;
+        float remaining = static_cast<float>(bounded);
+        while (remaining > 0.0F) {
+            if (!world.player.moving) {
+                if (world.player.movement_queue.empty())
+                    break;
+                const WorldMovementSegment& segment =
+                    world.player.movement_queue.front();
+                world.player.movement_from_x =
+                    world.player.visual_global_x;
+                world.player.movement_from_y =
+                    world.player.visual_global_y;
+                world.player.movement_to_x = segment.target_x;
+                world.player.movement_to_y = segment.target_y;
+                world.player.movement_elapsed = 0.0F;
+                world.player.ledge_hop = segment.ledge_hop;
+                world.player.moving = true;
+            }
+            const float consumed = std::min(
+                remaining,
+                duration - world.player.movement_elapsed);
+            world.player.movement_elapsed += consumed;
+            remaining -= consumed;
             const float amount = std::clamp(
                 world.player.movement_elapsed / duration, 0.0F,
                 1.0F);
@@ -1951,12 +2086,35 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
             world.player.visual_global_y =
                 std::lerp(world.player.movement_from_y,
                           world.player.movement_to_y, amount);
+            world.player.visual_offset_y_pixels =
+                world.player.ledge_hop
+                    ? -32.0F * amount * (1.0F - amount)
+                    : 0.0F;
             world.player.animation_phase =
                 amount >= 1.0F
                     ? 0U
                     : static_cast<std::uint8_t>(
                           std::min(3, static_cast<int>(amount * 4.0F)));
-            if (amount >= 1.0F) world.player.moving = false;
+            if (amount < 1.0F) break;
+            world.player.visual_global_x =
+                world.player.movement_to_x;
+            world.player.visual_global_y =
+                world.player.movement_to_y;
+            world.player.visual_offset_y_pixels = 0.0F;
+            world.player.moving = false;
+            world.player.ledge_hop = false;
+            world.player.movement_queue.pop_front();
+        }
+        // Direct state restoration/teleportation is never synthesized as an
+        // arbitrary diagonal walk. Explicit movement producers enqueue every
+        // walk or hop segment.
+        if (!world.player.moving &&
+            world.player.movement_queue.empty() &&
+            (world.player.visual_global_x != target_x ||
+             world.player.visual_global_y != target_y)) {
+            world.player.visual_global_x = target_x;
+            world.player.visual_global_y = target_y;
+            world.player.visual_offset_y_pixels = 0.0F;
         }
         if (world.follow_player_x)
             world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
@@ -1979,6 +2137,8 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
         } else if (actor.moving &&
                    (actor.movement_to_x != target_x ||
                     actor.movement_to_y != target_y)) {
+            actor.visual_global_x = actor.movement_to_x;
+            actor.visual_global_y = actor.movement_to_y;
             actor.movement_from_x = actor.visual_global_x;
             actor.movement_from_y = actor.visual_global_y;
             actor.movement_to_x = target_x;
@@ -2007,6 +2167,16 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
     world.camera_y += (world.target_camera_y - world.camera_y) * response;
     const float ratio = world.target_zoom / std::max(world.zoom, 0.0001F);
     world.zoom *= std::exp(std::log(ratio) * response);
+}
+
+void update_world_presentation(WorldState& world,
+                               double elapsed_seconds) {
+    if (!world.area_banner.active) return;
+    constexpr float duration = 2.4F;
+    world.area_banner.elapsed += static_cast<float>(
+        std::clamp(elapsed_seconds, 0.0, 0.1));
+    if (world.area_banner.elapsed >= duration)
+        world.area_banner = {};
 }
 
 void step_world_animation(WorldState& world) {

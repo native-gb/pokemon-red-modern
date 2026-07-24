@@ -70,6 +70,23 @@ struct ImportedAnimationAssets {
     std::vector<std::uint8_t> battle_ui_tiles;
 };
 
+enum class BattlePresentationPhase : std::uint8_t {
+    inactive,
+    opening_wipe,
+    opponent_arrival,
+    player_deployment,
+    active,
+    closing_wipe,
+};
+
+struct BattlePresentationState {
+    BattlePresentationPhase phase{
+        BattlePresentationPhase::inactive};
+    std::uint16_t tick{};
+    bool trainer_battle{};
+    bool return_to_world{};
+};
+
 struct BattleAnimationLab {
     std::filesystem::path source_root;
     content::Catalog catalog;
@@ -78,6 +95,7 @@ struct BattleAnimationLab {
     BattleUiState ui;
     BattleTileMap ui_tile_map{};
     AnimationState animation;
+    BattlePresentationState presentation;
     content::AnimationProgram gameplay_program;
     std::vector<GameplayBattleAnimation> gameplay_queue;
     std::size_t gameplay_queue_cursor{};
@@ -109,6 +127,11 @@ void next_battle_ui_menu_selection(BattleAnimationLab& lab);
 void previous_battle_ui_menu_selection(BattleAnimationLab& lab);
 void cycle_battle_ui_status(BattleAnimationLab& lab);
 void prepare_battle_view(BattleAnimationLab& lab);
+void begin_battle_presentation(BattleAnimationLab& lab,
+                               bool trainer_battle);
+void begin_battle_exit_presentation(BattleAnimationLab& lab);
+bool battle_accepts_input(const BattleAnimationLab& lab);
+bool consume_battle_return_to_world(BattleAnimationLab& lab);
 bool begin_gameplay_battle_animations(
     BattleAnimationLab& lab,
     std::vector<GameplayBattleAnimation> animations,

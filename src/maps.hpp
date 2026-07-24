@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -117,6 +118,19 @@ enum class WorldDirection : std::uint8_t {
     right,
 };
 
+struct WorldLedge {
+    WorldDirection direction{WorldDirection::down};
+    std::uint8_t standing_tile{};
+    std::uint8_t ledge_tile{};
+    std::uint8_t required_input_mask{};
+};
+
+struct WorldMovementSegment {
+    float target_x{};
+    float target_y{};
+    bool ledge_hop{};
+};
+
 enum class WorldPathCommand : std::uint8_t {
     down,
     up,
@@ -155,11 +169,15 @@ struct WorldPlayerState {
     float movement_to_x{};
     float movement_to_y{};
     float movement_elapsed{};
+    float visual_offset_y_pixels{};
+    std::deque<WorldMovementSegment> movement_queue;
     WorldDirection facing{WorldDirection::down};
     std::uint8_t move_cooldown{};
     std::uint8_t animation_phase{};
     std::size_t last_outdoor_map_index{};
     bool moving{};
+    bool ledge_hop{};
+    bool warp_pending{};
     bool initialized{};
 };
 
@@ -170,6 +188,12 @@ struct WorldWarpState {
     std::uint8_t destination_warp_index{};
     std::uint64_t simulation_tick{};
     bool occurred{};
+};
+
+struct WorldAreaBanner {
+    std::string text;
+    float elapsed{};
+    bool active{};
 };
 
 struct WorldMapCellIndex {
@@ -269,6 +293,7 @@ struct WorldState {
     std::vector<MapTileset> tilesets;
     std::vector<WorldSprite> sprites;
     std::vector<WorldSpace> spaces;
+    std::vector<WorldLedge> ledges;
     std::vector<WorldMap> maps;
     std::vector<WorldActorState> actors;
     std::vector<WorldMapCellIndex> spatial;
@@ -279,6 +304,7 @@ struct WorldState {
     NamingState naming;
     FieldMenuState menu;
     WorldWarpState last_warp;
+    WorldAreaBanner area_banner;
     WorldActorActivation last_actor_activation;
     WorldCellActivation last_cell_activation;
     WorldOpponentRequest opponent_request;
@@ -332,6 +358,8 @@ void reset_world_view(WorldState& world);
 void update_world_camera_region(WorldState& world, int output_width,
                                 int output_height);
 void update_world_view(WorldState& world, double elapsed_seconds);
+void update_world_presentation(WorldState& world,
+                               double elapsed_seconds);
 void step_world_animation(WorldState& world);
 void open_world_dialogue(WorldState& world,
                          const CampaignState& campaign,

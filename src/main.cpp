@@ -351,7 +351,6 @@ int main(int argc, char** argv) {
                 input.naming_down ||
                 (controls.down && !input.keyboard_wasd_down) ||
                 injected.controls.down;
-            controls.start = false;
             controls.select = false;
             host_input.text.clear();
         }
@@ -536,7 +535,8 @@ int main(int argc, char** argv) {
             if (battle_result.finished) {
                 pokered::finish_world_actor_battle(
                     interactions, world, campaign);
-                game.mode = pokered::Mode::overworld;
+                pokered::begin_battle_exit_presentation(
+                    animation_lab);
             }
         }
 
@@ -684,6 +684,10 @@ int main(int argc, char** argv) {
                 pokered::step_battle_animation_lab(animation_lab);
             if (!game.paused && game.mode == pokered::Mode::battle)
                 pokered::step_gameplay_battle_animations(animation_lab);
+            if (game.mode == pokered::Mode::battle &&
+                pokered::consume_battle_return_to_world(
+                    animation_lab))
+                game.mode = pokered::Mode::overworld;
             accumulator -= step_seconds;
         }
 
@@ -696,7 +700,8 @@ int main(int argc, char** argv) {
         pokered::update_world_camera_region(
             world, window.frame.render_width,
             window.frame.render_height);
-        pokered::update_world_view(world, bounded_elapsed);
+        pokered::update_world_view(world, game_elapsed);
+        pokered::update_world_presentation(world, bounded_elapsed);
         imgui_new_frame();
         pokered::apply_nearest_sampling(window);
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
@@ -713,7 +718,6 @@ int main(int argc, char** argv) {
                             world, rules, presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_dialogue_overlay(world);
-        pokered::render::draw_naming_overlay(world);
         pokered::render::draw_field_menu_overlay(
             world, campaign, campaign_programs, rules);
         imgui_render_layer();

@@ -610,7 +610,8 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
         !draw_actor(
             1U, world.player.facing, world.player.animation_phase,
             world.player.visual_global_x,
-            world.player.visual_global_y))
+            world.player.visual_global_y +
+                world.player.visual_offset_y_pixels / 16.0F))
         return false;
     return true;
 }

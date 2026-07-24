@@ -605,7 +605,9 @@ bool step_boot(const BootContent& content, const BootInput& input, BootState& st
         // Naming is deliberately controller-like: navigate the imported grid,
         // confirm a cell, and use Back to erase. Host text entry and unrelated
         // Start/Select shortcuts do not leak characters or case changes into it.
-        if (input.cancel_pressed || input.erase_pressed) {
+        if (input.start_pressed && !state.naming_value.empty()) {
+            finish_naming(state);
+        } else if (input.cancel_pressed || input.erase_pressed) {
             erase_last_naming_character(state.naming_value);
         } else if (input.up_pressed) {
             if (state.naming_row == 0U) {

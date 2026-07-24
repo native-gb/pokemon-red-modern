@@ -27,6 +27,8 @@ constexpr std::size_t kTownMapExternalEntryCount = 37;
 constexpr std::size_t kTownMapExternalEntrySize = 3;
 constexpr std::uint8_t kTownMapBank = 0x1C;
 constexpr std::size_t kFlowerAnimationFramesOffset = 0x1F19;
+constexpr std::size_t kLedgesOffset = 0x1A6CF;
+constexpr std::size_t kLedgesEnd = 0x1A6F0;
 constexpr std::size_t kAnimationTileBytes = 16;
 constexpr std::size_t kWaterAnimationFrameCount = 8;
 constexpr std::size_t kFlowerAnimationFrameCount = 3;
@@ -141,6 +143,13 @@ struct ImportedConnection {
     std::uint8_t target_map_id{};
     std::int16_t player_x{};
     std::int16_t player_y{};
+};
+
+struct ImportedLedge {
+    std::uint8_t direction{};
+    std::uint8_t standing_tile{};
+    std::uint8_t ledge_tile{};
+    std::uint8_t required_input_mask{};
 };
 
 enum class ImportedCameraFraming : std::uint8_t {
@@ -1151,6 +1160,7 @@ bool expand_maps(const std::vector<ImportedTileset>& tilesets, std::vector<Impor
 void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                           const std::vector<ImportedSprite>& sprites,
                           const std::vector<ImportedWorldSpace>& spaces,
+                          const std::vector<ImportedLedge>& ledges,
                           const std::vector<ImportedMap>& maps, MapImport& result) {
     const auto direction_name = [](std::uint8_t direction) {
         if (direction == 8) return "north";
@@ -1213,6 +1223,25 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
         }
     }
     add_text_file(result, "source/world/world_spaces.sexpr", space_source.str());
+
+    std::ostringstream ledge_source;
+    ledge_source
+        << "; ROM-decoded ledge traversal rules. Directions are semantic engine values.\n";
+    constexpr std::array<std::string_view, 4> direction_names{
+        "down", "up", "left", "right"};
+    for (const ImportedLedge& ledge : ledges) {
+        ledge_source << "ledge\n"
+                     << "    direction "
+                     << direction_names[ledge.direction] << '\n'
+                     << "    standing_tile "
+                     << static_cast<unsigned>(ledge.standing_tile) << '\n'
+                     << "    ledge_tile "
+                     << static_cast<unsigned>(ledge.ledge_tile) << '\n'
+                     << "    required_input_mask "
+                     << static_cast<unsigned>(ledge.required_input_mask) << '\n';
+    }
+    add_text_file(result, "source/world/ledges.sexpr",
+                  ledge_source.str());
 
     for (const ImportedMap& map : maps) {
         const std::size_t width_tiles = static_cast<std::size_t>(map.width_blocks) * 4U;
@@ -1303,8 +1332,9 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
 void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedSprite>& sprites,
                         const std::vector<ImportedWorldSpace>& spaces,
+                        const std::vector<ImportedLedge>& ledges,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', 'B'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', 'C'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
@@ -1335,6 +1365,14 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
         bytes.push_back(static_cast<std::uint8_t>(space.key.size()));
         bytes.insert(bytes.end(), space.key.begin(), space.key.end());
         bytes.push_back(space.outdoor ? 1U : 0U);
+    }
+
+    bytes.push_back(static_cast<std::uint8_t>(ledges.size()));
+    for (const ImportedLedge& ledge : ledges) {
+        bytes.push_back(ledge.direction);
+        bytes.push_back(ledge.standing_tile);
+        bytes.push_back(ledge.ledge_tile);
+        bytes.push_back(ledge.required_input_mask);
     }
 
     write_u16(bytes, maps.size());
@@ -1417,6 +1455,27 @@ bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result, std
     }
     place_world_spaces(maps);
     const std::vector<ImportedWorldSpace> spaces = build_world_spaces(maps);
+    std::vector<ImportedLedge> ledges;
+    for (std::size_t cursor = kLedgesOffset;
+         cursor < kLedgesEnd && rom[cursor] != 0xFFU;
+         cursor += 4U) {
+        if (cursor + 4U > kLedgesEnd ||
+            (rom[cursor] & 3U) != 0U || rom[cursor] > 12U) {
+            error = "LedgeTiles contains an invalid record";
+            return false;
+        }
+        ledges.push_back({
+            .direction =
+                static_cast<std::uint8_t>(rom[cursor] / 4U),
+            .standing_tile = rom[cursor + 1U],
+            .ledge_tile = rom[cursor + 2U],
+            .required_input_mask = rom[cursor + 3U],
+        });
+    }
+    if (kLedgesEnd == 0U || rom[kLedgesEnd - 1U] != 0xFFU) {
+        error = "LedgeTiles is missing its exact sentinel";
+        return false;
+    }
 
     std::vector<std::uint8_t> tileset_ids;
     for (const ImportedMap& map : maps) {
@@ -1432,13 +1491,14 @@ bool decode_map_import(std::span<const std::uint8_t> rom, MapImport& result, std
     }
     if (!expand_maps(tilesets, maps, error)) return false;
 
-    emit_readable_source(tilesets, sprites, spaces, maps, result);
-    emit_runtime_cache(tilesets, sprites, spaces, maps, result);
+    emit_readable_source(tilesets, sprites, spaces, ledges, maps, result);
+    emit_runtime_cache(tilesets, sprites, spaces, ledges, maps, result);
     result.maps = maps.size();
     result.world_spaces = spaces.size();
     result.unused_map_slots = kMapSlotCount - maps.size();
     result.tilesets = tilesets.size();
     result.sprites = sprites.size();
+    result.ledges = ledges.size();
     for (const ImportedMap& map : maps) {
         result.warps += map.warps.size();
         result.actors += map.actors.size();
