@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 86U &&
+              programs.programs.size() == 87U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 26> source_names{
+    constexpr std::array<std::string_view, 27> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1822,6 +1822,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "cerulean_rocket.sexpr",
         "route_5_gate.sexpr",
         "vermilion_harbor.sexpr",
+        "daycare.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -3913,6 +3914,131 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::inventory_item_quantity(
                   campaign.inventory, 63U) == 1U,
           "Vermilion accepts but does not consume the ticket and leaves the dock warp open");
+
+    // The Day Care owns a real deposited Pokemon rather than a flag-shaped
+    // stand-in. Deposit from the controller party list, place experience one
+    // walking step below the next level, service that step, and retrieve for
+    // the ROM's (levels grown + 1) * 100 price.
+    campaign.party.members.push_back(
+        campaign.party.members.front());
+    const std::size_t party_before_daycare =
+        campaign.party.members.size();
+    const std::uint8_t daycare_species =
+        campaign.party.members.front().species_dex;
+    const std::string daycare_name =
+        campaign.party.members.front().nickname;
+    const std::uint8_t daycare_start_level =
+        campaign.party.members.front().level;
+    const std::uint32_t money_before_daycare =
+        campaign.money;
+    check(state,
+          pokered::enter_world_at(
+              world, 72U, 2, 4, error),
+          "campaign fixture enters the Day Care");
+    world.last_actor_activation = {
+        .map_id = 72U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.choice.open &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "DAYCARE") != std::string::npos,
+          "Day Care starts its imported offer");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate =
+                 world.dialogue.open ||
+                 world.choice.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Day Care deposit flow advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              campaign.daycare.occupied &&
+              campaign.daycare.pokemon.species_dex ==
+                  daycare_species &&
+              campaign.daycare.pokemon.nickname ==
+                  daycare_name &&
+              campaign.party.members.size() + 1U ==
+                  party_before_daycare,
+          "Day Care deposits the selected owned Pokemon");
+
+    const pokered::SpeciesRule* daycare_rule =
+        pokered::find_species(rules, daycare_species);
+    check(state, daycare_rule != nullptr,
+          "Day Care deposited species retains imported rules");
+    if (daycare_rule != nullptr)
+        campaign.daycare.pokemon.experience =
+            pokered::experience_for_level(
+                rules, daycare_rule->growth_curve_id,
+                static_cast<std::uint8_t>(
+                    daycare_start_level + 1U)) -
+            1U;
+    world.player_completed_step = true;
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "one completed world step services Day Care experience");
+    world.player_completed_step = false;
+
+    world.last_actor_activation = {
+        .map_id = 72U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.size() >= 2U &&
+              world.dialogue.pages[1].find(
+                  "grown by 1") != std::string::npos,
+          "Day Care reports the ROM-derived one-level growth text");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate =
+                 world.dialogue.open ||
+                 world.choice.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Day Care retrieval and payment flow advance");
+        if (!error.empty()) break;
+    }
+    const auto returned = std::ranges::find_if(
+        campaign.party.members,
+        [&](const pokered::PokemonState& pokemon) {
+            return pokemon.species_dex == daycare_species &&
+                   pokemon.nickname == daycare_name &&
+                   pokemon.level ==
+                       daycare_start_level + 1U;
+        });
+    check(state,
+          error.empty() &&
+              !campaign.daycare.occupied &&
+              campaign.party.members.size() ==
+                  party_before_daycare &&
+              campaign.money + 200U ==
+                  money_before_daycare &&
+              returned != campaign.party.members.end() &&
+              returned->current_hp == returned->stats.hp,
+          "Day Care charges 200, refreshes moves/stats, heals, and returns the grown Pokemon");
 }
 
 } // namespace

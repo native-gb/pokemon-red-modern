@@ -298,6 +298,13 @@ constexpr std::size_t kVermilionTicketQuestionTextOffset = 0x019909U;
 constexpr std::size_t kVermilionFlashedTicketTextOffset = 0x01990EU;
 constexpr std::size_t kVermilionNeedTicketTextOffset = 0x019913U;
 constexpr std::size_t kVermilionShipSailedTextOffset = 0x019918U;
+constexpr std::size_t kDaycareObjectOffset = 0x056459U;
+constexpr std::array<std::size_t, 15> kDaycareTextOffsets{
+    0x05640FU, 0x056414U, 0x056419U, 0x05641EU,
+    0x056423U, 0x056428U, 0x05642DU, 0x056432U,
+    0x056437U, 0x05643BU, 0x056440U, 0x056445U,
+    0x05644AU, 0x05644FU, 0x056454U,
+};
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -370,6 +377,18 @@ enum class Opcode : std::uint8_t {
     end_if_player_lost,
     heal_party,
     escort_player_to,
+    jump_if_daycare_occupied,
+    ask_party_member,
+    jump_if_party_size_below,
+    jump_if_choice_cancelled,
+    jump_if_selected_pokemon_knows_hm,
+    deposit_selected_party_member,
+    say_if_daycare_grown,
+    say_if_daycare_unchanged,
+    jump_if_party_full,
+    jump_if_money_below_daycare_cost,
+    take_daycare_money,
+    retrieve_daycare_pokemon,
     unlock_input,
     end,
 };
@@ -800,6 +819,12 @@ struct VermilionTicketGateProgram {
     DecodedTextProgram flashed_ticket;
     DecodedTextProgram need_ticket;
     DecodedTextProgram ship_sailed;
+};
+
+struct DaycareProgram {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::array<DecodedTextProgram, 15> texts;
 };
 
 struct CampaignInitialState {
@@ -4170,6 +4195,70 @@ bool decode_vermilion_ticket_gate_program(
     return true;
 }
 
+bool decode_daycare_program(
+    std::span<const std::uint8_t> rom,
+    DaycareProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 72U;
+    if (!decode_map_actor_owner(
+            rom, kDaycareObjectOffset, 1U,
+            result.actor_index, error))
+        return false;
+    for (std::size_t index = 0U;
+         index < result.texts.size(); ++index)
+        if (!decode_text_program(
+                rom, 0x15U,
+                kDaycareTextOffsets[index],
+                result.texts[index]) ||
+            !result.texts[index].complete ||
+            result.texts[index].pages.empty()) {
+            error =
+                "Day Care dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+
+    for (DecodedTextProgram& text : result.texts)
+        for (std::string& page : text.pages) {
+            replace_all(
+                page, "{name_buffer}",
+                "{daycare_name}");
+            const std::size_t begin =
+                page.find("{ram_");
+            const std::size_t end =
+                begin == std::string::npos
+                    ? std::string::npos
+                    : page.find('}', begin);
+            if (end != std::string::npos)
+                page.replace(
+                    begin, end - begin + 1U,
+                    "{daycare_name}");
+        }
+    for (std::string& page : result.texts[6].pages) {
+        const std::size_t name =
+            page.find("{daycare_name}");
+        if (name != std::string::npos &&
+            name != 0U && page[name - 1U] != '\n')
+            page.insert(name, "\n");
+    }
+    for (std::string& page : result.texts[4].pages) {
+        const std::size_t marker =
+            page.find("grown by ");
+        if (marker != std::string::npos)
+            page.insert(
+                marker + std::string_view{"grown by "}.size(),
+                "{daycare_levels}");
+    }
+    for (std::string& page : result.texts[5].pages) {
+        const std::size_t marker =
+            page.find("You owe me ¥");
+        if (marker != std::string::npos)
+            page.insert(
+                marker + std::string_view{"You owe me ¥"}.size(),
+                "{daycare_cost}");
+    }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -5747,6 +5836,68 @@ GeneratedFile readable_vermilion_ticket_gate_source(
     };
 }
 
+GeneratedFile readable_daycare_source(
+    const DaycareProgram& daycare) {
+    const auto pages = [&](std::size_t index,
+                           std::string_view indent) {
+        return page_source(
+            daycare.texts[index].pages, indent);
+    };
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Day Care program.\n"
+        << "; The actor and every response are ROM-derived; selection, growth, payment, and retrieval are semantic engine operations.\n\n"
+        << "campaign_program daycare_gentleman\n"
+        << "    trigger map daycare actor_activation "
+        << static_cast<unsigned>(daycare.actor_index)
+        << "\n    if_daycare_occupied continue retrieve\n"
+        << "    ask_yes_no\n"
+        << pages(0U, "        ")
+        << "    if_no say\n"
+        << pages(9U, "        ")
+        << "    require_party_size 2 else say\n"
+        << pages(11U, "        ")
+        << "    say\n"
+        << pages(1U, "        ")
+        << "    choose_party_member\n"
+        << "    if_cancel say\n"
+        << pages(8U, "        ")
+        << "    if_knows_hidden_machine say\n"
+        << pages(12U, "        ")
+        << "    deposit_selected_pokemon\n"
+        << "    say\n"
+        << pages(2U, "        ")
+        << "    say\n"
+        << pages(3U, "        ")
+        << "\nfragment retrieve\n"
+        << "    if_grown say\n"
+        << pages(4U, "        ")
+        << "    else say\n"
+        << pages(7U, "        ")
+        << "    require_party_room else say\n"
+        << pages(10U, "        ")
+        << "    say\n"
+        << pages(5U, "        ")
+        << "    ask_yes_no\n"
+        << "    if_no say\n"
+        << pages(8U, "        ")
+        << "    require_money daycare_cost else say\n"
+        << pages(14U, "        ")
+        << "    take_money daycare_cost\n"
+        << "    say\n"
+        << pages(13U, "        ")
+        << "    say\n"
+        << pages(6U, "        ")
+        << "    retrieve_daycare_pokemon\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/daycare.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -6047,6 +6198,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_vermilion_ticket_gate_program(
             rom, item_names, vermilion_ticket_gate,
             error))
+        return false;
+    DaycareProgram daycare;
+    if (!decode_daycare_program(
+            rom, daycare, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -8501,7 +8656,126 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(harbor_welcome));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'N'};
+    Program daycare_service;
+    daycare_service.key = "daycare_gentleman";
+    daycare_service.trigger_kind =
+        TriggerKind::actor_activation;
+    daycare_service.trigger_map = daycare.map_id;
+    daycare_service.trigger_x = daycare.actor_index;
+    daycare_service.instructions.push_back(
+        operation(Opcode::lock_input));
+    const std::size_t daycare_occupied_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(
+        operation(Opcode::jump_if_daycare_occupied));
+    daycare_service.instructions.push_back(
+        ask_yes_no(daycare.texts[0].pages, 0U));
+    const std::size_t daycare_decline_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(
+        operation(Opcode::jump_if_choice_no));
+    const std::size_t daycare_one_party_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(operation(
+        Opcode::jump_if_party_size_below, 2U));
+    daycare_service.instructions.push_back(
+        dialogue(daycare.texts[1].pages));
+    daycare_service.instructions.push_back(
+        operation(Opcode::ask_party_member));
+    const std::size_t daycare_cancel_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(
+        operation(Opcode::jump_if_choice_cancelled));
+    const std::size_t daycare_hm_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(
+        operation(
+            Opcode::jump_if_selected_pokemon_knows_hm));
+    daycare_service.instructions.push_back(
+        operation(
+            Opcode::deposit_selected_party_member));
+    daycare_service.instructions.push_back(
+        dialogue(daycare.texts[2].pages));
+    daycare_service.instructions.push_back(
+        dialogue(daycare.texts[3].pages));
+    daycare_service.instructions.push_back(
+        operation(Opcode::unlock_input));
+    daycare_service.instructions.push_back(
+        operation(Opcode::end));
+
+    const auto append_daycare_exit =
+        [&](std::size_t jump,
+            const DecodedTextProgram& text) {
+            daycare_service.instructions[jump].value =
+                static_cast<std::uint32_t>(
+                    daycare_service.instructions.size());
+            daycare_service.instructions.push_back(
+                dialogue(text.pages));
+            daycare_service.instructions.push_back(
+                operation(Opcode::unlock_input));
+            daycare_service.instructions.push_back(
+                operation(Opcode::end));
+        };
+    append_daycare_exit(
+        daycare_decline_jump, daycare.texts[9]);
+    append_daycare_exit(
+        daycare_one_party_jump, daycare.texts[11]);
+    append_daycare_exit(
+        daycare_cancel_jump, daycare.texts[8]);
+    append_daycare_exit(
+        daycare_hm_jump, daycare.texts[12]);
+
+    daycare_service.instructions[
+        daycare_occupied_jump].value =
+        static_cast<std::uint32_t>(
+            daycare_service.instructions.size());
+    Instruction daycare_grown =
+        operation(Opcode::say_if_daycare_grown);
+    daycare_grown.pages = daycare.texts[4].pages;
+    daycare_service.instructions.push_back(
+        std::move(daycare_grown));
+    Instruction daycare_unchanged =
+        operation(Opcode::say_if_daycare_unchanged);
+    daycare_unchanged.pages =
+        daycare.texts[7].pages;
+    daycare_service.instructions.push_back(
+        std::move(daycare_unchanged));
+    const std::size_t daycare_party_full_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(
+        operation(Opcode::jump_if_party_full));
+    daycare_service.instructions.push_back(
+        ask_yes_no(daycare.texts[5].pages, 0U));
+    const std::size_t daycare_keep_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(
+        operation(Opcode::jump_if_choice_no));
+    const std::size_t daycare_money_jump =
+        daycare_service.instructions.size();
+    daycare_service.instructions.push_back(
+        operation(
+            Opcode::jump_if_money_below_daycare_cost));
+    daycare_service.instructions.push_back(
+        operation(Opcode::take_daycare_money));
+    daycare_service.instructions.push_back(
+        dialogue(daycare.texts[13].pages));
+    daycare_service.instructions.push_back(
+        dialogue(daycare.texts[6].pages));
+    daycare_service.instructions.push_back(
+        operation(Opcode::retrieve_daycare_pokemon));
+    daycare_service.instructions.push_back(
+        operation(Opcode::unlock_input));
+    daycare_service.instructions.push_back(
+        operation(Opcode::end));
+    append_daycare_exit(
+        daycare_party_full_jump, daycare.texts[10]);
+    append_daycare_exit(
+        daycare_keep_jump, daycare.texts[8]);
+    append_daycare_exit(
+        daycare_money_jump, daycare.texts[14]);
+    programs.push_back(std::move(daycare_service));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'O'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -8597,6 +8871,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_vermilion_ticket_gate_source(
             vermilion_ticket_gate));
+    result.files.push_back(
+        readable_daycare_source(daycare));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

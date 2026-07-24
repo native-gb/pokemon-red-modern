@@ -61,6 +61,12 @@ struct PokemonStorageState {
     std::uint8_t current_box{};
 };
 
+struct DaycareState {
+    PokemonState pokemon;
+    std::uint8_t deposited_level{};
+    bool occupied{};
+};
+
 // Campaign-owned state is separate from host presentation settings and from
 // transient world/render state. Imported programs address flags and variables
 // through typed numeric IDs; vectors grow only as validated programs require.
@@ -71,6 +77,7 @@ struct CampaignState {
     std::uint16_t trainer_id{};
     PartyState party;
     PokemonStorageState storage;
+    DaycareState daycare;
     InventoryState inventory;
     BattleState battle;
     CampaignBattleOwner battle_owner;

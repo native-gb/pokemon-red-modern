@@ -103,6 +103,8 @@ bool valid_instruction(const CampaignInstruction& instruction) {
         return !instruction.pages.empty();
     case CampaignOpcode::say_if_player_won:
     case CampaignOpcode::say_if_player_lost:
+    case CampaignOpcode::say_if_daycare_grown:
+    case CampaignOpcode::say_if_daycare_unchanged:
         return !instruction.pages.empty();
     case CampaignOpcode::parallel_path:
         return owns_actor() && instruction.b <= 1U &&
@@ -122,6 +124,10 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::end_if_choice_no:
     case CampaignOpcode::end_if_player_lost:
     case CampaignOpcode::heal_party:
+    case CampaignOpcode::ask_party_member:
+    case CampaignOpcode::deposit_selected_party_member:
+    case CampaignOpcode::take_daycare_money:
+    case CampaignOpcode::retrieve_daycare_pokemon:
     case CampaignOpcode::unlock_input:
     case CampaignOpcode::end:
         return true;
@@ -180,6 +186,12 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::jump_if_pokemon_grant_failed:
     case CampaignOpcode::jump_if_player_won:
     case CampaignOpcode::jump_if_choice_no:
+    case CampaignOpcode::jump_if_daycare_occupied:
+    case CampaignOpcode::jump_if_party_size_below:
+    case CampaignOpcode::jump_if_choice_cancelled:
+    case CampaignOpcode::jump_if_selected_pokemon_knows_hm:
+    case CampaignOpcode::jump_if_party_full:
+    case CampaignOpcode::jump_if_money_below_daycare_cost:
         return instruction.b == 0U && instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
@@ -269,6 +281,48 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
            world.player.y == program.trigger_y;
 }
 
+std::uint8_t daycare_level(
+    const RuleCatalog& rules,
+    const DaycareState& daycare) {
+    const SpeciesRule* species =
+        find_species(rules, daycare.pokemon.species_dex);
+    return species == nullptr
+               ? daycare.deposited_level
+               : level_for_experience(
+                     rules, species->growth_curve_id,
+                     daycare.pokemon.experience);
+}
+
+std::uint32_t daycare_cost(
+    const RuleCatalog& rules,
+    const DaycareState& daycare) {
+    const std::uint8_t level =
+        daycare_level(rules, daycare);
+    const std::uint32_t levels =
+        level > daycare.deposited_level
+            ? static_cast<std::uint32_t>(
+                  level - daycare.deposited_level)
+            : 0U;
+    return (levels + 1U) * 100U;
+}
+
+bool pokemon_knows_hidden_machine(
+    const RuleCatalog& rules,
+    const PokemonState& pokemon) {
+    return std::ranges::any_of(
+        pokemon.moves,
+        [&](const PokemonMoveState& move) {
+            return move.move_id != 0U &&
+                   std::ranges::any_of(
+                       rules.machines,
+                       [&](const MachineRule& machine) {
+                           return machine.hidden_machine &&
+                                  machine.move_id ==
+                                      move.move_id;
+                       });
+        });
+}
+
 void replace_all(std::string& text, std::string_view token,
                  std::string_view value) {
     std::size_t position = 0U;
@@ -300,6 +354,29 @@ void open_program_dialogue(WorldState& world,
                 static_cast<unsigned>(
                     campaign.storage.current_box) +
                 1U));
+    if (campaign.daycare.occupied) {
+        const std::string name =
+            campaign.daycare.pokemon.nickname.empty()
+                ? "POKéMON"
+                : campaign.daycare.pokemon.nickname;
+        const std::uint8_t current_level =
+            daycare_level(rules, campaign.daycare);
+        for (std::string& page : pages) {
+            replace_all(page, "{daycare_name}", name);
+            replace_all(
+                page, "{daycare_levels}",
+                std::to_string(static_cast<unsigned>(
+                    current_level >
+                            campaign.daycare.deposited_level
+                        ? current_level -
+                              campaign.daycare.deposited_level
+                        : 0U)));
+            replace_all(
+                page, "{daycare_cost}",
+                std::to_string(
+                    daycare_cost(rules, campaign.daycare)));
+        }
+    }
     open_world_dialogue(world, campaign, pages);
 }
 
@@ -422,7 +499,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'N'}) {
+        magic != std::array{'P', 'C', 'P', 'O'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -697,6 +774,22 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             programs.storage_box_count);
         campaign.storage.current_box = 0U;
         campaign.imported_initial_state = true;
+    }
+    if (world.player_completed_step &&
+        campaign.daycare.occupied) {
+        const SpeciesRule* species =
+            find_species(
+                rules,
+                campaign.daycare.pokemon.species_dex);
+        if (species != nullptr) {
+            const std::uint32_t maximum =
+                experience_for_level(
+                    rules, species->growth_curve_id,
+                    100U);
+            if (campaign.daycare.pokemon.experience <
+                maximum)
+                ++campaign.daycare.pokemon.experience;
+        }
     }
 
     CampaignFiberState& fiber = campaign.fiber;
@@ -1148,6 +1241,154 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
         case CampaignOpcode::heal_party:
             heal_party(campaign.party);
             break;
+        case CampaignOpcode::jump_if_daycare_occupied:
+            if (campaign.daycare.occupied)
+                fiber.instruction_index =
+                    instruction.value;
+            break;
+        case CampaignOpcode::ask_party_member:
+            world.choice = {};
+            for (const PokemonState& pokemon :
+                 campaign.party.members)
+                world.choice.options.push_back(
+                    pokemon.nickname.empty()
+                        ? "POKéMON"
+                        : pokemon.nickname);
+            world.choice.options.push_back("CANCEL");
+            world.choice.open = true;
+            fiber.waiting_choice = true;
+            error.clear();
+            return true;
+        case CampaignOpcode::jump_if_party_size_below:
+            if (campaign.party.members.size() <
+                instruction.a)
+                fiber.instruction_index =
+                    instruction.value;
+            break;
+        case CampaignOpcode::jump_if_choice_cancelled:
+            if (fiber.last_choice >=
+                campaign.party.members.size())
+                fiber.instruction_index =
+                    instruction.value;
+            break;
+        case CampaignOpcode::jump_if_selected_pokemon_knows_hm:
+            if (fiber.last_choice <
+                    campaign.party.members.size() &&
+                pokemon_knows_hidden_machine(
+                    rules,
+                    campaign.party.members[
+                        fiber.last_choice]))
+                fiber.instruction_index =
+                    instruction.value;
+            break;
+        case CampaignOpcode::deposit_selected_party_member:
+            if (campaign.daycare.occupied ||
+                fiber.last_choice >=
+                    campaign.party.members.size() ||
+                campaign.party.members.size() <= 1U) {
+                error =
+                    "campaign daycare deposit has an invalid selected Pokemon";
+                return false;
+            }
+            campaign.daycare.pokemon = std::move(
+                campaign.party.members[
+                    fiber.last_choice]);
+            campaign.party.members.erase(
+                campaign.party.members.begin() +
+                fiber.last_choice);
+            campaign.daycare.deposited_level =
+                campaign.daycare.pokemon.level;
+            campaign.daycare.occupied = true;
+            break;
+        case CampaignOpcode::say_if_daycare_grown:
+            if (!campaign.daycare.occupied ||
+                daycare_level(
+                    rules, campaign.daycare) <=
+                    campaign.daycare.deposited_level)
+                break;
+            open_program_dialogue(
+                world, campaign, rules, instruction);
+            fiber.waiting_dialogue =
+                world.dialogue.open;
+            error.clear();
+            return true;
+        case CampaignOpcode::say_if_daycare_unchanged:
+            if (!campaign.daycare.occupied ||
+                daycare_level(
+                    rules, campaign.daycare) !=
+                    campaign.daycare.deposited_level)
+                break;
+            open_program_dialogue(
+                world, campaign, rules, instruction);
+            fiber.waiting_dialogue =
+                world.dialogue.open;
+            error.clear();
+            return true;
+        case CampaignOpcode::jump_if_party_full:
+            if (campaign.party.members.size() >=
+                programs.party_capacity)
+                fiber.instruction_index =
+                    instruction.value;
+            break;
+        case CampaignOpcode::jump_if_money_below_daycare_cost:
+            if (!campaign.daycare.occupied ||
+                campaign.money <
+                    daycare_cost(
+                        rules, campaign.daycare))
+                fiber.instruction_index =
+                    instruction.value;
+            break;
+        case CampaignOpcode::take_daycare_money:
+            if (!campaign.daycare.occupied) {
+                error =
+                    "campaign daycare payment has no deposited Pokemon";
+                return false;
+            }
+            campaign.money -=
+                daycare_cost(
+                    rules, campaign.daycare);
+            break;
+        case CampaignOpcode::retrieve_daycare_pokemon: {
+            if (!campaign.daycare.occupied ||
+                campaign.party.members.size() >=
+                    programs.party_capacity) {
+                error =
+                    "campaign daycare retrieval has no party destination";
+                return false;
+            }
+            const StatFormulaProgram* stat_formula =
+                find_stat_formula(
+                    battle_rules,
+                    battle_rules.original_stat_formula);
+            const std::uint8_t level =
+                daycare_level(rules, campaign.daycare);
+            PokemonState refreshed;
+            if (stat_formula == nullptr ||
+                !build_pokemon(
+                    rules, *stat_formula,
+                    campaign.daycare.pokemon.species_dex,
+                    level,
+                    campaign.daycare.pokemon.dvs,
+                    campaign.daycare.pokemon.trainer_id,
+                    campaign.daycare.pokemon.original_trainer,
+                    refreshed, error))
+                return false;
+            refreshed.experience =
+                campaign.daycare.pokemon.experience;
+            refreshed.stat_experience =
+                campaign.daycare.pokemon.stat_experience;
+            refreshed.nickname =
+                campaign.daycare.pokemon.nickname;
+            if (!recalculate_pokemon_stats(
+                    rules, *stat_formula,
+                    refreshed, error))
+                return false;
+            refreshed.current_hp = refreshed.stats.hp;
+            campaign.party.members.push_back(
+                std::move(refreshed));
+            campaign.daycare = {};
+            break;
+        }
         case CampaignOpcode::escort_player_to:
             if (!start_world_escort_motion(
                     world, program.trigger_map_id, instruction.a,

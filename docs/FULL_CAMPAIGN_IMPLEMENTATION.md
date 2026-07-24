@@ -981,10 +981,31 @@ Readable content is generated at
 `source/scripts/campaign/route_5_gate.sexpr` and
 `source/scripts/campaign/vermilion_harbor.sexpr`.
 
+The Route 5 Day Care is now a real semantic Pokémon service. The importer
+derives the gentleman actor and all fifteen dialogue programs from the ROM.
+The campaign program owns the offer, party-size check, controller party
+selection and cancel path, HM-move rejection, deposit, grown/unchanged
+responses, party-capacity check, fee offer, decline and insufficient-money
+branches, payment, and return presentation. The engine owns only the reusable
+Day Care state and operations.
+
+A deposited Pokémon is removed from the party intact and gains one experience
+point per completed player step, capped at level 100. Retrieval computes level
+from the imported growth curve, charges `(levels grown + 1) * 100`, rebuilds
+its four-move level-up set from imported learnsets, recalculates imported stats,
+heals it, and returns it to the party. Hidden-machine rejection is derived from
+the imported machine table rather than a C++ move list.
+
+The focused fixture deposits a selected owned Pokémon, places it one walking
+step below its next imported growth threshold, services that step, verifies
+the dynamic one-level response, accepts the ¥200 return, and checks party
+ownership, money, level, moves/stats refresh, and full healing. Readable
+content is generated at `source/scripts/campaign/daycare.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-the Day Care's party-selection/growth transaction, Underground Path trades and
-hidden items, and the S.S. Anne campaign. Every later map program still
-requires semantic lifting and the remaining acceptance gates above stay open.
+Underground Path trades and hidden items and the S.S. Anne campaign. Every
+later map program still requires semantic lifting and the remaining acceptance
+gates above stay open.
 
 ## Playable acceptance
 
