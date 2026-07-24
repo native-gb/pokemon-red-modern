@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 52U &&
+              programs.programs.size() == 55U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 21> source_names{
+    constexpr std::array<std::string_view, 22> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1817,6 +1817,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "mt_moon_magikarp_sale.sexpr",
         "cerulean_rival.sexpr",
         "cerulean_gym.sexpr",
+        "route_24_nugget_bridge.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -3271,6 +3272,94 @@ void test_local_pallet_campaign_program(TestState& state) {
               world.dialogue.pages.front().find(
                   "beat MISTY") != std::string::npos,
           "Cerulean Gym guide switches to imported post-Misty dialogue");
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Cerulean Gym guide response completes");
+        if (!error.empty()) break;
+    }
+
+    check(state,
+          pokered::enter_world_at(
+              world, 35U, 10, 15, error),
+          "campaign fixture reaches the Nugget Bridge reward cell");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "Congratulations") != std::string::npos,
+          "Nugget Bridge cell starts its imported reward program");
+    for (std::size_t guard = 0U;
+         guard < 3000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Nugget reward and Rocket pitch advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id ==
+                  30U &&
+              campaign.trainer_battle_request.trainer_party_index ==
+                  5U &&
+              pokered::campaign_flag(
+                  campaign, 0x6BF78U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 49U) == 1U,
+          "Nugget Bridge grants imported Nugget before starting Rocket party 6");
+    bool bridge_rocket_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign,
+              battle_view, bridge_rocket_began, error),
+          "Nugget Bridge Rocket request begins its battle");
+    check(state,
+          bridge_rocket_began &&
+              campaign.battle.enemy_party.members.size() ==
+                  2U &&
+              campaign.battle.enemy_party.members[0].species_dex ==
+                  23U &&
+              campaign.battle.enemy_party.members[0].level ==
+                  15U &&
+              campaign.battle.enemy_party.members[1].species_dex ==
+                  41U &&
+              campaign.battle.enemy_party.members[1].level ==
+                  15U,
+          "Nugget Bridge Rocket materializes imported Ekans and Zubat");
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 2000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Nugget Bridge Rocket victory advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6BF79U) &&
+              !campaign.input_locked,
+          "Nugget Bridge victory records the imported Rocket event");
 }
 
 } // namespace

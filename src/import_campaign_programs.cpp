@@ -221,6 +221,18 @@ constexpr std::size_t kCeruleanGymNoRoomTextOffset = 0x05C7D3U;
 constexpr std::size_t kCeruleanGymBadgeTextOffset = 0x05C7D8U;
 constexpr std::size_t kCeruleanGymGuideBeforeTextOffset = 0x05C82AU;
 constexpr std::size_t kCeruleanGymGuideAfterTextOffset = 0x05C82FU;
+constexpr std::size_t kRoute24ObjectOffset = 0x0506A4U;
+constexpr std::size_t kRoute24TriggerCoordsOffset = 0x05140EU;
+constexpr std::size_t kRoute24BeatRocketSetOffset = 0x051432U;
+constexpr std::size_t kRoute24GotNuggetCheckOffset = 0x0514AAU;
+constexpr std::size_t kRoute24NuggetGrantOffset = 0x0514B7U;
+constexpr std::size_t kRoute24GotNuggetSetOffset = 0x0514BFU;
+constexpr std::size_t kRoute24ContestTextOffset = 0x051510U;
+constexpr std::size_t kRoute24ReceivedNuggetTextOffset = 0x05151AU;
+constexpr std::size_t kRoute24NoRoomTextOffset = 0x051521U;
+constexpr std::size_t kRoute24JoinRocketTextOffset = 0x051526U;
+constexpr std::size_t kRoute24DefeatedTextOffset = 0x05152BU;
+constexpr std::size_t kRoute24TopLeaderTextOffset = 0x051530U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -605,6 +617,26 @@ struct CeruleanGymProgram {
     DecodedTextProgram tm_explanation;
     DecodedTextProgram guide_before;
     DecodedTextProgram guide_after;
+};
+
+struct Route24NuggetProgram {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::uint8_t trigger_x{};
+    std::uint8_t trigger_y{};
+    std::uint8_t trainer_class{};
+    std::uint16_t trainer_party{};
+    std::uint32_t got_nugget_flag{};
+    std::uint32_t beat_rocket_flag{};
+    std::uint16_t nugget_item_id{};
+    std::uint8_t nugget_quantity{};
+    std::string nugget_name;
+    DecodedTextProgram contest;
+    DecodedTextProgram received_nugget;
+    DecodedTextProgram no_room;
+    DecodedTextProgram join_rocket;
+    DecodedTextProgram defeated;
+    DecodedTextProgram top_leader;
 };
 
 struct CampaignInitialState {
@@ -3134,7 +3166,144 @@ bool decode_cerulean_gym_program(
             error =
                 "Cerulean Gym dialogue could not be decoded from the pinned ROM";
             return false;
+    }
+    return true;
+}
+
+bool decode_route_24_nugget_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ImportedItemName>& item_names,
+    Route24NuggetProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 35U;
+    if (!decode_map_actor_owner(
+            rom, kRoute24ObjectOffset, 1U,
+            result.actor_index, error) ||
+        kRoute24ObjectOffset + 12U > rom.size()) {
+        if (error.empty())
+            error =
+                "Route 24 Nugget Bridge owner is unavailable";
+        return false;
+    }
+    const std::size_t actor_offset =
+        kRoute24ObjectOffset + 4U;
+    if ((rom[actor_offset + 5U] & 0xC0U) != 0x40U ||
+        (rom[actor_offset + 5U] & 0x3FU) !=
+            result.actor_index ||
+        rom[actor_offset + 6U] <=
+            kTrainerOpponentOffset ||
+        rom[actor_offset + 7U] == 0U) {
+        error =
+            "Route 24 Nugget Bridge trainer tuple does not match the verified ROM";
+        return false;
+    }
+    result.trainer_class =
+        static_cast<std::uint8_t>(
+            rom[actor_offset + 6U] -
+            kTrainerOpponentOffset);
+    result.trainer_party =
+        static_cast<std::uint16_t>(
+            rom[actor_offset + 7U] - 1U);
+
+    if (kRoute24TriggerCoordsOffset + 3U > rom.size() ||
+        rom[kRoute24TriggerCoordsOffset + 2U] != 0xFFU) {
+        error =
+            "Route 24 Nugget Bridge trigger is truncated";
+        return false;
+    }
+    result.trigger_y =
+        rom[kRoute24TriggerCoordsOffset];
+    result.trigger_x =
+        rom[kRoute24TriggerCoordsOffset + 1U];
+
+    std::uint32_t set_got_nugget = 0U;
+    if (!decode_checked_event(
+            rom, kRoute24GotNuggetCheckOffset,
+            result.got_nugget_flag, error) ||
+        !decode_set_event(
+            rom, kRoute24GotNuggetSetOffset,
+            set_got_nugget, error) ||
+        set_got_nugget != result.got_nugget_flag ||
+        !decode_set_event(
+            rom, kRoute24BeatRocketSetOffset,
+            result.beat_rocket_flag, error)) {
+        if (error.empty())
+            error =
+                "Route 24 Nugget Bridge events do not match the verified ROM";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    if (kRoute24NuggetGrantOffset + 6U > rom.size() ||
+        rom[kRoute24NuggetGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kRoute24NuggetGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "Route 24 Nugget grant does not match the verified ROM";
+        return false;
+    }
+    result.nugget_quantity =
+        rom[kRoute24NuggetGrantOffset + 1U];
+    result.nugget_item_id =
+        rom[kRoute24NuggetGrantOffset + 2U];
+    const auto item = std::ranges::find_if(
+        item_names,
+        [&](const ImportedItemName& candidate) {
+            return candidate.item_id ==
+                   result.nugget_item_id;
+        });
+    if (result.nugget_quantity == 0U ||
+        item == item_names.end()) {
+        error =
+            "Route 24 Nugget is missing from the imported item catalogue";
+        return false;
+    }
+    result.nugget_name = item->name;
+
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 6>
+        text_programs{{
+            {kRoute24ContestTextOffset, &result.contest},
+            {kRoute24ReceivedNuggetTextOffset,
+             &result.received_nugget},
+            {kRoute24NoRoomTextOffset, &result.no_room},
+            {kRoute24JoinRocketTextOffset,
+             &result.join_rocket},
+            {kRoute24DefeatedTextOffset,
+             &result.defeated},
+            {kRoute24TopLeaderTextOffset,
+             &result.top_leader},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(
+                rom, 0x14U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Route 24 Nugget Bridge dialogue could not be decoded from the pinned ROM";
+            return false;
         }
+    bool owns_item_name = false;
+    for (std::string& page :
+         result.received_nugget.pages) {
+        const std::size_t position =
+            page.find("{ram_");
+        const std::size_t end =
+            position == std::string::npos
+                ? std::string::npos
+                : page.find('}', position);
+        if (end == std::string::npos) continue;
+        owns_item_name = true;
+        page.replace(
+            position, end - position + 1U,
+            result.nugget_name);
+    }
+    if (!owns_item_name) {
+        error =
+            "Route 24 Nugget receipt is missing its imported item-name field";
+        return false;
+    }
     return true;
 }
 
@@ -4346,6 +4515,63 @@ GeneratedFile readable_cerulean_gym_source(
     };
 }
 
+GeneratedFile readable_route_24_nugget_source(
+    const Route24NuggetProgram& bridge) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Route 24 program.\n"
+        << "; Trigger, actor/trainer tuple, events, Nugget item, and dialogue are ROM-derived.\n\n"
+        << "campaign_template nugget_bridge_reward_and_rocket\n"
+        << "    triggers\n"
+        << "        player_cell "
+        << static_cast<unsigned>(bridge.trigger_x) << ' '
+        << static_cast<unsigned>(bridge.trigger_y)
+        << "\n        actor_activation "
+        << static_cast<unsigned>(bridge.actor_index)
+        << "\n    absent_flag 0x" << std::hex
+        << bridge.got_nugget_flag << std::dec
+        << "\n    say\n"
+        << page_source(bridge.contest.pages, "        ")
+        << "    try_give_item "
+        << source_quote(bridge.nugget_name) << " rom_id "
+        << bridge.nugget_item_id << " quantity "
+        << static_cast<unsigned>(bridge.nugget_quantity)
+        << "\n    if_item_grant_failed\n"
+        << "        say\n"
+        << page_source(bridge.no_room.pages, "            ")
+        << "        move_player down\n"
+        << "    else\n"
+        << "        set_flag 0x" << std::hex
+        << bridge.got_nugget_flag << std::dec
+        << "\n        say\n"
+        << page_source(
+               bridge.received_nugget.pages, "            ")
+        << "        say\n"
+        << page_source(bridge.join_rocket.pages, "            ")
+        << "        start_trainer_battle class "
+        << static_cast<unsigned>(bridge.trainer_class)
+        << " party " << bridge.trainer_party << '\n'
+        << "        if_player_won\n"
+        << "            say\n"
+        << page_source(bridge.defeated.pages, "                ")
+        << "            set_flag 0x" << std::hex
+        << bridge.beat_rocket_flag << std::dec
+        << "\n            say\n"
+        << page_source(bridge.top_leader.pages, "                ")
+        << "\ninteraction nugget_bridge_after_reward\n"
+        << "    required_flag 0x" << std::hex
+        << bridge.got_nugget_flag << std::dec
+        << "\n    say\n"
+        << page_source(bridge.top_leader.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/route_24_nugget_bridge.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -4623,6 +4849,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     CeruleanGymProgram cerulean_gym;
     if (!decode_cerulean_gym_program(
             rom, item_names, cerulean_gym, error))
+        return false;
+    Route24NuggetProgram route_24_nugget;
+    if (!decode_route_24_nugget_program(
+            rom, item_names, route_24_nugget, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -6272,7 +6502,114 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         cerulean_gym.beat_misty_flag, 0xFFFFFFFFU,
         cerulean_gym.guide_after));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'I'};
+    const auto nugget_bridge_program =
+        [&](std::string key, TriggerKind trigger) {
+            Program bridge;
+            bridge.key = std::move(key);
+            bridge.trigger_kind = trigger;
+            bridge.trigger_map = route_24_nugget.map_id;
+            bridge.trigger_x =
+                trigger == TriggerKind::actor_activation
+                    ? route_24_nugget.actor_index
+                    : route_24_nugget.trigger_x;
+            bridge.trigger_y =
+                route_24_nugget.trigger_y;
+            bridge.trigger_width = 1U;
+            bridge.trigger_height = 1U;
+            bridge.absent_flag =
+                route_24_nugget.got_nugget_flag;
+            bridge.instructions.push_back(
+                operation(Opcode::lock_input));
+            bridge.instructions.push_back(
+                dialogue(route_24_nugget.contest.pages));
+            bridge.instructions.push_back(operation(
+                Opcode::try_give_item,
+                route_24_nugget.nugget_quantity, 0U,
+                route_24_nugget.nugget_item_id));
+            const std::size_t no_room_jump =
+                bridge.instructions.size();
+            bridge.instructions.push_back(operation(
+                Opcode::jump_if_item_grant_failed));
+            bridge.instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                route_24_nugget.got_nugget_flag));
+            bridge.instructions.push_back(dialogue(
+                route_24_nugget.received_nugget.pages));
+            bridge.instructions.push_back(dialogue(
+                route_24_nugget.join_rocket.pages));
+            bridge.instructions.push_back(operation(
+                Opcode::start_trainer_battle,
+                route_24_nugget.trainer_class, 0U,
+                route_24_nugget.trainer_party));
+            Instruction defeated =
+                operation(Opcode::say_if_player_won);
+            defeated.pages =
+                route_24_nugget.defeated.pages;
+            bridge.instructions.push_back(
+                std::move(defeated));
+            Instruction rocket_wins =
+                operation(Opcode::say_if_player_lost);
+            rocket_wins.pages =
+                route_24_nugget.defeated.pages;
+            bridge.instructions.push_back(
+                std::move(rocket_wins));
+            bridge.instructions.push_back(
+                operation(Opcode::end_if_player_lost));
+            bridge.instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                route_24_nugget.beat_rocket_flag));
+            bridge.instructions.push_back(dialogue(
+                route_24_nugget.top_leader.pages));
+            bridge.instructions.push_back(
+                operation(Opcode::unlock_input));
+            bridge.instructions.push_back(
+                operation(Opcode::end));
+            bridge.instructions[no_room_jump].value =
+                static_cast<std::uint32_t>(
+                    bridge.instructions.size());
+            bridge.instructions.push_back(
+                dialogue(route_24_nugget.no_room.pages));
+            Instruction step_back =
+                operation(Opcode::player_path);
+            step_back.player_path.push_back(
+                PathCommand::down);
+            bridge.instructions.push_back(
+                std::move(step_back));
+            bridge.instructions.push_back(
+                operation(Opcode::unlock_input));
+            bridge.instructions.push_back(
+                operation(Opcode::end));
+            return bridge;
+        };
+    programs.push_back(nugget_bridge_program(
+        "route_24_nugget_bridge_cell",
+        TriggerKind::player_rectangle));
+    programs.push_back(nugget_bridge_program(
+        "route_24_nugget_bridge_actor",
+        TriggerKind::actor_activation));
+
+    Program nugget_bridge_after;
+    nugget_bridge_after.key =
+        "route_24_nugget_bridge_after_reward";
+    nugget_bridge_after.trigger_kind =
+        TriggerKind::actor_activation;
+    nugget_bridge_after.trigger_map =
+        route_24_nugget.map_id;
+    nugget_bridge_after.trigger_x =
+        route_24_nugget.actor_index;
+    nugget_bridge_after.required_flag =
+        route_24_nugget.got_nugget_flag;
+    nugget_bridge_after.instructions.push_back(
+        operation(Opcode::lock_input));
+    nugget_bridge_after.instructions.push_back(
+        dialogue(route_24_nugget.top_leader.pages));
+    nugget_bridge_after.instructions.push_back(
+        operation(Opcode::unlock_input));
+    nugget_bridge_after.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(nugget_bridge_after));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'J'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -6353,6 +6690,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_cerulean_gym_source(
             cerulean_gym));
+    result.files.push_back(
+        readable_route_24_nugget_source(
+            route_24_nugget));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

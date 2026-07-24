@@ -885,9 +885,25 @@ level-21 Starmie, returns a victory, checks every reward bit and TM11, and
 confirms the guide's post-Misty branch. The readable program is generated at
 `source/scripts/campaign/cerulean_gym.sexpr`.
 
+Nugget Bridge's final reward and Rocket recruiter are now one imported
+transaction with two content-authored entry points: the exact automatic
+player cell and direct actor activation. The importer derives actor/trainer
+ownership, class 30 party 5, the Nugget tuple, got-Nugget and defeated-Rocket
+events, and all six dialogue programs. A full bag shows the ROM text, leaves
+the event clear, and smoothly steps the player south once so the cell cannot
+hot-loop. Success grants the Nugget before the pitch and battle, matching the
+cartridge ordering; victory records the distinct Rocket event and switches the
+actor to his final response.
+
+The fixture enters map 35 at the imported cell, verifies the Nugget and event,
+materializes level-15 Ekans and Zubat, returns a victory, and checks the final
+event and unlocked state. Readable content is generated at
+`source/scripts/campaign/route_24_nugget_bridge.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-the Nugget Bridge/Bill/Cerulean Rocket path. Every later map program still
-requires semantic lifting and the remaining acceptance gates above stay open.
+Bill's transformation/SS Ticket sequence, then the Cerulean Rocket thief and
+TM28 path. Every later map program still requires semantic lifting and the
+remaining acceptance gates above stay open.
 
 ## Playable acceptance
 
