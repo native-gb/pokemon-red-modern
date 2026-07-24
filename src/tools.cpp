@@ -54,6 +54,9 @@ void draw_player_tools(ToolState& tools, GubsyRuntime& runtime,
                 ImGui::Checkbox("VSync", &presentation.vsync);
                 ImGui::Checkbox("Motion interpolation", &presentation.motion_interpolation);
                 ImGui::Checkbox("Show FPS overlay", &presentation.show_fps);
+                ImGui::Checkbox(
+                    "Adjust camera on zone entry",
+                    &presentation.automatic_camera_framing);
                 constexpr std::array render_rates{60, 120, 144, 165, 240};
                 int selected_rate =
                     static_cast<int>(std::find(render_rates.begin(), render_rates.end(),
@@ -188,6 +191,10 @@ void draw_developer_tools(ToolState& tools, GameState& game, const content::Cata
                                                         : "Show Connected World"))
             toggle_world_view(maps);
         ImGui::Text("Current zoom: %.2fx", maps.zoom);
+        ImGui::Text("Camera framing: %s",
+                    maps.automatic_camera_framing
+                        ? "zone-authored"
+                        : "never adjust");
         ImGui::SliderFloat("Target zoom", &maps.target_zoom, 0.05F, 64.0F, "%.2fx",
                            ImGuiSliderFlags_Logarithmic);
         ImGui::DragFloat2("Camera target", &maps.target_camera_x, 8.0F);

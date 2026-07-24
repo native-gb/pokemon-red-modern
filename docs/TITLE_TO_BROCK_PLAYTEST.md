@@ -22,6 +22,15 @@ presentation is finished.
   the first lab rival battle, parcel handoff/return, Pokédex request, Route 1
   item, first Route 22 rival, Viridian Forest loose items and trainers,
   Pewter escorts, and Brock's battle/badge/TM retry.
+- Naming grids use directional navigation plus confirm/back only; presentation
+  labels and choice cursors no longer overlap or point backward.
+- Overworld sheets import four-phase directional walk clips, and presentation
+  interpolates actors and the player continuously across logical cell steps.
+- Red's upstairs room is placed one world cell above the downstairs room.
+- Map-entry camera profiles give Pallet Town, Route 1, Viridian, Route 22, and
+  interiors useful starting views without carrying fitted-space scale between
+  them. Manual zoom/pan remains in force until the next map entry, or forever
+  when automatic camera adjustment is disabled.
 
 ## Player pass
 

@@ -29,6 +29,7 @@ struct WindowInput {
     bool toggle_world_annotations{};
     bool zoom_world_in{};
     bool zoom_world_out{};
+    float zoom_world_steps{};
     bool reset_world_view{};
     bool move_player_left{};
     bool move_player_right{};
@@ -44,6 +45,14 @@ struct WindowInput {
     bool pan_world_down{};
     bool erase_text{};
     bool submit_text{};
+    bool keyboard_wasd_left{};
+    bool keyboard_wasd_right{};
+    bool keyboard_wasd_up{};
+    bool keyboard_wasd_down{};
+    bool naming_left{};
+    bool naming_right{};
+    bool naming_up{};
+    bool naming_down{};
     std::string text;
     bool gamepad_changed{};
 };

@@ -11,7 +11,7 @@ never become synthetic maps.
 The importer reads IDs, dimensions, block grids, tilesets, graphics,
 connection transforms, warps, and object events from the verified local ROM.
 It also decodes all 72 entries in Red's overworld sprite-sheet table into
-normalized directional standing frames. A non-payload Red importer profile
+four-phase directional walking clips. A non-payload Red importer profile
 assigns semantic map and sprite keys and validates every decoded header
 dimension. The generic engine contains no list of campaign map names,
 placements, NPCs, or warp endpoints.
@@ -49,7 +49,7 @@ data/runtime/imports/pokemon_red_us_rev_0/compiled/world_maps.bin
 ```
 
 It contains 24 decoded tilesets, 226 complete tile-ID layers, animation frames,
-72 normalized overworld sprites, 924 actor spawns, 813 warp endpoints, and 99
+72 normalized 16-frame overworld sprites, 924 actor spawns, 813 warp endpoints, and 99
 importer-derived world spaces. Surface origins come from the ROM connection
 graph. Indoor complexes are grouped through direct indoor warp topology and
 their maps are deterministically splayed into non-overlapping coordinates.
@@ -133,10 +133,24 @@ connected-map boundary can introduce a jerk, pause, or foot-phase reset.
 
 ## Gameplay camera policy
 
-The complete connected current world space is the default view. The camera
-follows the player's interpolated presentation position in both ordinary and
-whole-space zooms. Fitting every map in the space changes scale; it does not
-change the camera target from the player to the space's bounding-box center.
+Camera scale is an absolute screen-pixel scale over world pixels. It is not a
+multiplier over the current world's fitted bounds, so walking between Kanto and
+an interior cannot turn the same player scale into satellite view or an
+extreme close-up.
+
+Each imported map has an initial framing profile. The first authored Red
+profiles fit Pallet Town, fit Route 1's width, use a fixed 3x scale in Viridian
+City, and fit Route 22's height. Interiors fit their connected space when that
+requires a scale between 1x and 4x; otherwise they use their authored fallback
+scale. Fit-map and fit-space profiles center both axes. Fit-width follows the
+player vertically, fit-height follows horizontally, and fixed-scale views
+follow in both axes.
+
+Manual pan or zoom takes control until the player enters another map. The next
+map then applies its profile. The Player Settings option `Adjust camera on zone
+entry` can disable that behavior completely, preserving the user's scale and
+camera choices across map and world-space changes. Reset immediately reapplies
+the current map's profile.
 
 Maps joined by connections remain one continuous movement surface. Crossing a
 connection is not a warp and does not fade, load, snap, or reset camera or
@@ -147,10 +161,9 @@ placed with authored offsets and shown simultaneously when zoom permits.
 Presentation-only atlas offsets for unrelated spaces never alter gameplay
 coordinates.
 
-Future camera regions and sequences are content records interpreted by the
-camera director. They may reveal a town or choose a useful default zoom without
-locking movement. Automatic zoom respects a manual-zoom override until the
-user resets it or explicitly enables automatic reframing.
+Future camera sequences remain content records interpreted by the same camera
+director. They may reveal a town or choose a useful default without locking
+movement, while the map profiles provide the ordinary entry behavior.
 
 ## Presentation cadence
 
@@ -169,9 +182,6 @@ simulation step count or environmental animation timing.
 
 ## Controls
 
-The complete connected player world space is the initial view when its local
-cache exists.
-
 - Semantic D-pad actions move and face the player; the default profile provides
   WASD, arrow keys, and the controller D-pad.
 - Semantic A/confirm activates the faced actor/background interaction and
@@ -179,8 +189,8 @@ cache exists.
 - `[` and `]` select imported maps for inspection.
 - `Tab` switches between the connected world and selected-map inspection.
 - `I/J/K/L` pans the camera.
-- `+` and `-` zoom without changing source resolution.
-- `0` resets pan and zoom to the fitted view.
+- `+`, `-`, and the mouse wheel zoom without changing source resolution.
+- `0` resets pan and zoom to the current map's authored profile.
 - `F3` toggles map, warp, and actor annotations.
 - `B` switches between the connected world and battle-animation lab.
 - `F2` shows map provenance, world-space placement, last-warp state, camera
@@ -192,10 +202,8 @@ outdoor map. A space change switches the resident actor set and camera surface;
 authored edge connections remain ordinary smooth movement and never invoke
 this warp path.
 
-Camera position and zoom move smoothly toward target values. Zoom is a
-multiplier over a fitted view and ranges from the entire connected surface to
-pixel-level inspection. The overview is the same renderer and the same terrain
-data observed by a distant camera.
+Camera position and absolute zoom move smoothly toward target values. The
+overview is the same renderer and terrain data observed by a distant camera.
 
 ## F3 annotations
 

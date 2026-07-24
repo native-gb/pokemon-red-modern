@@ -32,7 +32,7 @@ encounter_magic="$(head -c 4 "$encounter_cache" 2>/dev/null || true)"
 trainer_magic="$(head -c 4 "$trainer_cache" 2>/dev/null || true)"
 boot_magic="$(head -c 4 "$boot_cache" 2>/dev/null || true)"
 campaign_magic="$(head -c 4 "$campaign_cache" 2>/dev/null || true)"
-if [[ "$world_magic" != "PMVA" || "$interaction_magic" != "PWI3" ||
+if [[ "$world_magic" != "PMVB" || "$interaction_magic" != "PWI3" ||
       "$rule_magic" != "PRL1" || "$battle_rule_magic" != "PBR9" ||
       "$encounter_magic" != "PEC1" ||
       "$trainer_magic" != "PTC1" ||

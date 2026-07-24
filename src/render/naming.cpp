@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cmath>
 
 namespace pokered::render {
 
@@ -11,16 +12,19 @@ void draw_naming_overlay(const WorldState& world) {
     if (!naming.open || !valid_naming_profile(naming.profile)) return;
 
     ImGuiIO& io = ImGui::GetIO();
-    const float width = std::min(io.DisplaySize.x - 48.0F, 860.0F);
-    const float height = std::min(io.DisplaySize.y - 48.0F, 630.0F);
-    const ImVec2 minimum{(io.DisplaySize.x - width) * 0.5F,
-                         (io.DisplaySize.y - height) * 0.5F};
+    const float width =
+        std::floor(std::min(io.DisplaySize.x - 48.0F, 860.0F));
+    const float height =
+        std::floor(std::min(io.DisplaySize.y - 48.0F, 630.0F));
+    const ImVec2 minimum{
+        std::floor((io.DisplaySize.x - width) * 0.5F),
+        std::floor((io.DisplaySize.y - height) * 0.5F)};
     const ImVec2 maximum{minimum.x + width, minimum.y + height};
     ImDrawList* draw = ImGui::GetForegroundDrawList();
-    draw->AddRectFilled(minimum, maximum, IM_COL32(246, 238, 242, 255),
-                        9.0F);
-    draw->AddRect(minimum, maximum, IM_COL32(42, 29, 42, 255), 9.0F,
-                  0, 5.0F);
+    draw->AddRectFilled(minimum, maximum,
+                        IM_COL32(246, 238, 242, 255));
+    draw->AddRect(minimum, maximum, IM_COL32(42, 29, 42, 255),
+                  0.0F, 0, 5.0F);
 
     draw->AddText(ImGui::GetFont(), 29.0F,
                   {minimum.x + 32.0F, minimum.y + 25.0F},
@@ -58,7 +62,7 @@ void draw_naming_overlay(const WorldState& world) {
                 draw->AddRectFilled(
                     {x - 9.0F, y - 8.0F},
                     {x + cell_width - 13.0F, y + 39.0F},
-                    IM_COL32(230, 207, 218, 255), 6.0F);
+                    IM_COL32(230, 207, 218, 255));
             const std::string& cell = naming_cell(naming, row, column);
             draw->AddText(
                 ImGui::GetFont(), 28.0F, {x, y},
@@ -77,7 +81,7 @@ void draw_naming_overlay(const WorldState& world) {
                                 action_minimum.y + 48.0F};
     if (naming.row == kNamingRows)
         draw->AddRectFilled(action_minimum, action_maximum,
-                            IM_COL32(230, 207, 218, 255), 6.0F);
+                            IM_COL32(230, 207, 218, 255));
     draw->AddText(ImGui::GetFont(), 25.0F,
                   {action_minimum.x + 12.0F, action_minimum.y + 9.0F},
                   IM_COL32(35, 25, 35, 255), case_action.data(),

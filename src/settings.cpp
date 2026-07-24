@@ -8,7 +8,7 @@
 namespace pokered {
 namespace {
 
-constexpr int kCurrentSchema = 1;
+constexpr int kCurrentSchema = 2;
 
 bool parse_bool(std::string_view text, bool& value) {
     if (text == "true") {
@@ -43,6 +43,9 @@ bool parse_setting(PresentationSettings& settings, std::string_view key,
         return parse_bool(value, settings.fast_forward_enabled);
     if (key == "fast_forward_toggle")
         return parse_bool(value, settings.fast_forward_toggle);
+    if (key == "automatic_camera_framing")
+        return parse_bool(value,
+                          settings.automatic_camera_framing);
     if (key == "render_rate_limit") {
         int rate = 0;
         if (!parse_int(value, rate) || !valid_render_rate(rate)) return false;
@@ -128,6 +131,8 @@ bool save_settings(const std::filesystem::path& path, const PresentationSettings
            << "control_profile=" << settings.control_profile << '\n';
     write_bool(output, "fast_forward_enabled", settings.fast_forward_enabled);
     write_bool(output, "fast_forward_toggle", settings.fast_forward_toggle);
+    write_bool(output, "automatic_camera_framing",
+               settings.automatic_camera_framing);
     output << "fast_forward_multiplier=" << settings.fast_forward_multiplier << '\n';
     output.close();
     if (!output) {

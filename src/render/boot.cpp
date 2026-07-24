@@ -357,10 +357,12 @@ bool draw_oak_picture(SDL_Renderer* renderer, const ViewLayout& view,
     const std::uint16_t image = boot_picture_image(content, state);
     if (image == std::numeric_limits<std::uint16_t>::max()) return true;
     const bool nidorino = image == content.oak.picture_images[1];
-    float left = static_cast<float>(state.picture_left_tiles) * 8.0F;
+    float left = static_cast<float>(state.picture_left_pixels);
     float top = 16.0F;
+    left +=
+        (64.0F - static_cast<float>(content.images[image].width)) *
+        0.5F;
     if (nidorino) {
-        left += static_cast<float>((64U - content.images[image].width) / 2U);
         top += static_cast<float>(56U - content.images[image].height);
     }
     return draw_image(renderer, view, content, resources, image, left, top,
@@ -385,18 +387,18 @@ bool draw_name_menu(SDL_Renderer* renderer, const ViewLayout& view,
                     const BootContent& content, const BootState& state,
                     const BootRenderResources& resources) {
     if (!draw_oak_picture(renderer, view, content, state, resources) ||
-        !draw_box(renderer, view, resources, 0U, 1U, 12U, 12U) ||
-        !draw_text(renderer, view, resources, "NAME", 3U, 1U, 8U, 1U))
+        !draw_box(renderer, view, resources, 0U, 1U, 12U, 13U) ||
+        !draw_text(renderer, view, resources, "NAME", 3U, 2U, 8U, 1U))
         return false;
     const bool player = state.oak_stage == BootOakStage::player_name;
     const auto& names = player ? content.oak.player_names : content.oak.rival_names;
     for (std::size_t index = 0U; index < names.size(); ++index) {
         if (!draw_text(renderer, view, resources, names[index], 2U,
-                       3U + index * 2U, 9U, 1U))
+                       4U + index * 2U, 9U, 1U))
             return false;
     }
     return draw_tile(renderer, view, resources, 0xED, 8.0F,
-                     static_cast<float>((3U + state.name_selection * 2U) * 8U));
+                     static_cast<float>((4U + state.name_selection * 2U) * 8U));
 }
 
 bool draw_naming(SDL_Renderer* renderer, const ViewLayout& view,

@@ -84,8 +84,12 @@ remain provenance, while maps and scripts refer to readable keys such as
 
 Four tiles compose one 16×16 frame. The standing frame is reused between walk
 steps. Static world objects use four-tile sheets and ignore facing and gait.
+The modern importer expands every table entry into sixteen normalized frames:
+four animation phases for each of down, up, left, and right. The right-facing
+clip is produced from the cartridge's horizontal-flip OAM layout. Runtime gait
+advances by distance traveled and returns to the standing phase at rest.
 
-The modern importer should expand these into named clips:
+The readable form is equivalent to:
 
 ```text
 sprite_clip oak_walk_down

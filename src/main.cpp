@@ -288,8 +288,7 @@ int main(int argc, char** argv) {
              boot.screen == pokered::BootScreen::naming) ||
             (game.mode == pokered::Mode::overworld &&
              world.naming.open);
-        if (!pokered::set_window_text_input(window,
-                                             naming_input_active))
+        if (!pokered::set_window_text_input(window, false))
             std::fprintf(stderr, "could not change text input: %s\n",
                          SDL_GetError());
         const pokered::WindowInput input = pokered::poll_window_events(window);
@@ -329,6 +328,27 @@ int main(int argc, char** argv) {
         controls.menu |= injected.controls.menu;
         controls.quit |= injected.controls.quit;
         controls.fast_forward |= injected.controls.fast_forward;
+        if (naming_input_active) {
+            controls.left =
+                input.naming_left ||
+                (controls.left && !input.keyboard_wasd_left) ||
+                injected.controls.left;
+            controls.right =
+                input.naming_right ||
+                (controls.right && !input.keyboard_wasd_right) ||
+                injected.controls.right;
+            controls.up =
+                input.naming_up ||
+                (controls.up && !input.keyboard_wasd_up) ||
+                injected.controls.up;
+            controls.down =
+                input.naming_down ||
+                (controls.down && !input.keyboard_wasd_down) ||
+                injected.controls.down;
+            controls.start = false;
+            controls.select = false;
+            host_input.text.clear();
+        }
         const bool menu_pressed = controls.menu && !previous_controls.menu;
         const bool tools_chord = controls.start && controls.select;
         const bool tools_chord_pressed = tools_chord && !tools_chord_down;
@@ -349,15 +369,17 @@ int main(int argc, char** argv) {
                 host_input.erase_text ||
                 (controls.back && !previous_controls.back);
             pending_world_submit |=
-                host_input.submit_text ||
+                (!naming_input_active && host_input.submit_text) ||
                 (controls.start && !previous_controls.start);
             pending_world_toggle_case |=
+                !naming_input_active &&
                 controls.select && !previous_controls.select;
             pending_world_start |=
                 controls.start && !previous_controls.start;
             pending_world_back |=
                 controls.back && !previous_controls.back;
-            pending_world_text += host_input.text;
+            if (!naming_input_active)
+                pending_world_text += host_input.text;
         }
         if (!tools_own_input && game.mode == pokered::Mode::title) {
             pending_boot_input.up_pressed |= controls.up && !previous_controls.up;
@@ -373,7 +395,8 @@ int main(int argc, char** argv) {
                 controls.select && !previous_controls.select;
             pending_boot_input.erase_pressed |= host_input.erase_text;
             pending_boot_input.submit_pressed |= host_input.submit_text;
-            pending_boot_text += host_input.text;
+            if (!naming_input_active)
+                pending_boot_text += host_input.text;
             pending_boot_input.random =
                 static_cast<std::uint8_t>((game.step * 73U + 41U) & 0xFFU);
         }
@@ -419,6 +442,9 @@ int main(int argc, char** argv) {
                 pokered::zoom_world_view(world, std::exp(zoom_speed * frame_seconds));
             if (input.zoom_world_out)
                 pokered::zoom_world_view(world, std::exp(-zoom_speed * frame_seconds));
+            if (input.zoom_world_steps != 0.0F)
+                pokered::zoom_world_view(
+                    world, std::pow(1.18F, input.zoom_world_steps));
             if (input.reset_world_view) pokered::reset_world_view(world);
             const float pan_speed = world.view == pokered::WorldView::world ? 3000.0F : 180.0F;
             const float pan_step = pan_speed * frame_seconds;
@@ -598,6 +624,15 @@ int main(int argc, char** argv) {
             accumulator -= step_seconds;
         }
 
+        if (world.automatic_camera_framing !=
+            presentation.automatic_camera_framing) {
+            world.automatic_camera_framing =
+                presentation.automatic_camera_framing;
+            world.camera_region_dirty = true;
+        }
+        pokered::update_world_camera_region(
+            world, window.frame.render_width,
+            window.frame.render_height);
         pokered::update_world_view(world, bounded_elapsed);
         imgui_new_frame();
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,

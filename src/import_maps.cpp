@@ -33,6 +33,13 @@ constexpr std::size_t kFlowerAnimationFrameCount = 3;
 constexpr std::size_t kOverworldSpriteTableOffset = 0x17B27;
 constexpr std::size_t kOverworldSpriteCount = 72;
 constexpr std::size_t kOverworldSpriteEntrySize = 4;
+constexpr std::size_t kOverworldFacingTableOffset = 0x04000;
+constexpr std::size_t kOverworldFacingEntrySize = 4;
+constexpr std::size_t kOverworldFacingCount = 32;
+constexpr std::size_t kOverworldTileSequenceBegin = 0x04080;
+constexpr std::size_t kOverworldTileSequenceEnd = 0x04098;
+constexpr std::size_t kOverworldNormalOam = 0x04098;
+constexpr std::size_t kOverworldFlippedOam = 0x040A4;
 constexpr std::array<std::string_view, kOverworldSpriteCount> kOverworldSpriteKeys{{
     "red",
     "blue",
@@ -136,6 +143,14 @@ struct ImportedConnection {
     std::int16_t player_y{};
 };
 
+enum class ImportedCameraFraming : std::uint8_t {
+    fixed_zoom,
+    fit_map,
+    fit_width,
+    fit_height,
+    fit_space,
+};
+
 struct ImportedMap {
     MapIdentity identity;
     std::uint8_t header_bank{};
@@ -149,6 +164,9 @@ struct ImportedMap {
     std::int32_t global_x_cells{};
     std::int32_t global_y_cells{};
     std::uint16_t component{};
+    ImportedCameraFraming camera_framing{
+        ImportedCameraFraming::fixed_zoom};
+    float camera_zoom{2.0F};
     bool placed{};
     std::vector<std::uint8_t> blocks;
     std::vector<std::uint8_t> tiles;
@@ -604,7 +622,13 @@ bool decode_overworld_sprites(std::span<const std::uint8_t> rom,
         error = "overworld sprite pointer table crosses the verified ROM";
         return false;
     }
-    result.reserve(kOverworldSpriteCount);
+    struct SheetSource {
+        std::uint8_t standing_tiles{};
+        std::uint8_t bank{};
+        std::size_t table{};
+        std::size_t graphics{};
+    };
+    std::array<SheetSource, kOverworldSpriteCount> sources{};
     for (std::size_t index = 0; index < kOverworldSpriteCount; ++index) {
         const std::size_t entry = kOverworldSpriteTableOffset + index * kOverworldSpriteEntrySize;
         const std::uint8_t byte_count = rom[entry + 2U];
@@ -620,34 +644,137 @@ bool decode_overworld_sprites(std::span<const std::uint8_t> rom,
             return false;
         }
 
-        const std::size_t tile_count = byte_count / 16U;
+        sources[index] = {
+            .standing_tiles =
+                static_cast<std::uint8_t>(byte_count / 16U),
+            .bank = bank,
+            .table = entry,
+            .graphics = graphics,
+        };
+    }
+    if (!has_range(
+            rom, kOverworldFacingTableOffset,
+            kOverworldFacingCount * kOverworldFacingEntrySize)) {
+        error = "overworld sprite facing table crosses the verified ROM";
+        return false;
+    }
+
+    result.reserve(kOverworldSpriteCount);
+    for (std::size_t index = 0; index < sources.size(); ++index) {
+        const SheetSource& source = sources[index];
+        std::size_t graphics_end =
+            (static_cast<std::size_t>(source.bank) + 1U) * kBankSize;
+        for (const SheetSource& candidate : sources) {
+            if (candidate.bank == source.bank &&
+                candidate.graphics > source.graphics)
+                graphics_end =
+                    std::min(graphics_end, candidate.graphics);
+        }
+        graphics_end = std::min(graphics_end, rom.size());
+        const std::size_t available_tiles =
+            graphics_end > source.graphics
+                ? (graphics_end - source.graphics) / 16U
+                : 0U;
+        const std::size_t decoded_tiles =
+            std::min<std::size_t>(
+                available_tiles,
+                static_cast<std::size_t>(source.standing_tiles) + 12U);
+        if (decoded_tiles < source.standing_tiles) {
+            error =
+                "overworld sprite does not retain all declared standing tiles";
+            return false;
+        }
         std::vector<std::uint8_t> tiles;
-        tiles.reserve(tile_count * 64U);
-        for (std::size_t tile = 0; tile < tile_count; ++tile)
-            decode_two_bit_tile(rom, graphics + tile * 16U, tiles);
+        tiles.reserve(decoded_tiles * 64U);
+        for (std::size_t tile = 0; tile < decoded_tiles; ++tile)
+            decode_two_bit_tile(
+                rom, source.graphics + tile * 16U, tiles);
 
         ImportedSprite sprite{
             .id = static_cast<std::uint8_t>(index + 1U),
             .key = std::string(kOverworldSpriteKeys[index]),
-            .still = tile_count == 4U,
-            .table_offset = entry,
-            .graphics_offset = graphics,
+            .still = source.standing_tiles == 4U,
+            .table_offset = source.table,
+            .graphics_offset = source.graphics,
             .pixels = {},
         };
-        sprite.pixels.resize(4U * 16U * 16U);
-        for (std::size_t facing = 0; facing < 4U; ++facing) {
-            const std::size_t source_facing = sprite.still ? 0U : facing == 3U ? 2U : facing;
-            for (std::size_t part = 0; part < 4U; ++part) {
-                const std::size_t tile = source_facing * 4U + part;
-                const std::size_t part_x = part % 2U;
-                const std::size_t part_y = part / 2U;
-                for (std::size_t y = 0; y < 8U; ++y) {
-                    for (std::size_t x = 0; x < 8U; ++x) {
-                        const std::size_t output_x =
-                            facing == 3U ? 15U - (part_x * 8U + x) : part_x * 8U + x;
-                        const std::size_t destination =
-                            facing * 256U + (part_y * 8U + y) * 16U + output_x;
-                        sprite.pixels[destination] = tiles[tile * 64U + y * 8U + x];
+        sprite.pixels.resize(16U * 16U * 16U);
+        for (std::size_t facing = 0U; facing < 4U; ++facing) {
+            for (std::size_t requested_phase = 0U;
+                 requested_phase < 4U; ++requested_phase) {
+                std::size_t phase = requested_phase;
+                if (!sprite.still && (phase & 1U) != 0U &&
+                    decoded_tiles <
+                        static_cast<std::size_t>(
+                            source.standing_tiles) +
+                            12U)
+                    phase = 0U;
+                const std::size_t frame_index =
+                    (sprite.still ? 16U : 0U) +
+                    facing * 4U + phase;
+                const std::size_t frame =
+                    kOverworldFacingTableOffset +
+                    frame_index * kOverworldFacingEntrySize;
+                std::size_t tile_sequence = 0U;
+                std::size_t oam = 0U;
+                if (!bank_pointer_to_offset(
+                        rom, 1U, read_u16(rom, frame),
+                        tile_sequence) ||
+                    !bank_pointer_to_offset(
+                        rom, 1U, read_u16(rom, frame + 2U), oam) ||
+                    tile_sequence < kOverworldTileSequenceBegin ||
+                    tile_sequence >= kOverworldTileSequenceEnd ||
+                    (tile_sequence - kOverworldTileSequenceBegin) % 4U !=
+                        0U ||
+                    (oam != kOverworldNormalOam &&
+                     oam != kOverworldFlippedOam) ||
+                    !has_range(rom, tile_sequence, 4U) ||
+                    !has_range(rom, oam, 12U)) {
+                    error =
+                        "overworld sprite facing record is malformed";
+                    return false;
+                }
+                const std::size_t destination_frame =
+                    facing * 4U + requested_phase;
+                for (std::size_t part = 0U; part < 4U; ++part) {
+                    const std::uint8_t encoded_tile =
+                        rom[tile_sequence + part];
+                    const std::size_t tile =
+                        (encoded_tile & 0x80U) == 0U
+                            ? encoded_tile
+                            : static_cast<std::size_t>(
+                                  source.standing_tiles) +
+                                  (encoded_tile & 0x7FU);
+                    const std::size_t oam_entry = oam + part * 3U;
+                    const std::int32_t part_y =
+                        static_cast<std::int8_t>(rom[oam_entry]);
+                    const std::int32_t part_x =
+                        static_cast<std::int8_t>(rom[oam_entry + 1U]);
+                    const bool flip =
+                        (rom[oam_entry + 2U] & 0x20U) != 0U;
+                    if (tile >= decoded_tiles) {
+                        error =
+                            "overworld walking frame reads beyond its decoded sprite sheet";
+                        return false;
+                    }
+                    for (std::int32_t y = 0; y < 8; ++y) {
+                        for (std::int32_t x = 0; x < 8; ++x) {
+                            const std::int32_t output_x = part_x + x;
+                            const std::int32_t output_y = part_y + y;
+                            if (output_x < 0 || output_x >= 16 ||
+                                output_y < 0 || output_y >= 16)
+                                continue;
+                            const std::size_t source_x =
+                                static_cast<std::size_t>(
+                                    flip ? 7 - x : x);
+                            sprite.pixels[
+                                destination_frame * 256U +
+                                static_cast<std::size_t>(output_y) * 16U +
+                                static_cast<std::size_t>(output_x)] =
+                                tiles[tile * 64U +
+                                      static_cast<std::size_t>(y) * 8U +
+                                      source_x];
+                        }
                     }
                 }
             }
@@ -791,6 +918,44 @@ std::vector<ImportedWorldSpace> build_world_spaces(const std::vector<ImportedMap
 void place_world_spaces(std::vector<ImportedMap>& maps) {
     place_connected_surface(maps);
     place_interior_world_spaces(maps);
+
+    // Red's two house floors form one readable vertical cutaway with one
+    // world-cell of air between them. Gameplay warps remain unchanged.
+    ImportedMap* house_1f = nullptr;
+    ImportedMap* house_2f = nullptr;
+    for (ImportedMap& map : maps) {
+        if (map.identity.key == "reds_house_1f")
+            house_1f = &map;
+        else if (map.identity.key == "reds_house_2f")
+            house_2f = &map;
+    }
+    if (house_1f != nullptr && house_2f != nullptr &&
+        house_1f->component == house_2f->component) {
+        house_1f->global_x_cells = 0;
+        house_1f->global_y_cells = 0;
+        house_2f->global_x_cells = 0;
+        house_2f->global_y_cells =
+            -static_cast<std::int32_t>(house_2f->height_blocks) * 2 -
+            1;
+    }
+
+    // Camera framing is authored by the Red importer and interpreted by the
+    // generic camera director. Unlisted surface maps use the modern 2x
+    // overview; interior complexes try to fit their complete shared space.
+    for (ImportedMap& map : maps) {
+        if (!map.identity.surface)
+            map.camera_framing = ImportedCameraFraming::fit_space;
+        if (map.identity.key == "pallet_town")
+            map.camera_framing = ImportedCameraFraming::fit_map;
+        else if (map.identity.key == "route_1")
+            map.camera_framing = ImportedCameraFraming::fit_width;
+        else if (map.identity.key == "viridian_city") {
+            map.camera_framing =
+                ImportedCameraFraming::fixed_zoom;
+            map.camera_zoom = 3.0F;
+        } else if (map.identity.key == "route_22")
+            map.camera_framing = ImportedCameraFraming::fit_height;
+    }
 }
 
 bool decode_tileset(std::span<const std::uint8_t> rom, const std::vector<ImportedMap>& maps,
@@ -1021,15 +1186,16 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
     }
 
     std::ostringstream sprite_source;
-    sprite_source << "; ROM-decoded overworld sprite sheets normalized to four standing views.\n";
+    sprite_source << "; ROM-decoded overworld sprite sheets normalized to directional walk clips.\n";
     for (const ImportedSprite& sprite : sprites) {
         sprite_source << "sprite " << sprite.key << '\n'
                       << "    rom_id " << static_cast<unsigned>(sprite.id) << '\n'
                       << "    kind " << (sprite.still ? "still" : "directional") << '\n'
                       << "    table_source " << sprite.table_offset << ' '
                       << kOverworldSpriteEntrySize << '\n'
-                      << "    graphics_source " << sprite.graphics_offset << ' '
-                      << (sprite.still ? 4U : 12U) * 16U << '\n';
+                      << "    declared_graphics_source " << sprite.graphics_offset << ' '
+                      << (sprite.still ? 4U : 12U) * 16U << '\n'
+                      << "    normalized_frames 16\n";
     }
     add_text_file(result, "source/world/overworld_sprites.sexpr", sprite_source.str());
 
@@ -1065,6 +1231,25 @@ void emit_readable_source(const std::vector<ImportedTileset>& tilesets,
                << "    world_origin_cells " << map.global_x_cells << ' ' << map.global_y_cells
                << '\n'
                << "    world_space " << spaces[map.component].key << '\n'
+               << "    camera_framing ";
+        switch (map.camera_framing) {
+        case ImportedCameraFraming::fixed_zoom:
+            source << "fixed_zoom " << map.camera_zoom;
+            break;
+        case ImportedCameraFraming::fit_map:
+            source << "fit_map";
+            break;
+        case ImportedCameraFraming::fit_width:
+            source << "fit_width";
+            break;
+        case ImportedCameraFraming::fit_height:
+            source << "fit_height";
+            break;
+        case ImportedCameraFraming::fit_space:
+            source << "fit_space";
+            break;
+        }
+        source << '\n'
                << "    header_source " << map.header_offset << '\n'
                << "    block_source " << map.blocks_offset << ' ' << map.blocks.size() << '\n'
                << "    objects_source " << map.objects_offset << '\n';
@@ -1119,7 +1304,7 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
                         const std::vector<ImportedSprite>& sprites,
                         const std::vector<ImportedWorldSpace>& spaces,
                         const std::vector<ImportedMap>& maps, MapImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'M', 'V', 'A'};
+    std::vector<std::uint8_t> bytes{'P', 'M', 'V', 'B'};
     write_u16(bytes, tilesets.size());
     for (const ImportedTileset& tileset : tilesets) {
         bytes.push_back(tileset.id);
@@ -1169,6 +1354,11 @@ void emit_runtime_cache(const std::vector<ImportedTileset>& tilesets,
         write_i32(bytes, map.global_x_cells * 2);
         write_i32(bytes, map.global_y_cells * 2);
         write_u16(bytes, map.component);
+        bytes.push_back(
+            static_cast<std::uint8_t>(map.camera_framing));
+        write_u16(
+            bytes,
+            static_cast<std::uint16_t>(map.camera_zoom * 100.0F));
         write_u32(bytes, map.tiles.size());
         bytes.insert(bytes.end(), map.tiles.begin(), map.tiles.end());
         bytes.push_back(static_cast<std::uint8_t>(map.warps.size()));

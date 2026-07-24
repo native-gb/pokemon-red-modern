@@ -109,7 +109,7 @@ SDL_Texture* upload_tileset(SDL_Renderer* renderer, const MapTileset& tileset,
 
 SDL_Texture* upload_actor_atlas(SDL_Renderer* renderer, const WorldState& world, int& columns) {
     if (world.sprites.empty()) return nullptr;
-    const std::size_t frame_count = world.sprites.size() * 4U;
+    const std::size_t frame_count = world.sprites.size() * 16U;
     columns = kActorAtlasColumns;
     const int rows = static_cast<int>((frame_count + static_cast<std::size_t>(columns) - 1U) /
                                       static_cast<std::size_t>(columns));
@@ -117,22 +117,39 @@ SDL_Texture* upload_actor_atlas(SDL_Renderer* renderer, const WorldState& world,
     const int height = rows * kActorSize;
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width * height) * 4U, 0);
     for (const WorldSprite& sprite : world.sprites) {
-        if (sprite.id == 0 || sprite.pixels.size() != 4U * 16U * 16U) return nullptr;
+        if (sprite.id == 0 ||
+            sprite.pixels.size() != 16U * 16U * 16U)
+            return nullptr;
         for (std::size_t facing = 0; facing < 4U; ++facing) {
-            const std::size_t frame = (static_cast<std::size_t>(sprite.id) - 1U) * 4U + facing;
-            const std::size_t frame_x = frame % static_cast<std::size_t>(columns);
-            const std::size_t frame_y = frame / static_cast<std::size_t>(columns);
-            for (std::size_t y = 0; y < 16U; ++y) {
-                for (std::size_t x = 0; x < 16U; ++x) {
-                    const std::uint8_t shade = sprite.pixels[facing * 256U + y * 16U + x];
-                    if (shade == 0) continue;
-                    const auto color = map_color(shade);
-                    const std::size_t target =
-                        ((frame_y * 16U + y) * static_cast<std::size_t>(width) + frame_x * 16U +
-                         x) *
-                        4U;
-                    std::copy(color.begin(), color.end(),
-                              pixels.begin() + static_cast<std::ptrdiff_t>(target));
+            for (std::size_t phase = 0U; phase < 4U; ++phase) {
+                const std::size_t source_frame =
+                    facing * 4U + phase;
+                const std::size_t frame =
+                    (static_cast<std::size_t>(sprite.id) - 1U) *
+                        16U +
+                    source_frame;
+                const std::size_t frame_x =
+                    frame % static_cast<std::size_t>(columns);
+                const std::size_t frame_y =
+                    frame / static_cast<std::size_t>(columns);
+                for (std::size_t y = 0; y < 16U; ++y) {
+                    for (std::size_t x = 0; x < 16U; ++x) {
+                        const std::uint8_t shade =
+                            sprite.pixels[source_frame * 256U +
+                                          y * 16U + x];
+                        if (shade == 0) continue;
+                        const auto color = map_color(shade);
+                        const std::size_t target =
+                            ((frame_y * 16U + y) *
+                                 static_cast<std::size_t>(width) +
+                             frame_x * 16U + x) *
+                            4U;
+                        std::copy(
+                            color.begin(), color.end(),
+                            pixels.begin() +
+                                static_cast<std::ptrdiff_t>(
+                                    target));
+                    }
                 }
             }
         }
@@ -147,32 +164,6 @@ SDL_Texture* upload_actor_atlas(SDL_Renderer* renderer, const WorldState& world,
         (void)SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
     }
     return texture;
-}
-
-bool world_space_size(const WorldState& world, std::uint16_t world_space, float& width,
-                      float& height) {
-    const auto first =
-        std::find_if(world.maps.begin(), world.maps.end(), [world_space](const WorldMap& map) {
-            return map.world_space == world_space;
-        });
-    if (first == world.maps.end()) return false;
-    std::int32_t min_x = first->global_x_tiles;
-    std::int32_t min_y = first->global_y_tiles;
-    std::int32_t max_x = min_x + static_cast<std::int32_t>(first->width_tiles);
-    std::int32_t max_y = min_y + static_cast<std::int32_t>(first->height_tiles);
-    for (const WorldMap& map : world.maps) {
-        if (map.world_space != world_space) continue;
-        min_x = std::min(min_x, map.global_x_tiles);
-        min_y = std::min(min_y, map.global_y_tiles);
-        max_x = std::max(max_x, map.global_x_tiles + static_cast<std::int32_t>(map.width_tiles));
-        max_y = std::max(max_y, map.global_y_tiles + static_cast<std::int32_t>(map.height_tiles));
-    }
-    const std::int32_t width_tiles = max_x - min_x;
-    const std::int32_t height_tiles = max_y - min_y;
-    if (width_tiles <= 0 || height_tiles <= 0) return false;
-    width = static_cast<float>(width_tiles * kTileSize);
-    height = static_cast<float>(height_tiles * kTileSize);
-    return true;
 }
 
 std::size_t tileset_index(const WorldState& world, std::uint8_t id) {
@@ -546,10 +537,14 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
                        const WorldProjection& projection) {
     if (resources.actor_atlas == nullptr || resources.actor_atlas_columns <= 0) return false;
     const WorldMap* selected = selected_map(world);
-    const auto draw_actor = [&](std::uint8_t sprite_id, WorldDirection facing, float global_x,
-                                float global_y) {
+    const auto draw_actor = [&](std::uint8_t sprite_id,
+                                WorldDirection facing,
+                                std::uint8_t animation_phase,
+                                float global_x, float global_y) {
         const std::size_t frame =
-            (static_cast<std::size_t>(sprite_id) - 1U) * 4U + actor_facing(facing);
+            (static_cast<std::size_t>(sprite_id) - 1U) * 16U +
+            actor_facing(facing) * 4U +
+            std::min<std::uint8_t>(animation_phase, 3U);
         const SDL_FRect source{
             .x = static_cast<float>(
                 frame % static_cast<std::size_t>(resources.actor_atlas_columns) * 16U),
@@ -581,9 +576,11 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
                     static_cast<float>(map.global_x_tiles / 2 + static_cast<int>(actor.x));
                 const float global_y =
                     static_cast<float>(map.global_y_tiles / 2 + static_cast<int>(actor.y));
-                if (!draw_actor(actor.sprite_id, static_cast<WorldDirection>(
-                                                     actor_facing(actor.direction_or_axis)),
-                                global_x, global_y))
+                if (!draw_actor(
+                        actor.sprite_id,
+                        static_cast<WorldDirection>(
+                            actor_facing(actor.direction_or_axis)),
+                        0U, global_x, global_y))
                     return false;
             }
         }
@@ -598,8 +595,10 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
                 continue;
             const WorldActorSpawn& spawn =
                 world.maps[actor.map_index].actors[actor.spawn_index];
-            if (!draw_actor(spawn.sprite_id, actor.facing, actor.visual_global_x,
-                            actor.visual_global_y))
+            if (!draw_actor(
+                    spawn.sprite_id, actor.facing,
+                    actor.animation_phase, actor.visual_global_x,
+                    actor.visual_global_y))
                 return false;
         }
     }
@@ -608,8 +607,10 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
           world.maps[world.player.map_index].world_space == world.current_space) ||
          (world.player.map_index < world.maps.size() &&
           &world.maps[world.player.map_index] == selected)) &&
-        !draw_actor(1U, world.player.facing, world.player.visual_global_x,
-                    world.player.visual_global_y))
+        !draw_actor(
+            1U, world.player.facing, world.player.animation_phase,
+            world.player.visual_global_x,
+            world.player.visual_global_y))
         return false;
     return true;
 }
@@ -711,21 +712,13 @@ void destroy_world_textures(WorldRenderResources& resources) {
 WorldProjection world_projection(int output_width, int output_height, const WorldState& world) {
     const WorldMap* map = selected_map(world);
     if (map == nullptr) return {};
-    const bool show_connected_world = world.view == WorldView::world;
-    float pixel_width = static_cast<float>(map->width_tiles * kTileSize);
-    float pixel_height = static_cast<float>(map->height_tiles * kTileSize);
-    if (show_connected_world &&
-        !world_space_size(world, world.current_space, pixel_width, pixel_height))
-        return {};
-    const float available_width = std::max(static_cast<float>(output_width) - 64.0F, 1.0F);
-    const float available_height = std::max(static_cast<float>(output_height) - 96.0F, 1.0F);
-    float fit_scale = std::min(available_width / pixel_width, available_height / pixel_height);
-    if (!show_connected_world && fit_scale >= 1.0F)
-        fit_scale = std::max(1.0F, std::floor(fit_scale));
     return {
         .center_x = static_cast<float>(output_width) * 0.5F,
         .center_y = static_cast<float>(output_height) * 0.5F + 12.0F,
-        .scale = fit_scale * world.zoom,
+        // Zoom is an absolute output-pixels-per-imported-pixel scale. It does
+        // not inherit the radically different fit scale of Kanto versus an
+        // interior complex.
+        .scale = world.zoom,
     };
 }
 

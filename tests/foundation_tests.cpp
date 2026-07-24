@@ -709,6 +709,35 @@ void test_local_encounter_cache(TestState& state) {
     check(state, pokered::load_world(world_path, world, error),
           "local world cache loads for encounters");
     if (!encounters.loaded || !world.loaded) return;
+    const pokered::WorldSprite* red =
+        pokered::find_world_sprite(world, 1U);
+    check(state,
+          red != nullptr && red->pixels.size() ==
+                                16U * 16U * 16U &&
+              !std::equal(
+                  red->pixels.begin(),
+                  red->pixels.begin() + 256,
+                  red->pixels.begin() + 256),
+          "world import materializes distinct Red walking frames");
+    const auto house_1f = std::ranges::find_if(
+        world.maps, [](const pokered::WorldMap& map) {
+            return map.key == "reds_house_1f";
+        });
+    const auto house_2f = std::ranges::find_if(
+        world.maps, [](const pokered::WorldMap& map) {
+            return map.key == "reds_house_2f";
+        });
+    check(state,
+          house_1f != world.maps.end() &&
+              house_2f != world.maps.end() &&
+              house_1f->global_x_tiles ==
+                  house_2f->global_x_tiles &&
+              house_2f->global_y_tiles +
+                      static_cast<std::int32_t>(
+                          house_2f->height_tiles) +
+                      2 ==
+                  house_1f->global_y_tiles,
+          "Red's room is one world cell above the first floor");
     check(state,
           encounters.maps.size() == 248U &&
               encounters.probabilities.size() == 10U &&
@@ -721,6 +750,32 @@ void test_local_encounter_cache(TestState& state) {
         [](const pokered::WorldMap& map) { return map.id == 12U; });
     check(state, map_it != world.maps.end(), "Route 1 map is imported");
     if (map_it == world.maps.end()) return;
+    const auto pallet = std::ranges::find_if(
+        world.maps, [](const pokered::WorldMap& map) {
+            return map.key == "pallet_town";
+        });
+    const auto viridian = std::ranges::find_if(
+        world.maps, [](const pokered::WorldMap& map) {
+            return map.key == "viridian_city";
+        });
+    const auto route_22 = std::ranges::find_if(
+        world.maps, [](const pokered::WorldMap& map) {
+            return map.key == "route_22";
+        });
+    check(state,
+          pallet != world.maps.end() &&
+              pallet->camera_framing ==
+                  pokered::WorldCameraFraming::fit_map &&
+              map_it->camera_framing ==
+                  pokered::WorldCameraFraming::fit_width &&
+              viridian != world.maps.end() &&
+              viridian->camera_framing ==
+                  pokered::WorldCameraFraming::fixed_zoom &&
+              viridian->camera_zoom == 3.0F &&
+              route_22 != world.maps.end() &&
+              route_22->camera_framing ==
+                  pokered::WorldCameraFraming::fit_height,
+          "early Kanto maps retain their imported camera framing");
     const pokered::MapTileset* tileset =
         pokered::find_tileset(world, map_it->tileset_id);
     check(state, tileset != nullptr && tileset->grass_tile != 0xFFU,
@@ -1872,23 +1927,30 @@ void test_local_boot_cache(TestState& state) {
               content.new_game_previous_map_id == 0x00U,
           "New Game placement comes from imported campaign content");
 
-    pokered::BootState typed_name;
-    check(state, pokered::begin_boot(content, typed_name, error),
-          "typed-name fixture starts a boot owner");
-    typed_name.screen = pokered::BootScreen::naming;
-    typed_name.oak_stage = pokered::BootOakStage::player_name;
-    typed_name.naming_player = true;
+    pokered::BootState grid_name;
+    check(state, pokered::begin_boot(content, grid_name, error),
+          "grid-name fixture starts a boot owner");
+    grid_name.screen = pokered::BootScreen::naming;
+    grid_name.oak_stage = pokered::BootOakStage::player_name;
+    grid_name.naming_player = true;
+    constexpr std::array<std::array<std::uint8_t, 2>, 5>
+        vega_and_end{{
+            {2U, 3U}, {0U, 4U}, {0U, 6U}, {0U, 0U},
+            {4U, 8U},
+        }};
+    for (const auto& cell : vega_and_end) {
+        grid_name.naming_row = cell[0];
+        grid_name.naming_column = cell[1];
+        check(state,
+              pokered::step_boot(
+                  content, {.confirm_pressed = true}, grid_name,
+                  result, error),
+              "Oak grid naming advances");
+    }
     check(state,
-          pokered::step_boot(content, {.text = "VEGA"}, typed_name,
-                             result, error) &&
-              typed_name.naming_value == "VEGA",
-          "Oak naming accepts ordinary typed input");
-    check(state,
-          pokered::step_boot(content, {.submit_pressed = true},
-                             typed_name, result, error) &&
-              typed_name.player_name == "VEGA" &&
-              typed_name.screen == pokered::BootScreen::oak_text,
-          "typed Oak name submits through the normal confirmation flow");
+          grid_name.player_name == "VEGA" &&
+              grid_name.screen == pokered::BootScreen::oak_text,
+          "Oak grid name submits through the normal confirmation flow");
 }
 
 void test_local_pallet_campaign_program(TestState& state) {
@@ -1961,9 +2023,15 @@ void test_local_pallet_campaign_program(TestState& state) {
     pokered::begin_naming(programs.naming, "NICKNAME?",
                           controller_name);
     pokered::step_naming({.confirm = true}, controller_name);
-    pokered::step_naming({.toggle_case = true}, controller_name);
+    controller_name.row =
+        static_cast<std::uint8_t>(pokered::kNamingRows);
     pokered::step_naming({.confirm = true}, controller_name);
-    pokered::step_naming({.submit = true}, controller_name);
+    controller_name.row = 0U;
+    controller_name.column = 0U;
+    pokered::step_naming({.confirm = true}, controller_name);
+    controller_name.row = 4U;
+    controller_name.column = 8U;
+    pokered::step_naming({.confirm = true}, controller_name);
     check(state,
           controller_name.decided && !controller_name.open &&
               controller_name.value == "Aa",
@@ -2190,11 +2258,21 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::service_campaign_programs(
                   programs, rules, battle_rules, world, campaign, error),
               "accepted starter program advances");
-        if (world.naming.open)
-            pokered::step_world(
-                world, interactions, campaign,
-                {.submit = true, .text = "EMBER"});
-        else
+        if (world.naming.open) {
+            constexpr std::array<std::array<std::uint8_t, 2>, 6>
+                ember_and_end{{
+                    {0U, 4U}, {1U, 3U}, {0U, 1U},
+                    {0U, 4U}, {1U, 8U}, {4U, 8U},
+                }};
+            for (const auto& cell : ember_and_end) {
+                world.naming.row = cell[0];
+                world.naming.column = cell[1];
+                world.naming.input_cooldown = 0U;
+                pokered::step_world(
+                    world, interactions, campaign,
+                    {.activate = true});
+            }
+        } else
             pokered::step_world(
                 world, interactions, campaign,
                 {.activate = world.dialogue.open ||

@@ -36,8 +36,17 @@ struct WorldSprite {
     std::uint8_t id{};
     std::string key;
     bool still{};
-    // Four normalized 16 by 16 standing frames: down, up, left, right.
+    // Sixteen normalized 16 by 16 frames: four walking phases for each
+    // down/up/left/right facing.
     std::vector<std::uint8_t> pixels;
+};
+
+enum class WorldCameraFraming : std::uint8_t {
+    fixed_zoom,
+    fit_map,
+    fit_width,
+    fit_height,
+    fit_space,
 };
 
 struct WorldSpace {
@@ -88,6 +97,9 @@ struct WorldMap {
     std::int32_t global_x_tiles{};
     std::int32_t global_y_tiles{};
     std::uint16_t world_space{};
+    WorldCameraFraming camera_framing{
+        WorldCameraFraming::fixed_zoom};
+    float camera_zoom{2.0F};
     std::vector<std::uint8_t> tiles;
     std::vector<WorldWarp> warps;
     std::vector<WorldActorSpawn> actors;
@@ -121,7 +133,14 @@ struct WorldActorState {
     std::int32_t y{};
     float visual_global_x{};
     float visual_global_y{};
+    float movement_from_x{};
+    float movement_from_y{};
+    float movement_to_x{};
+    float movement_to_y{};
+    float movement_elapsed{};
     WorldDirection facing{WorldDirection::down};
+    std::uint8_t animation_phase{};
+    bool moving{};
     bool visible{true};
 };
 
@@ -131,9 +150,16 @@ struct WorldPlayerState {
     std::int32_t y{};
     float visual_global_x{};
     float visual_global_y{};
+    float movement_from_x{};
+    float movement_from_y{};
+    float movement_to_x{};
+    float movement_to_y{};
+    float movement_elapsed{};
     WorldDirection facing{WorldDirection::down};
     std::uint8_t move_cooldown{};
+    std::uint8_t animation_phase{};
     std::size_t last_outdoor_map_index{};
+    bool moving{};
     bool initialized{};
 };
 
@@ -273,7 +299,13 @@ struct WorldState {
     std::uint32_t random_state{0xC001D00DU};
     bool player_completed_step{};
     bool show_annotations{};
-    bool follow_player{true};
+    bool follow_player_x{true};
+    bool follow_player_y{true};
+    bool automatic_camera_framing{true};
+    bool manual_camera_override{};
+    bool camera_region_dirty{true};
+    std::size_t camera_region_map_index{
+        static_cast<std::size_t>(-1)};
     bool camera_initialized{};
     bool loaded{};
 };
@@ -293,6 +325,8 @@ void toggle_world_view(WorldState& world);
 void zoom_world_view(WorldState& world, float factor);
 void pan_world_view(WorldState& world, float x, float y);
 void reset_world_view(WorldState& world);
+void update_world_camera_region(WorldState& world, int output_width,
+                                int output_height);
 void update_world_view(WorldState& world, double elapsed_seconds);
 void step_world_animation(WorldState& world);
 void open_world_dialogue(WorldState& world,

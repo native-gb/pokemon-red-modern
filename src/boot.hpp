@@ -157,10 +157,9 @@ struct BootState {
     std::string player_name;
     std::string rival_name;
     std::size_t text_page{};
-    std::int8_t picture_left_tiles{6};
+    std::int16_t picture_left_pixels{48};
     bool picture_sliding{};
-    std::uint8_t slide_steps_remaining{};
-    std::uint8_t slide_delay{};
+    std::uint16_t slide_pixels_remaining{};
     std::int8_t slide_direction{};
     std::uint8_t delay_frames{};
     bool active{};

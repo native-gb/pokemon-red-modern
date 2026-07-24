@@ -88,6 +88,13 @@ WindowInput poll_window_events(HostWindow& window) {
         if (event.type == SDL_EVENT_TEXT_INPUT &&
             event.text.text != nullptr)
             input.text += event.text.text;
+        if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+            float amount = event.wheel.y;
+            if (event.wheel.direction ==
+                SDL_MOUSEWHEEL_FLIPPED)
+                amount = -amount;
+            input.zoom_world_steps += amount;
+        }
         if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
             assign_unclaimed_gamepads(window.runtime);
             input.gamepad_changed = true;
@@ -178,6 +185,14 @@ WindowInput poll_window_events(HostWindow& window) {
     input.pan_world_down = keyboard[SDL_SCANCODE_K];
     input.zoom_world_in = keyboard[SDL_SCANCODE_EQUALS] || keyboard[SDL_SCANCODE_KP_PLUS];
     input.zoom_world_out = keyboard[SDL_SCANCODE_MINUS] || keyboard[SDL_SCANCODE_KP_MINUS];
+    input.keyboard_wasd_left = keyboard[SDL_SCANCODE_A];
+    input.keyboard_wasd_right = keyboard[SDL_SCANCODE_D];
+    input.keyboard_wasd_up = keyboard[SDL_SCANCODE_W];
+    input.keyboard_wasd_down = keyboard[SDL_SCANCODE_S];
+    input.naming_left = keyboard[SDL_SCANCODE_LEFT];
+    input.naming_right = keyboard[SDL_SCANCODE_RIGHT];
+    input.naming_up = keyboard[SDL_SCANCODE_UP];
+    input.naming_down = keyboard[SDL_SCANCODE_DOWN];
     return input;
 }
 

@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cmath>
 
 namespace pokered::render {
 
@@ -10,13 +11,18 @@ void draw_dialogue_overlay(const WorldState& world) {
     if (!world.dialogue.open || world.dialogue.page >= world.dialogue.pages.size()) return;
 
     ImGuiIO& io = ImGui::GetIO();
-    const float width = std::min(io.DisplaySize.x - 48.0F, 920.0F);
+    const float width =
+        std::floor(std::min(io.DisplaySize.x - 48.0F, 920.0F));
     const float height = 156.0F;
-    const ImVec2 minimum{(io.DisplaySize.x - width) * 0.5F, io.DisplaySize.y - height - 28.0F};
+    const ImVec2 minimum{
+        std::floor((io.DisplaySize.x - width) * 0.5F),
+        std::floor(io.DisplaySize.y - height - 28.0F)};
     const ImVec2 maximum{minimum.x + width, minimum.y + height};
     ImDrawList* draw = ImGui::GetForegroundDrawList();
-    draw->AddRectFilled(minimum, maximum, IM_COL32(246, 238, 242, 248), 7.0F);
-    draw->AddRect(minimum, maximum, IM_COL32(42, 29, 42, 255), 7.0F, 0, 4.0F);
+    draw->AddRectFilled(minimum, maximum,
+                        IM_COL32(246, 238, 242, 248));
+    draw->AddRect(minimum, maximum,
+                  IM_COL32(42, 29, 42, 255), 0.0F, 0, 4.0F);
 
     const std::string& page = world.dialogue.pages[world.dialogue.page];
     const ImVec2 text_position{minimum.x + 24.0F, minimum.y + 21.0F};
@@ -40,18 +46,18 @@ void draw_dialogue_overlay(const WorldState& world) {
         choice_minimum.x + choice_width,
         choice_minimum.y + choice_height};
     draw->AddRectFilled(choice_minimum, choice_maximum,
-                        IM_COL32(246, 238, 242, 248), 7.0F);
+                        IM_COL32(246, 238, 242, 248));
     draw->AddRect(choice_minimum, choice_maximum,
-                  IM_COL32(42, 29, 42, 255), 7.0F, 0, 4.0F);
+                  IM_COL32(42, 29, 42, 255), 0.0F, 0, 4.0F);
     for (std::size_t index = 0U; index < world.choice.options.size();
          ++index) {
         const float y =
             choice_minimum.y + 15.0F + static_cast<float>(index) * 34.0F;
         if (index == world.choice.selected)
             draw->AddTriangleFilled(
-                {choice_minimum.x + 16.0F, y + 5.0F},
-                {choice_minimum.x + 26.0F, y},
-                {choice_minimum.x + 26.0F, y + 10.0F},
+                {choice_minimum.x + 26.0F, y + 5.0F},
+                {choice_minimum.x + 16.0F, y},
+                {choice_minimum.x + 16.0F, y + 10.0F},
                 IM_COL32(35, 25, 35, 255));
         const std::string& option = world.choice.options[index];
         draw->AddText(ImGui::GetFont(), 25.0F,

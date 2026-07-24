@@ -40,38 +40,6 @@ void append_cell(NamingState& state, const std::string& cell) {
     state.value += cell;
 }
 
-void append_typed_input(NamingState& state, const char* text) {
-    if (text == nullptr) return;
-    const std::string_view view{text};
-    for (std::size_t cursor = 0U;
-         cursor < view.size() &&
-         state.glyphs.size() < state.profile.maximum_length;) {
-        const std::size_t size =
-            utf8_character_size(static_cast<unsigned char>(view[cursor]));
-        if (!valid_utf8_character(view, cursor, size)) {
-            ++cursor;
-            continue;
-        }
-        const unsigned char first =
-            static_cast<unsigned char>(view[cursor]);
-        if ((size == 1U && first >= 0x20U && first != 0x7FU) ||
-            size > 1U) {
-            const std::string glyph{view.substr(cursor, size)};
-            const auto contains = [&](const auto& alphabet) {
-                return std::ranges::find(alphabet, glyph) !=
-                       alphabet.end();
-            };
-            if (glyph != "END" &&
-                (contains(state.profile.uppercase) ||
-                 contains(state.profile.lowercase))) {
-                state.glyphs.push_back(glyph);
-                state.value += glyph;
-            }
-        }
-        cursor += size;
-    }
-}
-
 void erase_last_glyph(NamingState& state) {
     if (state.glyphs.empty()) return;
     const std::size_t size = state.glyphs.back().size();
@@ -116,18 +84,11 @@ void begin_naming(const NamingProfile& profile, std::string heading,
 void step_naming(const NamingInput& input, NamingState& state) {
     if (!state.open || !valid_naming_profile(state.profile)) return;
 
-    append_typed_input(state, input.text);
-    if (input.submit) {
-        state.open = false;
-        state.decided = true;
-        return;
-    }
+    // The modern host keeps the cartridge grid predictable: direction,
+    // confirm, and back are the only naming controls. This prevents ordinary
+    // gameplay bindings from also becoming text or case-toggle commands.
     if (input.erase) {
         erase_last_glyph(state);
-        return;
-    }
-    if (input.toggle_case) {
-        state.lowercase = !state.lowercase;
         return;
     }
 

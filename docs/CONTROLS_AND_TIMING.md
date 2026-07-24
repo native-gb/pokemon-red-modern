@@ -45,6 +45,16 @@ then closes the root; Start closes it from any page. The overlay owns input
 while open, so navigation cannot move the player or advance a script behind
 it.
 
+Naming screens deliberately use only directional navigation, A/confirm, and
+B/back. Arrow keys and the controller D-pad move the cursor, confirm selects a
+cell, and back erases one character. Host text entry, WASD, Start, Select, and
+Backspace do not acquire alternate meanings while a naming grid owns input.
+
+World zoom accepts `+`, `-`, and the mouse wheel. Panning or zooming manually
+overrides the active map's framing until another map is entered. Player
+Settings can disable `Adjust camera on zone entry` to preserve a manually
+chosen camera across every transition.
+
 ## Clock domains
 
 Simulation advances at a deterministic 60 Hz. The host maintains separate

@@ -114,10 +114,10 @@ void begin_oak_text(BootState& state, BootOakStage stage, std::int8_t left,
     state.screen = BootScreen::oak_text;
     state.oak_stage = stage;
     state.text_page = 0U;
-    state.picture_left_tiles = left;
+    state.picture_left_pixels =
+        static_cast<std::int16_t>(left * 8);
     state.picture_sliding = slide;
-    state.slide_steps_remaining = slide ? 8U : 0U;
-    state.slide_delay = 0U;
+    state.slide_pixels_remaining = slide ? 64U : 0U;
     state.slide_direction = slide ? -1 : 0;
 }
 
@@ -125,10 +125,9 @@ void begin_name_menu(BootState& state, bool player) {
     state.screen = BootScreen::name_menu;
     state.oak_stage = player ? BootOakStage::player_name : BootOakStage::rival_name;
     state.name_selection = 0U;
-    state.picture_left_tiles = 6;
+    state.picture_left_pixels = 48;
     state.picture_sliding = true;
-    state.slide_steps_remaining = 6U;
-    state.slide_delay = 0U;
+    state.slide_pixels_remaining = 48U;
     state.slide_direction = 1;
 }
 
@@ -232,21 +231,24 @@ bool title_input(const BootInput& input) {
 
 bool step_sliding_picture(const BootContent& content, BootState& state) {
     if (!state.picture_sliding) return false;
-    if (state.slide_delay != 0U) {
-        --state.slide_delay;
-        return true;
+    constexpr std::uint16_t pixels_per_step = 2U;
+    if (state.slide_pixels_remaining != 0U) {
+        const std::uint16_t distance =
+            std::min(pixels_per_step, state.slide_pixels_remaining);
+        state.picture_left_pixels =
+            static_cast<std::int16_t>(
+                state.picture_left_pixels +
+                state.slide_direction *
+                    static_cast<std::int16_t>(distance));
+        state.slide_pixels_remaining =
+            static_cast<std::uint16_t>(
+                state.slide_pixels_remaining - distance);
     }
-    if (state.slide_steps_remaining != 0U) {
-        state.picture_left_tiles = static_cast<std::int8_t>(
-            state.picture_left_tiles + state.slide_direction);
-        --state.slide_steps_remaining;
-        state.slide_delay = content.oak.slide_step_delay_frames;
-    }
-    if (state.slide_steps_remaining == 0U) {
+    if (state.slide_pixels_remaining == 0U) {
         state.picture_sliding = false;
         state.slide_direction = 0;
-        state.slide_delay = 0U;
     }
+    (void)content;
     return true;
 }
 
@@ -257,7 +259,7 @@ bool finish_oak_text(const BootContent& content, BootState& state,
         begin_oak_text(state, BootOakStage::creature_introduction, 14, true);
         return true;
     case BootOakStage::creature_introduction:
-        begin_oak_text(state, BootOakStage::creature_explanation, 0, false);
+        begin_oak_text(state, BootOakStage::creature_explanation, 6, false);
         return true;
     case BootOakStage::creature_explanation:
         begin_oak_text(state, BootOakStage::player_introduction, 14, true);
@@ -278,7 +280,7 @@ bool finish_oak_text(const BootContent& content, BootState& state,
         state.screen = BootScreen::ending;
         state.oak_stage = BootOakStage::first_shrink_delay;
         state.delay_frames = content.oak.ending_delay_frames[0];
-        state.picture_left_tiles = 6;
+        state.picture_left_pixels = 48;
         return true;
     case BootOakStage::player_name:
     case BootOakStage::rival_name:
@@ -582,17 +584,11 @@ bool step_boot(const BootContent& content, const BootInput& input, BootState& st
             }
         }
     } else if (state.screen == BootScreen::naming) {
-        append_typed_naming_text(
-            state.naming_value,
-            input.text != nullptr ? input.text : "", 7U);
-        if (input.submit_pressed && !state.naming_value.empty()) {
-            finish_naming(state);
-        } else if (input.select_pressed) {
-            state.naming_lowercase = !state.naming_lowercase;
-        } else if (input.cancel_pressed || input.erase_pressed) {
+        // Naming is deliberately controller-like: navigate the imported grid,
+        // confirm a cell, and use Back to erase. Host text entry and unrelated
+        // Start/Select shortcuts do not leak characters or case changes into it.
+        if (input.cancel_pressed || input.erase_pressed) {
             erase_last_naming_character(state.naming_value);
-        } else if (input.start_pressed && !state.naming_value.empty()) {
-            finish_naming(state);
         } else if (input.up_pressed) {
             state.naming_row =
                 static_cast<std::uint8_t>((state.naming_row + 5U) % 6U);

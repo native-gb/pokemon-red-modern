@@ -239,8 +239,14 @@ The same cache owns the cartridge-decoded English naming profile: both 45-cell
 case tables, the case-switch labels, END action, Pokemon name-length limit,
 nickname heading, and nickname question. Its readable peer is
 `source/menus/naming.sexpr`. The runtime supplies generic controller navigation
-and typed UTF-8 editing without compiling Red's alphabet or species names into
-the gameplay executable.
+with confirm/back editing without compiling Red's alphabet or species names
+into the gameplay executable.
+
+The world cache also owns sixteen normalized frames for every overworld sprite,
+per-map camera framing metadata, and importer-authored world-space placements.
+Red House 2F is placed one 16×16 world cell above Red House 1F inside their
+shared space; this is generated converter metadata rather than a campaign name
+or placement embedded in the generic engine.
 `world_interactions.bin` contains typed map-local interaction programs and
 owner bindings. Its imported trainer-header index covers all 322 ordinary and
 static trainer interactions, including sight range, defeated flag, and
