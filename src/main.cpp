@@ -11,7 +11,6 @@
 #include "encounters.hpp"
 #include "interactions.hpp"
 #include "maps.hpp"
-#include "render/dialogue.hpp"
 #include "render/boot.hpp"
 #include "render/field_menu.hpp"
 #include "render/frame.hpp"
@@ -35,6 +34,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -334,6 +334,10 @@ int main(int argc, char** argv) {
     bool fast_forward_toggle_active = false;
     bool tools_chord_down = false;
     pokered::BootInput pending_boot_input;
+    std::uint64_t last_audio_warp_tick =
+        std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t last_audio_ledge_hop =
+        world.ledge_hop_count;
 
     while (running) {
         const std::uint64_t frame_started = SDL_GetTicksNS();
@@ -800,6 +804,31 @@ int main(int argc, char** argv) {
         // accelerates simulation, never pitch or playback speed.
         if (audio.available()) {
             std::string dispatch_error;
+            if (world.last_warp.occurred &&
+                world.last_warp.simulation_tick !=
+                    last_audio_warp_tick) {
+                const auto source = std::ranges::find_if(
+                    world.maps,
+                    [&](const pokered::WorldMap& map) {
+                        return map.id ==
+                               world.last_warp.source_map_id;
+                    });
+                const bool going_inside =
+                    source != world.maps.end() &&
+                    source->tileset_id == 0U;
+                audio.play_map_transition(
+                    world.last_warp.source_map_id,
+                    going_inside);
+                last_audio_warp_tick =
+                    world.last_warp.simulation_tick;
+            }
+            if (world.ledge_hop_count !=
+                    last_audio_ledge_hop &&
+                world.player.map_index < world.maps.size()) {
+                audio.play_ledge(
+                    world.maps[world.player.map_index].id);
+                last_audio_ledge_hop = world.ledge_hop_count;
+            }
             if (game.mode == pokered::Mode::title) {
                 const bool oak_intro =
                     boot.screen == pokered::BootScreen::oak_text ||
@@ -855,7 +884,6 @@ int main(int argc, char** argv) {
         pokered::draw_tools(tools, window.runtime, game, catalog, boot, animation_lab,
                             world, rules, presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
-        pokered::render::draw_dialogue_overlay(world);
         pokered::render::draw_field_menu_overlay(
             world, campaign, campaign_programs, rules);
         imgui_render_layer();

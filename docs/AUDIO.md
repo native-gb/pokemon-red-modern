@@ -34,7 +34,8 @@ Current cue sources are:
 - imported wild/trainer battle music;
 - imported Pokémon cries during battle deployment;
 - imported sound IDs emitted by battle animation programs;
-- menu-open and menu-confirm/navigation sounds.
+- menu-open and menu-confirm/navigation sounds;
+- bank-correct go-inside, go-outside/stair, and ledge-hop sounds.
 
 Additional campaign-specific music changes, victory themes, healing jingles,
 and scripted overworld effects should be emitted as ordinary semantic audio

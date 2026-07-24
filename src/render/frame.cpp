@@ -1,4 +1,5 @@
 #include "render/frame.hpp"
+#include "render/dialogue.hpp"
 #include "render/naming.hpp"
 
 #include <SDL3/SDL.h>
@@ -537,7 +538,11 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
                         world_resources))
             return false;
         return draw_area_banner(renderer, maps, boot_resources) &&
-               draw_naming_overlay(renderer, view, maps, boot_resources);
+               draw_naming_overlay(
+                   renderer, view, maps, boot_resources) &&
+               draw_dialogue_overlay(
+                   renderer, output_width, output_height, maps,
+                   boot_resources);
     }
 
     const SDL_FRect shadow{view.x - 8.0F, view.y - 8.0F, view.width + 16.0F, view.height + 16.0F};

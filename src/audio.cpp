@@ -76,7 +76,7 @@ struct SceneMusicDispatch {
 };
 
 using SemanticSoundDispatch =
-    std::array<std::array<SceneMusicDispatch, 4>, 2>;
+    std::array<std::array<SceneMusicDispatch, 4>, 5>;
 
 bool load_audio_catalog(const std::filesystem::path& path,
                         ContentCatalogue& catalog,
@@ -86,7 +86,7 @@ bool load_audio_catalog(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), 4) ||
-        magic != std::array{'P', 'R', 'A', '3'}) {
+        magic != std::array{'P', 'R', 'A', '4'}) {
         error = "audio cache has an invalid header";
         return false;
     }
@@ -340,7 +340,7 @@ bool load_audio_catalog(const std::filesystem::path& path,
         scenes[scene] = dispatch;
     }
 
-    if (!read_u16(input, count) || count != 6U) {
+    if (!read_u16(input, count) || count != 12U) {
         error = "audio cache has an invalid semantic-sound census";
         return false;
     }
@@ -458,16 +458,27 @@ struct AudioSystem::Impl {
         return true;
     }
 
-    bool spawn_semantic(std::size_t cue) {
+    bool spawn_semantic(std::size_t cue, std::uint8_t bank) {
         if (cue >= semantic_sounds.size() ||
-            preferred_bank >= semantic_sounds[cue].size())
+            bank >= semantic_sounds[cue].size())
             return false;
         const SceneMusicDispatch& dispatch =
-            semantic_sounds[cue][preferred_bank];
+            semantic_sounds[cue][bank];
         if (!dispatch.present) return false;
         std::string ignored;
         return spawn_effect(
             dispatch.bank, dispatch.sound, ignored);
+    }
+
+    bool spawn_map_semantic(std::size_t cue,
+                            std::uint8_t map_id) {
+        const auto dispatch = std::ranges::find_if(
+            catalog.map_music,
+            [map_id](const MapMusicDefinition& candidate) {
+                return candidate.map_id == map_id;
+            });
+        return dispatch != catalog.map_music.end() &&
+               spawn_semantic(cue, dispatch->audio_bank);
     }
 
     bool spawn_cry(std::uint8_t internal_species,
@@ -675,12 +686,26 @@ bool AudioSystem::play_cry(std::uint8_t internal_species_id,
 
 void AudioSystem::play_menu_open() {
     if (impl_)
-        (void)impl_->spawn_semantic(0U);
+        (void)impl_->spawn_semantic(
+            0U, impl_->preferred_bank);
 }
 
 void AudioSystem::play_menu_press() {
     if (impl_)
-        (void)impl_->spawn_semantic(1U);
+        (void)impl_->spawn_semantic(
+            1U, impl_->preferred_bank);
+}
+
+void AudioSystem::play_map_transition(
+    std::uint8_t source_map_id, bool going_inside) {
+    if (impl_)
+        (void)impl_->spawn_map_semantic(
+            going_inside ? 2U : 3U, source_map_id);
+}
+
+void AudioSystem::play_ledge(std::uint8_t map_id) {
+    if (impl_)
+        (void)impl_->spawn_map_semantic(4U, map_id);
 }
 
 bool AudioSystem::available() const {

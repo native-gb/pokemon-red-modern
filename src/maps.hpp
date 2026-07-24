@@ -323,6 +323,7 @@ struct WorldState {
     float target_camera_y{};
     std::uint64_t animation_tick{};
     std::uint64_t simulation_tick{};
+    std::uint64_t ledge_hop_count{};
     std::uint32_t random_state{0xC001D00DU};
     bool player_completed_step{};
     bool show_annotations{};

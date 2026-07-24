@@ -84,6 +84,9 @@ std::vector<SemanticSound> semantic_sounds(
     constexpr std::array stems{
         std::string_view{"SFX_Start_Menu_"},
         std::string_view{"SFX_Press_AB_"},
+        std::string_view{"SFX_Go_Inside_"},
+        std::string_view{"SFX_Go_Outside_"},
+        std::string_view{"SFX_Ledge_"},
     };
     std::vector<SemanticSound> result;
     result.reserve(stems.size() * 3U);
@@ -116,7 +119,7 @@ void emit_cache(const ContentCatalogue& catalog,
                 const std::vector<SceneMusic>& scenes,
                 const std::vector<SemanticSound>& sounds,
                 AudioImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'R', 'A', '3'};
+    std::vector<std::uint8_t> bytes{'P', 'R', 'A', '4'};
 
     write_u16(bytes, catalog.audio_banks.size());
     for (const AudioBankDefinition& bank : catalog.audio_banks) {
@@ -359,7 +362,7 @@ bool decode_audio_import(std::span<const std::uint8_t> rom,
         error = "audio import did not resolve every semantic scene";
         return false;
     }
-    if (sounds.size() != 6U) {
+    if (sounds.size() != 12U) {
         error = "audio import did not resolve every semantic sound";
         return false;
     }

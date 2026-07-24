@@ -602,11 +602,41 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
                 return false;
         }
     }
-    if (world.player.initialized && world.player.map_index < world.maps.size() &&
+    const bool player_visible =
+        world.player.initialized &&
+        world.player.map_index < world.maps.size() &&
         ((world.view == WorldView::world &&
-          world.maps[world.player.map_index].world_space == world.current_space) ||
-         (world.player.map_index < world.maps.size() &&
-          &world.maps[world.player.map_index] == selected)) &&
+          world.maps[world.player.map_index].world_space ==
+              world.current_space) ||
+         &world.maps[world.player.map_index] == selected);
+    if (player_visible && world.player.ledge_hop) {
+        const float left =
+            projection.center_x +
+            (world.player.visual_global_x * 16.0F -
+             world.camera_x) *
+                projection.scale;
+        const float top =
+            projection.center_y +
+            (world.player.visual_global_y * 16.0F -
+             world.camera_y) *
+                projection.scale;
+        const std::array<SDL_FRect, 3> shadow{{
+            {left + 5.0F * projection.scale,
+             top + 13.0F * projection.scale,
+             6.0F * projection.scale, projection.scale},
+            {left + 4.0F * projection.scale,
+             top + 14.0F * projection.scale,
+             8.0F * projection.scale, projection.scale},
+            {left + 5.0F * projection.scale,
+             top + 15.0F * projection.scale,
+             6.0F * projection.scale, projection.scale},
+        }};
+        (void)SDL_SetRenderDrawColor(renderer, 8, 24, 32, 255);
+        for (const SDL_FRect& row : shadow)
+            if (!SDL_RenderFillRect(renderer, &row))
+                return false;
+    }
+    if (player_visible &&
         !draw_actor(
             1U, world.player.facing, world.player.animation_phase,
             world.player.visual_global_x,

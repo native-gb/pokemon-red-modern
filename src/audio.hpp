@@ -38,6 +38,9 @@ class AudioSystem {
                   std::string& error);
     void play_menu_open();
     void play_menu_press();
+    void play_map_transition(std::uint8_t source_map_id,
+                             bool going_inside);
+    void play_ledge(std::uint8_t map_id);
 
     bool available() const;
     std::uint8_t preferred_audio_bank() const;

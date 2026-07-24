@@ -1273,6 +1273,8 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                     queue_player_segment(
                         world, static_cast<float>(global_x),
                         static_cast<float>(global_y), ledge_hop);
+                    if (ledge_hop)
+                        ++world.ledge_hop_count;
                     world.player.warp_pending =
                         warp_at(target, local_x, local_y) != nullptr;
                     world.player_completed_step =
