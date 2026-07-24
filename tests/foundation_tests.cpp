@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 87U &&
+              programs.programs.size() == 141U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 27> source_names{
+    constexpr std::array<std::string_view, 28> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1823,6 +1823,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "route_5_gate.sexpr",
         "vermilion_harbor.sexpr",
         "daycare.sexpr",
+        "hidden_items.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -4039,6 +4040,106 @@ void test_local_pallet_campaign_program(TestState& state) {
               returned != campaign.party.members.end() &&
               returned->current_hp == returned->stats.hp,
           "Day Care charges 200, refreshes moves/stats, heals, and returns the grown Pokemon");
+
+    // Hidden items are one exhaustive ROM catalogue, not four Underground
+    // Path specials. Exercise the first north/south item through the actual
+    // target-cell activation, including full-bag retention and retry.
+    std::vector<std::uint16_t> hidden_fillers;
+    for (std::uint16_t item_id = 180U;
+         campaign.inventory.stacks.size() <
+             campaign.inventory.stack_capacity &&
+         item_id < 250U;
+         ++item_id)
+        if (pokered::inventory_item_quantity(
+                campaign.inventory, item_id) == 0U &&
+            pokered::give_inventory_item(
+                campaign.inventory, item_id, 1U))
+            hidden_fillers.push_back(item_id);
+    check(state,
+          campaign.inventory.stacks.size() ==
+              campaign.inventory.stack_capacity,
+          "hidden-item fixture begins with a full imported bag");
+    check(state,
+          pokered::enter_world_at(
+              world, 119U, 3, 5, error),
+          "campaign fixture enters Underground Path north/south");
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign,
+        {.activate = true});
+    check(state,
+          world.last_cell_activation.occurred &&
+              world.last_cell_activation.map_id == 119U &&
+              world.last_cell_activation.x == 3U &&
+              world.last_cell_activation.y == 4U &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+          "Underground Path target cell starts its imported hidden item");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Underground hidden-item full-bag branch advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 16U) == 0U &&
+              !pokered::campaign_flag(
+                  campaign, 0x6B7ABU),
+          "full bag leaves the hidden Full Restore unclaimed");
+
+    const auto hidden_filler =
+        std::ranges::find_if(
+            hidden_fillers,
+            [&](std::uint16_t item_id) {
+                return pokered::inventory_item_quantity(
+                           campaign.inventory, item_id) != 0U;
+            });
+    check(state, hidden_filler != hidden_fillers.end(),
+          "hidden-item fixture owns a removable filler");
+    if (hidden_filler != hidden_fillers.end())
+        check(state,
+              pokered::take_inventory_item(
+                  campaign.inventory,
+                  *hidden_filler, 1U),
+              "campaign fixture frees one hidden-item slot");
+    world.dialogue = {};
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign,
+        {.activate = true});
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world,
+              campaign, error),
+          "Underground hidden item retries after freeing room");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Underground hidden-item success advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 16U) == 1U &&
+              pokered::campaign_flag(
+                  campaign, 0x6B7ABU),
+          "Underground hidden Full Restore grants once and records its ROM index flag");
 }
 
 } // namespace

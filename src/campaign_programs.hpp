@@ -21,6 +21,7 @@ enum class CampaignTriggerKind : std::uint8_t {
     player_rectangle,
     map_presence,
     cell_activation,
+    cell_activation_any_facing,
 };
 
 enum class CampaignOpcode : std::uint8_t {

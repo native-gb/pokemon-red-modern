@@ -1002,10 +1002,26 @@ the dynamic one-level response, accepts the ¥200 return, and checks party
 ownership, money, level, moves/stats refresh, and full healing. Readable
 content is generated at `source/scripts/campaign/daycare.sexpr`.
 
+Hidden items are now imported as one exhaustive global content domain rather
+than four Underground Path exceptions. The importer walks all 85 hidden-event
+map owners, follows their ROM pointers, selects the `HiddenItems` semantic
+function, and cross-validates the resulting 54 records against the separate
+cartridge coordinate/index table. Every record therefore owns a ROM map and
+target cell, item ID/name, and the exact persistent bit in the 112-slot hidden
+item flag array.
+
+The runtime adds one generic any-facing target-cell trigger. A hidden item uses
+the ordinary imported inventory transaction and shared ROM presentation: a
+full bag leaves its bit clear and permits retry; success grants one item and
+sets the coordinate-index bit. The focused fixture activates the first
+north/south Underground Path cell, proves full-bag retention, frees a slot,
+retries, and verifies the hidden Full Restore and flag. All 54 records are
+readable at `source/scripts/campaign/hidden_items.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-Underground Path trades and hidden items and the S.S. Anne campaign. Every
-later map program still requires semantic lifting and the remaining acceptance
-gates above stay open.
+Underground Path and Vermilion in-game trades and the S.S. Anne campaign.
+Every later map program still requires semantic lifting and the remaining
+acceptance gates above stay open.
 
 ## Playable acceptance
 

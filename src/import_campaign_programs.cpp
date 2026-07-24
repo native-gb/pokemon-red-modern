@@ -305,6 +305,14 @@ constexpr std::array<std::size_t, 15> kDaycareTextOffsets{
     0x056437U, 0x05643BU, 0x056440U, 0x056445U,
     0x05644AU, 0x05644FU, 0x056454U,
 };
+constexpr std::size_t kHiddenEventMapsOffset = 0x046A40U;
+constexpr std::size_t kHiddenEventPointersOffset = 0x046A96U;
+constexpr std::size_t kHiddenItemsFunctionOffset = 0x076688U;
+constexpr std::size_t kHiddenItemCoordsOffset = 0x0766B8U;
+constexpr std::size_t kFoundHiddenItemTextOffset = 0x07675BU;
+constexpr std::size_t kHiddenItemBagFullTextOffset = 0x076794U;
+constexpr std::uint32_t kHiddenItemFlagBase =
+    static_cast<std::uint32_t>(0xD6F0U) * 8U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -330,6 +338,7 @@ enum class TriggerKind : std::uint8_t {
     player_rectangle,
     map_presence,
     cell_activation,
+    cell_activation_any_facing,
 };
 
 enum class Opcode : std::uint8_t {
@@ -825,6 +834,21 @@ struct DaycareProgram {
     std::uint8_t map_id{};
     std::uint8_t actor_index{};
     std::array<DecodedTextProgram, 15> texts;
+};
+
+struct HiddenItemProgram {
+    std::uint8_t map_id{};
+    std::uint8_t x{};
+    std::uint8_t y{};
+    std::uint16_t item_id{};
+    std::string item_name;
+    std::uint32_t obtained_flag{};
+};
+
+struct HiddenItemCatalogue {
+    std::vector<HiddenItemProgram> items;
+    DecodedTextProgram found;
+    DecodedTextProgram bag_full;
 };
 
 struct CampaignInitialState {
@@ -4259,6 +4283,158 @@ bool decode_daycare_program(
     return true;
 }
 
+bool decode_hidden_item_catalogue(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ImportedItemName>& item_names,
+    HiddenItemCatalogue& result, std::string& error) {
+    result = {};
+    std::vector<std::uint8_t> maps;
+    for (std::size_t cursor = kHiddenEventMapsOffset;
+         cursor < rom.size() && maps.size() < 256U;
+         ++cursor) {
+        if (rom[cursor] == 0xFFU) break;
+        maps.push_back(rom[cursor]);
+    }
+    if (maps.empty() ||
+        kHiddenEventMapsOffset + maps.size() >= rom.size() ||
+        rom[kHiddenEventMapsOffset + maps.size()] != 0xFFU ||
+        kHiddenEventPointersOffset + maps.size() * 2U >
+            rom.size()) {
+        error =
+            "hidden-event map and pointer tables are truncated";
+        return false;
+    }
+
+    std::vector<HiddenItemProgram> events;
+    for (std::size_t map_index = 0U;
+         map_index < maps.size(); ++map_index) {
+        const std::size_t pointer_offset =
+            kHiddenEventPointersOffset + map_index * 2U;
+        const std::uint16_t pointer =
+            static_cast<std::uint16_t>(
+                rom[pointer_offset] |
+                static_cast<std::uint16_t>(
+                    rom[pointer_offset + 1U])
+                    << 8U);
+        if (pointer < 0x4000U ||
+            pointer >= 0x8000U) {
+            error =
+                "hidden-event pointer is outside its ROM bank";
+            return false;
+        }
+        std::size_t cursor =
+            0x044000U +
+            static_cast<std::size_t>(
+                pointer - 0x4000U);
+        while (cursor < rom.size() &&
+               rom[cursor] != 0xFFU) {
+            if (cursor + 6U > rom.size()) {
+                error =
+                    "hidden-event record is truncated";
+                return false;
+            }
+            const std::uint8_t function_bank =
+                rom[cursor + 3U];
+            const std::uint16_t function_pointer =
+                static_cast<std::uint16_t>(
+                    rom[cursor + 4U] |
+                    static_cast<std::uint16_t>(
+                        rom[cursor + 5U])
+                        << 8U);
+            const std::size_t function_offset =
+                static_cast<std::size_t>(
+                    function_bank) *
+                    0x4000U +
+                static_cast<std::size_t>(
+                    function_pointer - 0x4000U);
+            if (function_bank == 0x1DU &&
+                function_pointer >= 0x4000U &&
+                function_offset ==
+                    kHiddenItemsFunctionOffset)
+                events.push_back({
+                    .map_id = maps[map_index],
+                    .x = rom[cursor + 1U],
+                    .y = rom[cursor],
+                    .item_id = rom[cursor + 2U],
+                    .item_name = {},
+                    .obtained_flag = 0U,
+                });
+            cursor += 6U;
+        }
+        if (cursor >= rom.size()) {
+            error =
+                "hidden-event list is missing its terminator";
+            return false;
+        }
+    }
+
+    for (std::size_t index = 0U;
+         kHiddenItemCoordsOffset + index * 3U <
+             rom.size() &&
+         rom[kHiddenItemCoordsOffset + index * 3U] !=
+             0xFFU;
+         ++index) {
+        const std::uint8_t map_id =
+            rom[kHiddenItemCoordsOffset + index * 3U];
+        const std::uint8_t x =
+            rom[kHiddenItemCoordsOffset + index * 3U + 2U];
+        const std::uint8_t y =
+            rom[kHiddenItemCoordsOffset + index * 3U + 1U];
+        const auto event = std::ranges::find_if(
+            events,
+            [&](const HiddenItemProgram& candidate) {
+                return candidate.map_id == map_id &&
+                       candidate.x == x &&
+                       candidate.y == y;
+            });
+        if (event == events.end()) {
+            error =
+                "hidden-item coordinate has no matching ROM event";
+            return false;
+        }
+        HiddenItemProgram item = *event;
+        item.obtained_flag =
+            kHiddenItemFlagBase +
+            static_cast<std::uint32_t>(index);
+        const auto name = std::ranges::find_if(
+            item_names,
+            [&](const ImportedItemName& candidate) {
+                return candidate.item_id ==
+                       item.item_id;
+            });
+        if (name == item_names.end()) {
+            error =
+                "hidden item is missing from the imported item catalogue";
+            return false;
+        }
+        item.item_name = name->name;
+        result.items.push_back(std::move(item));
+    }
+    if (result.items.size() != events.size() ||
+        result.items.size() != 54U) {
+        error =
+            "hidden-item coordinate and event catalogues disagree";
+        return false;
+    }
+    if (!decode_text_program(
+            rom, 0x1DU,
+            kFoundHiddenItemTextOffset,
+            result.found) ||
+        !result.found.complete ||
+        result.found.pages.empty() ||
+        !decode_text_program(
+            rom, 0x1DU,
+            kHiddenItemBagFullTextOffset,
+            result.bag_full) ||
+        !result.bag_full.complete ||
+        result.bag_full.pages.empty()) {
+        error =
+            "hidden-item presentation could not be decoded from the pinned ROM";
+        return false;
+    }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -5898,6 +6074,39 @@ GeneratedFile readable_daycare_source(
     };
 }
 
+GeneratedFile readable_hidden_items_source(
+    const HiddenItemCatalogue& hidden_items) {
+    std::ostringstream source;
+    source
+        << "; Exhaustive hidden-item catalogue lifted from the verified Pokemon Red US rev 0 event and coordinate tables.\n"
+        << "; Map/cell, item, and one-shot flag are all ROM-derived.\n\n";
+    for (std::size_t index = 0U;
+         index < hidden_items.items.size(); ++index) {
+        const HiddenItemProgram& item =
+            hidden_items.items[index];
+        source
+            << "hidden_item hidden_item_" << index
+            << "\n    map_id "
+            << static_cast<unsigned>(item.map_id)
+            << "\n    cell "
+            << static_cast<unsigned>(item.x) << ' '
+            << static_cast<unsigned>(item.y)
+            << "\n    item "
+            << source_quote(item.item_name)
+            << " rom_id " << item.item_id
+            << " quantity 1\n    obtained_flag 0x"
+            << std::hex << item.obtained_flag
+            << std::dec << "\n\n";
+    }
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/hidden_items.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -6202,6 +6411,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     DaycareProgram daycare;
     if (!decode_daycare_program(
             rom, daycare, error))
+        return false;
+    HiddenItemCatalogue hidden_items;
+    if (!decode_hidden_item_catalogue(
+            rom, item_names, hidden_items, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -8775,7 +8988,52 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         daycare_money_jump, daycare.texts[14]);
     programs.push_back(std::move(daycare_service));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'O'};
+    for (std::size_t index = 0U;
+         index < hidden_items.items.size(); ++index) {
+        const HiddenItemProgram& item =
+            hidden_items.items[index];
+        DecodedTextProgram found = hidden_items.found;
+        resolve_item_name_buffer(found, item.item_name);
+        Program hidden;
+        hidden.key =
+            "hidden_item_" + std::to_string(index);
+        hidden.trigger_kind =
+            TriggerKind::cell_activation_any_facing;
+        hidden.trigger_map = item.map_id;
+        hidden.trigger_x = item.x;
+        hidden.trigger_y = item.y;
+        hidden.absent_flag = item.obtained_flag;
+        hidden.instructions.push_back(
+            operation(Opcode::lock_input));
+        hidden.instructions.push_back(operation(
+            Opcode::try_give_item, 1U, 0U,
+            item.item_id));
+        const std::size_t hidden_bag_full_jump =
+            hidden.instructions.size();
+        hidden.instructions.push_back(operation(
+            Opcode::jump_if_item_grant_failed));
+        hidden.instructions.push_back(
+            dialogue(found.pages));
+        hidden.instructions.push_back(operation(
+            Opcode::set_flag, 0U, 0U,
+            item.obtained_flag));
+        hidden.instructions.push_back(
+            operation(Opcode::unlock_input));
+        hidden.instructions.push_back(
+            operation(Opcode::end));
+        hidden.instructions[hidden_bag_full_jump].value =
+            static_cast<std::uint32_t>(
+                hidden.instructions.size());
+        hidden.instructions.push_back(
+            dialogue(hidden_items.bag_full.pages));
+        hidden.instructions.push_back(
+            operation(Opcode::unlock_input));
+        hidden.instructions.push_back(
+            operation(Opcode::end));
+        programs.push_back(std::move(hidden));
+    }
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'P'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -8873,6 +9131,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             vermilion_ticket_gate));
     result.files.push_back(
         readable_daycare_source(daycare));
+    result.files.push_back(
+        readable_hidden_items_source(hidden_items));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
