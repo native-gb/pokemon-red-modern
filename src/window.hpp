@@ -2,6 +2,7 @@
 
 #include "settings.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -61,6 +62,7 @@ struct HostWindow {
     GubsyRuntime runtime;
     GubsyFrame frame;
     bool vsync{true};
+    std::uint64_t next_browser_gamepad_scan_ms{};
 };
 
 int effective_render_rate(const PresentationSettings& settings);

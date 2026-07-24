@@ -9,7 +9,56 @@
 #include <cstdint>
 #include <cstdio>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#endif
+
 namespace pokered {
+namespace {
+
+bool refresh_new_browser_gamepads(HostWindow& window) {
+#ifdef __EMSCRIPTEN__
+    const std::uint64_t now = SDL_GetTicks();
+    if (now < window.next_browser_gamepad_scan_ms) return false;
+    window.next_browser_gamepad_scan_ms = now + 500;
+
+    // Browsers expose a connected controller only after its first button
+    // gesture. Detect that transition independently of SDL, then let Gubsy
+    // rebuild SDL's gamepad subsystem and claim the newly visible device.
+    if (emscripten_sample_gamepad_data() != EMSCRIPTEN_RESULT_SUCCESS)
+        return false;
+    int connected = 0;
+    const int slots = emscripten_get_num_gamepads();
+    for (int index = 0; index < slots; ++index) {
+        EmscriptenGamepadEvent gamepad{};
+        if (emscripten_get_gamepad_status(index, &gamepad) ==
+                EMSCRIPTEN_RESULT_SUCCESS &&
+            gamepad.connected)
+            ++connected;
+    }
+
+    const int opened =
+        static_cast<int>(gubsy_get_gamepads(window.runtime).size());
+    if (connected <= opened) {
+        if (opened > 0) assign_unclaimed_gamepads(window.runtime);
+        return false;
+    }
+
+    std::fprintf(stderr,
+                 "[input] Browser exposed %d controller(s); refreshing SDL/Gubsy\n",
+                 connected);
+    gubsy_refresh_gamepads(window.runtime);
+    assign_unclaimed_gamepads(window.runtime);
+    return static_cast<int>(
+               gubsy_get_gamepads(window.runtime).size()) >
+           opened;
+#else
+    (void)window;
+    return false;
+#endif
+}
+
+} // namespace
 
 int effective_render_rate(const PresentationSettings& settings) {
     return settings.motion_interpolation ? settings.render_rate_limit : 60;
@@ -180,6 +229,7 @@ WindowInput poll_window_events(HostWindow& window) {
             (void)SDL_SetWindowFullscreen(window.frame.window, !fullscreen);
         }
     }
+    input.gamepad_changed |= refresh_new_browser_gamepads(window);
     const bool* keyboard = SDL_GetKeyboardState(nullptr);
     input.move_player_left = keyboard[SDL_SCANCODE_A] || keyboard[SDL_SCANCODE_LEFT];
     input.move_player_right = keyboard[SDL_SCANCODE_D] || keyboard[SDL_SCANCODE_RIGHT];
@@ -203,6 +253,9 @@ WindowInput poll_window_events(HostWindow& window) {
 }
 
 void update_window(HostWindow& window, double elapsed) {
+    // SDL events maintain the device list; this snapshot supplies the current
+    // buttons, triggers, and sticks consumed by semantic control bindings.
+    gubsy_update_device_state(window.runtime);
     gubsy_update_runtime(window.runtime, static_cast<float>(elapsed));
     window.frame = gubsy_get_frame(window.runtime);
     apply_nearest_sampling(window);

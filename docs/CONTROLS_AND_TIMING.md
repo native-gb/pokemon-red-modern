@@ -13,12 +13,21 @@ scancodes in gameplay:
 Gubsy owns physical-device discovery and translates keyboard or controller
 inputs through one of two persistent profiles. Primary and Alternate profiles
 can each be rebound independently. Missing profiles receive project defaults;
-existing user profiles are not replaced at startup.
+existing user profiles are not replaced at startup. The host snapshots current
+controller buttons, triggers, and sticks once per rendered frame after SDL
+events have updated the connected-device list.
 
 Controllers are assigned to the local player automatically at startup and on
 hot-plug. The F1 player interface exposes manual rescan, SDL/Gubsy detection
 diagnostics, assignment state, profile selection, per-action binding editing,
 trigger editing, removal, and default restoration.
+
+On the web, a browser may conceal an already connected controller until its
+first button gesture. The host samples the browser Gamepad API twice per second
+and automatically refreshes SDL/Gubsy when a newly exposed controller appears;
+the player does not need keyboard access to open tools and request a rescan.
+The manual control-panel rescan remains available for unusual browser or device
+mapping failures.
 
 The player tools can be opened without a keyboard by pressing the bound Menu
 action or Start and Select together. ImGui controller navigation is active only
