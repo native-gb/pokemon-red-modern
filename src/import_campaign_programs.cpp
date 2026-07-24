@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -177,6 +178,22 @@ constexpr std::size_t kMtMoonB2FOkShareTextOffset = 0x049F8AU;
 constexpr std::size_t kMtMoonB2FEachTakeOneTextOffset = 0x049F8FU;
 constexpr std::size_t kMtMoonB2FPokemonLabTextOffset = 0x049F94U;
 constexpr std::size_t kMtMoonB2FThenMineTextOffset = 0x049F99U;
+constexpr std::size_t kMtMoonPokecenterObjectOffset = 0x049376U;
+constexpr std::size_t kMtMoonMagikarpEventCheckOffset = 0x0492EDU;
+constexpr std::size_t kMtMoonMagikarpPriceOffset = 0x04930CU;
+constexpr std::size_t kMtMoonMagikarpGrantOffset = 0x04931EU;
+constexpr std::size_t kMtMoonMagikarpEventSetOffset = 0x049347U;
+constexpr std::size_t kMtMoonMagikarpOfferTextOffset = 0x04935CU;
+constexpr std::size_t kMtMoonMagikarpNoTextOffset = 0x049361U;
+constexpr std::size_t kMtMoonMagikarpNoMoneyTextOffset = 0x049366U;
+constexpr std::size_t kMtMoonMagikarpNoRefundsTextOffset = 0x04936BU;
+constexpr std::size_t kGotPokemonTextOffset = 0x04FE39U;
+constexpr std::size_t kSentPokemonToBoxTextOffset = 0x04FE3FU;
+constexpr std::size_t kPokemonBoxFullTextOffset = 0x04FE44U;
+constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
+constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
+constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
+constexpr std::size_t kStorageBoxCountOffset = 0x0739C1U;
 constexpr std::size_t kPokedexOrderOffset = 0x041024U;
 constexpr std::size_t kInternalSpeciesCount = 190U;
 constexpr std::uint8_t kTrainerOpponentOffset = 0xC8U;
@@ -215,6 +232,11 @@ enum class Opcode : std::uint8_t {
     end_if_choice_no,
     set_variable,
     give_pokemon,
+    try_give_pokemon,
+    jump_if_pokemon_grant_failed,
+    say_if_pokemon_sent_to_box,
+    jump_if_money_below,
+    take_money,
     nickname_last_party_member_if_yes,
     player_path,
     give_item,
@@ -493,6 +515,29 @@ struct MtMoonFossilProgram {
     DecodedTextProgram then_mine;
 };
 
+struct MtMoonMagikarpProgram {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::uint32_t bought_flag{};
+    std::uint32_t price{};
+    std::uint8_t species_dex{};
+    std::uint8_t level{};
+    DecodedTextProgram offer;
+    DecodedTextProgram chose_no;
+    DecodedTextProgram no_money;
+    DecodedTextProgram no_refunds;
+    DecodedTextProgram got_pokemon;
+    DecodedTextProgram sent_to_box;
+    DecodedTextProgram box_full;
+};
+
+struct CampaignInitialState {
+    std::uint32_t money{};
+    std::uint8_t party_capacity{};
+    std::uint8_t storage_box_count{};
+    std::uint16_t storage_box_capacity{};
+};
+
 Instruction operation(Opcode opcode, std::uint8_t a = 0U, std::uint8_t b = 0U,
                       std::uint32_t value = 0U) {
     Instruction result;
@@ -662,6 +707,56 @@ bool decode_inventory_stack_capacity(
         return false;
     }
     result = rom[kBagInventoryCapacityOffset];
+    return true;
+}
+
+bool decode_campaign_initial_state(
+    std::span<const std::uint8_t> rom,
+    CampaignInitialState& result, std::string& error) {
+    constexpr std::array<std::uint8_t, 7> money_signature{
+        0x3EU, 0x30U, 0x32U, 0xAFU, 0x22U, 0x23U, 0x77U};
+    if (!has_bytes(
+            rom, kInitialMoneyCodeOffset, money_signature) ||
+        kGivePokemonPartyCapacityOffset == 0U ||
+        kGivePokemonPartyCapacityOffset >= rom.size() ||
+        kGivePokemonBoxCapacityOffset == 0U ||
+        kGivePokemonBoxCapacityOffset >= rom.size() ||
+        kStorageBoxCountOffset == 0U ||
+        kStorageBoxCountOffset >= rom.size() ||
+        rom[kGivePokemonPartyCapacityOffset - 1U] != 0xFEU ||
+        rom[kGivePokemonBoxCapacityOffset - 1U] != 0xFEU ||
+        rom[kStorageBoxCountOffset - 1U] != 0x3EU) {
+        error =
+            "campaign initial economy and storage state does not match the verified ROM";
+        return false;
+    }
+    const auto bcd_byte = [](std::uint8_t value) {
+        return static_cast<std::uint32_t>(
+            (value >> 4U) * 10U + (value & 0x0FU));
+    };
+    const std::uint8_t middle_money =
+        rom[kInitialMoneyCodeOffset + 1U];
+    if ((middle_money & 0x0FU) > 9U ||
+        (middle_money >> 4U) > 9U) {
+        error =
+            "campaign initial money contains invalid packed BCD";
+        return false;
+    }
+    result = {
+        .money = bcd_byte(middle_money) * 100U,
+        .party_capacity =
+            rom[kGivePokemonPartyCapacityOffset],
+        .storage_box_count = rom[kStorageBoxCountOffset],
+        .storage_box_capacity =
+            rom[kGivePokemonBoxCapacityOffset],
+    };
+    if (result.money == 0U || result.party_capacity == 0U ||
+        result.storage_box_count == 0U ||
+        result.storage_box_capacity == 0U) {
+        error =
+            "campaign initial economy and storage state is empty";
+        return false;
+    }
     return true;
 }
 
@@ -2412,6 +2507,174 @@ bool decode_mt_moon_fossil_program(
     return true;
 }
 
+bool decode_mt_moon_magikarp_program(
+    std::span<const std::uint8_t> rom,
+    MtMoonMagikarpProgram& result, std::string& error) {
+    result = {};
+    constexpr std::uint8_t map_id = 68U;
+    constexpr std::uint8_t salesman_text_id = 4U;
+    constexpr std::array<std::uint8_t, 8> price_signature{
+        0xE0U, 0x9FU, 0xE0U, 0xA1U,
+        0x3EU, 0x05U, 0xE0U, 0xA0U};
+    constexpr std::array<std::uint8_t, 7> event_check_signature{
+        0xFAU, 0xC6U, 0xD7U, 0x87U,
+        0xDAU, 0x53U, 0x53U};
+    if (!has_bytes(
+            rom, kMtMoonMagikarpEventCheckOffset,
+            event_check_signature) ||
+        !has_bytes(
+            rom, kMtMoonMagikarpPriceOffset,
+            price_signature) ||
+        kMtMoonMagikarpGrantOffset + 3U > rom.size() ||
+        rom[kMtMoonMagikarpGrantOffset] != 0x01U ||
+        kMtMoonPokecenterObjectOffset + 12U > rom.size() ||
+        rom[kMtMoonPokecenterObjectOffset + 1U] != 2U ||
+        rom[kMtMoonPokecenterObjectOffset + 10U] != 0U ||
+        rom[kMtMoonPokecenterObjectOffset + 11U] == 0U) {
+        error =
+            "Mt. Moon Magikarp sale control flow does not match the verified ROM";
+        return false;
+    }
+
+    // Resolve the script owner from the object records. The imported
+    // campaign program never relies on an engine-side Red actor constant.
+    const std::uint8_t object_count =
+        rom[kMtMoonPokecenterObjectOffset + 11U];
+    std::size_t object_cursor =
+        kMtMoonPokecenterObjectOffset + 12U;
+    for (std::uint8_t actor = 1U;
+         actor <= object_count; ++actor) {
+        if (object_cursor + 6U > rom.size()) {
+            error =
+                "Mt. Moon Pokecenter object table is truncated";
+            return false;
+        }
+        const std::uint8_t text_flags =
+            rom[object_cursor + 5U];
+        if ((text_flags & 0x3FU) == salesman_text_id) {
+            if (result.actor_index != 0U) {
+                error =
+                    "Mt. Moon Magikarp salesman owner is ambiguous";
+                return false;
+            }
+            result.actor_index = actor;
+        }
+        object_cursor +=
+            (text_flags & 0xC0U) == 0U ? 6U : 8U;
+    }
+    if (result.actor_index == 0U) {
+        error =
+            "Mt. Moon Magikarp salesman owner is missing";
+        return false;
+    }
+
+    const std::uint16_t event_address =
+        static_cast<std::uint16_t>(
+            rom[kMtMoonMagikarpEventCheckOffset + 1U] |
+            static_cast<std::uint16_t>(
+                rom[kMtMoonMagikarpEventCheckOffset + 2U])
+                << 8U);
+    result.map_id = map_id;
+    result.bought_flag =
+        static_cast<std::uint32_t>(event_address) * 8U + 7U;
+    std::uint32_t set_flag = 0U;
+    if (!decode_set_event(
+            rom, kMtMoonMagikarpEventSetOffset,
+            set_flag, error) ||
+        set_flag != result.bought_flag) {
+        if (error.empty())
+            error =
+                "Mt. Moon Magikarp sale event branches disagree";
+        return false;
+    }
+
+    const std::uint8_t price_bcd =
+        rom[kMtMoonMagikarpPriceOffset + 5U];
+    if ((price_bcd & 0x0FU) > 9U ||
+        (price_bcd >> 4U) > 9U) {
+        error =
+            "Mt. Moon Magikarp price is not valid packed BCD";
+        return false;
+    }
+    result.price = static_cast<std::uint32_t>(
+                       (price_bcd >> 4U) * 10U +
+                       (price_bcd & 0x0FU)) *
+                   100U;
+    result.level = rom[kMtMoonMagikarpGrantOffset + 1U];
+    result.species_dex = dex_for_internal_species(
+        rom, rom[kMtMoonMagikarpGrantOffset + 2U]);
+    if (result.price == 0U || result.level == 0U ||
+        result.species_dex == 0U) {
+        error =
+            "Mt. Moon Magikarp sale tuple is empty";
+        return false;
+    }
+
+    const std::array<
+        std::tuple<std::uint8_t, std::size_t,
+                   DecodedTextProgram*>,
+        7>
+        text_programs{{
+            {0x12U, kMtMoonMagikarpOfferTextOffset,
+             &result.offer},
+            {0x12U, kMtMoonMagikarpNoTextOffset,
+             &result.chose_no},
+            {0x12U, kMtMoonMagikarpNoMoneyTextOffset,
+             &result.no_money},
+            {0x12U, kMtMoonMagikarpNoRefundsTextOffset,
+             &result.no_refunds},
+            {0x13U, kGotPokemonTextOffset,
+             &result.got_pokemon},
+            {0x13U, kSentPokemonToBoxTextOffset,
+             &result.sent_to_box},
+            {0x13U, kPokemonBoxFullTextOffset,
+             &result.box_full},
+        }};
+    for (const auto& [bank, offset, text] : text_programs)
+        if (!decode_text_program(rom, bank, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Mt. Moon Magikarp sale dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+
+    bool owns_got_name = false;
+    for (std::string& page : result.got_pokemon.pages) {
+        const std::size_t name = page.find("{name_buffer}");
+        if (name == std::string::npos) continue;
+        owns_got_name = true;
+        // LINE terminates the preceding literal before the separate
+        // text_ram command; preserve that imported cursor operation.
+        if (name != 0U && page[name - 1U] != '\n')
+            page.insert(name, "\n");
+    }
+    bool owns_box_nickname = false;
+    bool owns_box_number = false;
+    for (std::string& page : result.sent_to_box.pages) {
+        const std::size_t nickname =
+            page.find("{ram_de06}");
+        owns_box_nickname =
+            owns_box_nickname ||
+            nickname != std::string::npos;
+        owns_box_number =
+            owns_box_number ||
+            page.find("{ram_cf4b}") != std::string::npos;
+        if (nickname != std::string::npos &&
+            nickname != 0U &&
+            page[nickname - 1U] != '\n')
+            page.insert(nickname, "\n");
+        replace_all(page, "{ram_de06}", "{name_buffer}");
+        replace_all(page, "{ram_cf4b}", "{box_number}");
+    }
+    if (!owns_got_name || !owns_box_nickname ||
+        !owns_box_number) {
+        error =
+            "Mt. Moon Magikarp result is missing its imported dynamic fields";
+        return false;
+    }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -3431,6 +3694,58 @@ GeneratedFile readable_mt_moon_fossil_source(
     };
 }
 
+GeneratedFile readable_mt_moon_magikarp_source(
+    const MtMoonMagikarpProgram& sale) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Mt. Moon Pokecenter program.\n"
+        << "; Owner, event, BCD price, Pokemon tuple, storage results, and dialogue are ROM-derived.\n\n"
+        << "campaign_program mt_moon_pokecenter_magikarp_sale\n"
+        << "    trigger map mt_moon_pokecenter actor_activation "
+        << static_cast<unsigned>(sale.actor_index) << '\n'
+        << "    absent_flag 0x" << std::hex
+        << sale.bought_flag << std::dec << '\n'
+        << "    ask_yes_no\n"
+        << page_source(sale.offer.pages, "        ")
+        << "    if_no\n"
+        << "        say\n"
+        << page_source(sale.chose_no.pages, "            ")
+        << "    if_yes\n"
+        << "        require_money " << sale.price << '\n'
+        << "        if_insufficient_money\n"
+        << "            say\n"
+        << page_source(sale.no_money.pages, "                ")
+        << "        else\n"
+        << "            try_give_pokemon dex "
+        << static_cast<unsigned>(sale.species_dex)
+        << " level " << static_cast<unsigned>(sale.level) << '\n'
+        << "            if_storage_full\n"
+        << "                say\n"
+        << page_source(sale.box_full.pages, "                    ")
+        << "            else\n"
+        << "                say\n"
+        << page_source(sale.got_pokemon.pages, "                    ")
+        << "                if_sent_to_box say\n"
+        << page_source(sale.sent_to_box.pages, "                    ")
+        << "                take_money " << sale.price << '\n'
+        << "                set_flag 0x" << std::hex
+        << sale.bought_flag << std::dec << "\n\n"
+        << "campaign_program mt_moon_pokecenter_magikarp_no_refunds\n"
+        << "    trigger map mt_moon_pokecenter actor_activation "
+        << static_cast<unsigned>(sale.actor_index) << '\n'
+        << "    required_flag 0x" << std::hex
+        << sale.bought_flag << std::dec << '\n'
+        << "    say\n"
+        << page_source(sale.no_refunds.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/mt_moon_magikarp_sale.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -3539,6 +3854,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     std::uint16_t inventory_stack_capacity = 0U;
     if (!decode_inventory_stack_capacity(
             rom, inventory_stack_capacity, error))
+        return false;
+    CampaignInitialState initial_state;
+    if (!decode_campaign_initial_state(
+            rom, initial_state, error))
         return false;
     std::vector<ImportedItemName> item_names;
     DecodedTextProgram found_item;
@@ -3691,6 +4010,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_mt_moon_fossil_program(
             rom, toggle_actors, item_names,
             mt_moon_fossils, error))
+        return false;
+    MtMoonMagikarpProgram mt_moon_magikarp;
+    if (!decode_mt_moon_magikarp_program(
+            rom, mt_moon_magikarp, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -4977,9 +5300,128 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         mt_moon_fossils.helix_received,
         PathCommand::up));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'F'};
+    Program magikarp_sale;
+    magikarp_sale.key =
+        "mt_moon_pokecenter_magikarp_sale";
+    magikarp_sale.trigger_kind =
+        TriggerKind::actor_activation;
+    magikarp_sale.trigger_map =
+        mt_moon_magikarp.map_id;
+    magikarp_sale.trigger_x =
+        mt_moon_magikarp.actor_index;
+    magikarp_sale.absent_flag =
+        mt_moon_magikarp.bought_flag;
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::lock_input));
+    Instruction magikarp_offer =
+        operation(Opcode::ask_yes_no);
+    magikarp_offer.pages =
+        mt_moon_magikarp.offer.pages;
+    magikarp_sale.instructions.push_back(
+        std::move(magikarp_offer));
+    const std::size_t magikarp_no_jump =
+        magikarp_sale.instructions.size();
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::jump_if_choice_no));
+    const std::size_t magikarp_no_money_jump =
+        magikarp_sale.instructions.size();
+    magikarp_sale.instructions.push_back(operation(
+        Opcode::jump_if_money_below,
+        static_cast<std::uint8_t>(
+            mt_moon_magikarp.price & 0xFFU),
+        static_cast<std::uint8_t>(
+            mt_moon_magikarp.price >> 8U)));
+    magikarp_sale.instructions.push_back(operation(
+        Opcode::try_give_pokemon,
+        mt_moon_magikarp.level, 0U,
+        mt_moon_magikarp.species_dex));
+    const std::size_t magikarp_box_full_jump =
+        magikarp_sale.instructions.size();
+    magikarp_sale.instructions.push_back(
+        operation(
+            Opcode::jump_if_pokemon_grant_failed));
+    magikarp_sale.instructions.push_back(
+        species_dialogue(
+            mt_moon_magikarp.got_pokemon.pages,
+            mt_moon_magikarp.species_dex));
+    Instruction magikarp_sent =
+        operation(Opcode::say_if_pokemon_sent_to_box);
+    magikarp_sent.value =
+        mt_moon_magikarp.species_dex;
+    magikarp_sent.pages =
+        mt_moon_magikarp.sent_to_box.pages;
+    magikarp_sale.instructions.push_back(
+        std::move(magikarp_sent));
+    magikarp_sale.instructions.push_back(operation(
+        Opcode::take_money, 0U, 0U,
+        mt_moon_magikarp.price));
+    magikarp_sale.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        mt_moon_magikarp.bought_flag));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::unlock_input));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::end));
+
+    magikarp_sale.instructions[magikarp_no_jump].value =
+        static_cast<std::uint32_t>(
+            magikarp_sale.instructions.size());
+    magikarp_sale.instructions.push_back(
+        dialogue(mt_moon_magikarp.chose_no.pages));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::unlock_input));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::end));
+
+    magikarp_sale.instructions[magikarp_no_money_jump].value =
+        static_cast<std::uint32_t>(
+            magikarp_sale.instructions.size());
+    magikarp_sale.instructions.push_back(
+        dialogue(mt_moon_magikarp.no_money.pages));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::unlock_input));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::end));
+
+    magikarp_sale.instructions[magikarp_box_full_jump].value =
+        static_cast<std::uint32_t>(
+            magikarp_sale.instructions.size());
+    magikarp_sale.instructions.push_back(
+        dialogue(mt_moon_magikarp.box_full.pages));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::unlock_input));
+    magikarp_sale.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(magikarp_sale));
+
+    Program magikarp_no_refunds;
+    magikarp_no_refunds.key =
+        "mt_moon_pokecenter_magikarp_no_refunds";
+    magikarp_no_refunds.trigger_kind =
+        TriggerKind::actor_activation;
+    magikarp_no_refunds.trigger_map =
+        mt_moon_magikarp.map_id;
+    magikarp_no_refunds.trigger_x =
+        mt_moon_magikarp.actor_index;
+    magikarp_no_refunds.required_flag =
+        mt_moon_magikarp.bought_flag;
+    magikarp_no_refunds.instructions.push_back(
+        operation(Opcode::lock_input));
+    magikarp_no_refunds.instructions.push_back(
+        dialogue(mt_moon_magikarp.no_refunds.pages));
+    magikarp_no_refunds.instructions.push_back(
+        operation(Opcode::unlock_input));
+    magikarp_no_refunds.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(magikarp_no_refunds));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'G'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
+    write_u32(cache, initial_state.money);
+    cache.push_back(initial_state.party_capacity);
+    cache.push_back(initial_state.storage_box_count);
+    write_u16(cache, initial_state.storage_box_capacity);
     write_u16(cache, item_names.size());
     for (const ImportedItemName& item : item_names) {
         write_u16(cache, item.item_id);
@@ -5045,6 +5487,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         readable_pewter_city_source(pewter_city));
     result.files.push_back(
         readable_mt_moon_fossil_source(mt_moon_fossils));
+    result.files.push_back(
+        readable_mt_moon_magikarp_source(
+            mt_moon_magikarp));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

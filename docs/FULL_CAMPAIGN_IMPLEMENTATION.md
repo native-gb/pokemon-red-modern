@@ -836,10 +836,27 @@ victory, verifies the conditional encounter-suppression zone, takes the Dome
 Fossil, checks inventory and both actor removals, and verifies the Super Nerd's
 post-choice response.
 
+The Mt. Moon Pokecenter Magikarp transaction is now a fully imported campaign
+program rather than a shop-shaped engine special case. The importer derives
+the salesman owner, event bit, packed-BCD price, internal-species conversion,
+level, and all result text from the verified ROM. Generic economy and Pokemon
+storage state use the imported 3000 starting money, six-member party limit,
+twelve boxes, and twenty-Pokemon current-box capacity. The transaction
+preserves Red's ordering: insufficient money fails before creation, a full
+party sends the Pokemon to the selected box, a full selected box charges
+nothing and leaves the event clear, and success charges 500 exactly once.
+Dynamic receipt text resolves the imported species and box-number fields.
+
+The focused campaign fixture fills both the party and current box, accepts the
+offer, and verifies the full-box text, unchanged money, and retryable event. It
+then clears the box, retries, verifies the imported level-5 Magikarp in box 1
+and the 3000-to-2500 money transition, and confirms the permanent no-refunds
+branch. The readable source is generated at
+`source/scripts/campaign/mt_moon_magikarp_sale.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-the Mt. Moon Pokecenter Magikarp sale and the Route 4/Cerulean campaign slice.
-Every later map program still requires semantic lifting and the remaining
-acceptance gates above stay open.
+the Route 4/Cerulean campaign slice. Every later map program still requires
+semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance
 

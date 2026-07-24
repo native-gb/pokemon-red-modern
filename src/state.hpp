@@ -44,6 +44,8 @@ struct CampaignFiberState {
     std::uint8_t naming_party_index{};
     std::uint8_t last_choice{};
     bool last_item_grant_succeeded{};
+    bool last_pokemon_grant_succeeded{};
+    bool last_pokemon_sent_to_box{};
     bool active{};
 };
 
@@ -51,6 +53,12 @@ struct CampaignTrainerBattleRequest {
     std::uint8_t trainer_class_id{};
     std::uint16_t trainer_party_index{};
     bool pending{};
+};
+
+struct PokemonStorageState {
+    std::vector<std::vector<PokemonState>> boxes;
+    std::uint16_t box_capacity{};
+    std::uint8_t current_box{};
 };
 
 // Campaign-owned state is separate from host presentation settings and from
@@ -62,6 +70,7 @@ struct CampaignState {
     std::array<std::uint8_t, 3> options{};
     std::uint16_t trainer_id{};
     PartyState party;
+    PokemonStorageState storage;
     InventoryState inventory;
     BattleState battle;
     CampaignBattleOwner battle_owner;
@@ -69,7 +78,9 @@ struct CampaignState {
     CampaignFiberState fiber;
     std::vector<std::uint8_t> flags;
     std::vector<std::uint16_t> variables;
+    std::uint32_t money{};
     std::uint64_t play_steps{};
+    bool imported_initial_state{};
     bool input_locked{};
     bool initialized{};
 };

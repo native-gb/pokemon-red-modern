@@ -38,6 +38,11 @@ enum class CampaignOpcode : std::uint8_t {
     end_if_choice_no,
     set_variable,
     give_pokemon,
+    try_give_pokemon,
+    jump_if_pokemon_grant_failed,
+    say_if_pokemon_sent_to_box,
+    jump_if_money_below,
+    take_money,
     nickname_last_party_member_if_yes,
     player_path,
     give_item,
@@ -114,6 +119,10 @@ struct CampaignProgramCatalog {
     NamingProfile naming;
     std::string nickname_heading;
     std::uint16_t inventory_stack_capacity{};
+    std::uint32_t starting_money{};
+    std::uint8_t party_capacity{};
+    std::uint8_t storage_box_count{};
+    std::uint16_t storage_box_capacity{};
     std::vector<CampaignItemName> item_names;
     std::vector<std::string> found_item_pages;
     std::vector<std::string> no_item_room_pages;

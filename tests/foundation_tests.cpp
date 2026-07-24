@@ -1745,7 +1745,11 @@ void test_local_pallet_campaign_program(TestState& state) {
     check(state,
           programs.naming.maximum_length == 10U &&
               programs.inventory_stack_capacity == 20U &&
-              programs.programs.size() == 42U &&
+              programs.starting_money == 3000U &&
+              programs.party_capacity == 6U &&
+              programs.storage_box_count == 12U &&
+              programs.storage_box_capacity == 20U &&
+              programs.programs.size() == 44U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1791,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 18> source_names{
+    constexpr std::array<std::string_view, 19> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1810,6 +1814,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "route_1_potion.sexpr",
         "pewter_city.sexpr",
         "mt_moon_fossils.sexpr",
+        "mt_moon_magikarp_sale.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -2922,6 +2927,132 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::inventory_item_quantity(
                   campaign.inventory, 0xEAU) == 1U,
           "Brock retry grants imported TM34 and records its event");
+
+    // The imported Mt. Moon sale exercises campaign economy and the original
+    // party/current-box storage rule. A full box must leave both money and
+    // event untouched; room in the same box accepts Magikarp and charges once.
+    check(state,
+          campaign.imported_initial_state &&
+              campaign.money == 3000U &&
+              campaign.storage.boxes.size() == 12U &&
+              campaign.storage.box_capacity == 20U,
+          "campaign initializes ROM-derived money and Pokemon storage");
+    const std::size_t original_party_size =
+        campaign.party.members.size();
+    check(state, original_party_size != 0U,
+          "Magikarp sale fixture owns a starter");
+    while (campaign.party.members.size() <
+           programs.party_capacity)
+        campaign.party.members.push_back(
+            campaign.party.members.front());
+    std::vector<pokered::PokemonState>& current_box =
+        campaign.storage.boxes[
+            campaign.storage.current_box];
+    current_box.assign(
+        programs.storage_box_capacity,
+        campaign.party.members.front());
+
+    world.dialogue = {};
+    world.choice = {};
+    world.last_actor_activation = {
+        .map_id = 68U,
+        .actor_index = 4U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.choice.open &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "Have I got a deal") != std::string::npos,
+          "Mt. Moon salesman opens the imported offer");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate =
+                 world.dialogue.open ||
+                 world.choice.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "full-box Magikarp sale advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              campaign.money == 3000U &&
+              !pokered::campaign_flag(
+                  campaign, 0x6BE37U) &&
+              current_box.size() == 20U,
+          "full current box refuses Magikarp without charging");
+
+    current_box.clear();
+    world.dialogue = {};
+    world.choice = {};
+    world.last_actor_activation = {
+        .map_id = 68U,
+        .actor_index = 4U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Mt. Moon salesman permits a retry after storage failure");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate =
+                 world.dialogue.open ||
+                 world.choice.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "successful Magikarp sale advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              campaign.money == 2500U &&
+              pokered::campaign_flag(
+                  campaign, 0x6BE37U) &&
+              current_box.size() == 1U &&
+              current_box.front().species_dex == 129U &&
+              current_box.front().level == 5U,
+          "sale sends imported level-5 Magikarp to the current box and charges 500");
+    campaign.party.members.resize(original_party_size);
+
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 68U,
+        .actor_index = 4U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "don't") != std::string::npos,
+          "repeat salesman interaction uses imported no-refunds branch");
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Magikarp no-refunds branch completes");
+        if (!error.empty()) break;
+    }
 
     world.dialogue = {};
     world.last_actor_activation = {

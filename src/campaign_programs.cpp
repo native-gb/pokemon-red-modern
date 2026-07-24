@@ -124,8 +124,11 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::set_variable:
         return instruction.a < 64U && instruction.value <= 0xFFFFU;
     case CampaignOpcode::give_pokemon:
+    case CampaignOpcode::try_give_pokemon:
         return instruction.a != 0U && instruction.a <= 100U &&
                instruction.value != 0U && instruction.value <= 0xFFU;
+    case CampaignOpcode::say_if_pokemon_sent_to_box:
+        return !instruction.pages.empty();
     case CampaignOpcode::nickname_last_party_member_if_yes:
         return instruction.a == 0U && instruction.b == 0U &&
                instruction.value == 0U && instruction.pages.empty() &&
@@ -163,8 +166,14 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.player_path.empty();
     case CampaignOpcode::jump_if_player_y:
     case CampaignOpcode::jump_if_item_grant_failed:
+    case CampaignOpcode::jump_if_pokemon_grant_failed:
     case CampaignOpcode::jump_if_choice_no:
         return instruction.b == 0U && instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::jump_if_money_below:
+        return (instruction.a != 0U || instruction.b != 0U) &&
+               instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
     case CampaignOpcode::jump:
@@ -174,6 +183,9 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.player_path.empty();
     case CampaignOpcode::wait_ticks:
         return instruction.value != 0U;
+    case CampaignOpcode::take_money:
+        return instruction.a == 0U && instruction.b == 0U &&
+               instruction.value != 0U;
     case CampaignOpcode::start_trainer_battle:
         return instruction.a != 0U && instruction.b == 0U &&
                instruction.value <= 0xFFFFU;
@@ -257,6 +269,13 @@ void open_program_dialogue(WorldState& world,
             }
         }
     }
+    for (std::string& page : pages)
+        replace_all(
+            page, "{box_number}",
+            std::to_string(
+                static_cast<unsigned>(
+                    campaign.storage.current_box) +
+                1U));
     open_world_dialogue(world, campaign, pages);
 }
 
@@ -268,6 +287,58 @@ const CampaignItemName* find_item_name(
             return item.item_id == item_id;
         });
     return found == programs.item_names.end() ? nullptr : &*found;
+}
+
+bool grant_campaign_pokemon(
+    const CampaignProgramCatalog& programs,
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules, WorldState& world,
+    CampaignState& campaign, std::uint8_t species_dex,
+    std::uint8_t level, bool& succeeded, bool& sent_to_box,
+    std::string& error) {
+    succeeded = false;
+    sent_to_box = false;
+    std::vector<PokemonState>* destination = nullptr;
+    if (campaign.party.members.size() < programs.party_capacity)
+        destination = &campaign.party.members;
+    else if (campaign.storage.current_box <
+                 campaign.storage.boxes.size() &&
+             campaign.storage.boxes[
+                 campaign.storage.current_box].size() <
+                 campaign.storage.box_capacity) {
+        destination =
+            &campaign.storage.boxes[campaign.storage.current_box];
+        sent_to_box = true;
+    } else {
+        error.clear();
+        return true;
+    }
+
+    const StatFormulaProgram* stat_formula = find_stat_formula(
+        battle_rules, battle_rules.original_stat_formula);
+    if (stat_formula == nullptr) {
+        error =
+            "campaign Pokemon creation lost its stat formula";
+        return false;
+    }
+    const std::uint8_t first = next_world_random_byte(world);
+    const std::uint8_t second = next_world_random_byte(world);
+    PokemonState pokemon;
+    if (!build_pokemon(
+            rules, *stat_formula, species_dex, level,
+            {
+                static_cast<std::uint8_t>(first >> 4U),
+                static_cast<std::uint8_t>(first & 0x0FU),
+                static_cast<std::uint8_t>(second >> 4U),
+                static_cast<std::uint8_t>(second & 0x0FU),
+            },
+            campaign.trainer_id, campaign.player_name, pokemon,
+            error))
+        return false;
+    destination->push_back(std::move(pokemon));
+    succeeded = true;
+    error.clear();
+    return true;
 }
 
 bool service_loose_item_pickup(
@@ -327,7 +398,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'F'}) {
+        magic != std::array{'P', 'C', 'P', 'G'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -350,6 +421,14 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
         !read_string(input, loaded.nickname_heading) ||
         !read_u16(input, loaded.inventory_stack_capacity) ||
         loaded.inventory_stack_capacity == 0U ||
+        !read_u32(input, loaded.starting_money) ||
+        !read_u8(input, loaded.party_capacity) ||
+        !read_u8(input, loaded.storage_box_count) ||
+        !read_u16(input, loaded.storage_box_capacity) ||
+        loaded.starting_money == 0U ||
+        loaded.party_capacity == 0U ||
+        loaded.storage_box_count == 0U ||
+        loaded.storage_box_capacity == 0U ||
         !valid_naming_profile(loaded.naming)) {
         error = "campaign metadata is invalid";
         return false;
@@ -496,6 +575,10 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
                  instruction.opcode ==
                      CampaignOpcode::jump_if_item_grant_failed ||
                  instruction.opcode ==
+                     CampaignOpcode::jump_if_pokemon_grant_failed ||
+                 instruction.opcode ==
+                     CampaignOpcode::jump_if_money_below ||
+                 instruction.opcode ==
                      CampaignOpcode::jump_if_choice_no) &&
                 instruction.value >= program.instructions.size()) {
                 error =
@@ -571,6 +654,15 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
     if (campaign.inventory.stack_capacity == 0U)
         campaign.inventory.stack_capacity =
             programs.inventory_stack_capacity;
+    if (!campaign.imported_initial_state) {
+        campaign.money = programs.starting_money;
+        campaign.storage.box_capacity =
+            programs.storage_box_capacity;
+        campaign.storage.boxes.resize(
+            programs.storage_box_count);
+        campaign.storage.current_box = 0U;
+        campaign.imported_initial_state = true;
+    }
 
     CampaignFiberState& fiber = campaign.fiber;
     if (!fiber.active) {
@@ -762,36 +854,50 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 campaign, instruction.a,
                 static_cast<std::uint16_t>(instruction.value));
             break;
-        case CampaignOpcode::give_pokemon: {
-            if (campaign.party.members.size() >= 6U) {
-                error = "campaign cannot add a Pokemon to a full party";
-                return false;
-            }
-            const StatFormulaProgram* stat_formula = find_stat_formula(
-                battle_rules, battle_rules.original_stat_formula);
-            if (stat_formula == nullptr) {
-                error = "campaign Pokemon creation lost its stat formula";
-                return false;
-            }
-            const std::uint8_t first = next_world_random_byte(world);
-            const std::uint8_t second = next_world_random_byte(world);
-            PokemonState pokemon;
-            if (!build_pokemon(
-                    rules, *stat_formula,
+        case CampaignOpcode::give_pokemon:
+        case CampaignOpcode::try_give_pokemon: {
+            if (!grant_campaign_pokemon(
+                    programs, rules, battle_rules, world, campaign,
                     static_cast<std::uint8_t>(instruction.value),
                     instruction.a,
-                    {
-                        static_cast<std::uint8_t>(first >> 4U),
-                        static_cast<std::uint8_t>(first & 0x0FU),
-                        static_cast<std::uint8_t>(second >> 4U),
-                        static_cast<std::uint8_t>(second & 0x0FU),
-                    },
-                    campaign.trainer_id, campaign.player_name, pokemon,
-                    error))
+                    fiber.last_pokemon_grant_succeeded,
+                    fiber.last_pokemon_sent_to_box, error))
                 return false;
-            campaign.party.members.push_back(std::move(pokemon));
+            if (instruction.opcode == CampaignOpcode::give_pokemon &&
+                !fiber.last_pokemon_grant_succeeded) {
+                error =
+                    "campaign could not add a Pokemon to the party or current box";
+                return false;
+            }
             break;
         }
+        case CampaignOpcode::jump_if_pokemon_grant_failed:
+            if (!fiber.last_pokemon_grant_succeeded)
+                fiber.instruction_index = instruction.value;
+            break;
+        case CampaignOpcode::say_if_pokemon_sent_to_box:
+            if (!fiber.last_pokemon_sent_to_box) break;
+            open_program_dialogue(
+                world, campaign, rules, instruction);
+            fiber.waiting_dialogue = world.dialogue.open;
+            error.clear();
+            return true;
+        case CampaignOpcode::jump_if_money_below: {
+            const std::uint32_t price =
+                static_cast<std::uint32_t>(instruction.a) |
+                static_cast<std::uint32_t>(instruction.b) << 8U;
+            if (campaign.money < price)
+                fiber.instruction_index = instruction.value;
+            break;
+        }
+        case CampaignOpcode::take_money:
+            if (campaign.money < instruction.value) {
+                error =
+                    "campaign attempted to spend unavailable money";
+                return false;
+            }
+            campaign.money -= instruction.value;
+            break;
         case CampaignOpcode::nickname_last_party_member_if_yes: {
             if (fiber.last_choice != 0U) break;
             if (campaign.party.members.empty()) {
