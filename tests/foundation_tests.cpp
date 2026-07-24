@@ -495,6 +495,103 @@ void test_world_spaces_and_warps(TestState& state) {
                                      std::vector<std::string>{
                                          "Hello PLAYER. RIVAL is waiting."},
           "world dialogue consumes campaign-owned naming results");
+    world.dialogue = {};
+
+    // A decoded nurse is one generic imported interaction family. Its five
+    // shared text resources, choice, healing mutation, and checkpoint do not
+    // depend on a particular Pokemon Center map or actor.
+    interactions.maps[0].programs[0] = {
+        .status =
+            pokered::InteractionProgramStatus::decoded_native,
+        .builtin = pokered::InteractionBuiltin::pokecenter_nurse,
+        .pages =
+            {
+                "Welcome.",
+                "Shall we heal?",
+                "We'll need your POKéMON.",
+                "Your POKéMON are fighting fit!",
+                "We hope to see you again!",
+            },
+    };
+    pokered::PokemonState patient;
+    patient.stats.hp = 24U;
+    patient.current_hp = 3U;
+    patient.status = pokered::MajorStatus::poison;
+    patient.moves[0] = {
+        .move_id = 1U,
+        .pp = 0U,
+        .maximum_pp = 35U,
+    };
+    campaign.party.members.push_back(patient);
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          world.service.active && world.dialogue.open &&
+              world.dialogue.pages ==
+                  std::vector<std::string>{
+                      "Welcome.", "Shall we heal?"},
+          "decoded Pokemon Center nurse opens its imported greeting");
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    pokered::step_world(world, interactions, campaign, {});
+    check(state,
+          world.choice.open &&
+              world.choice.options ==
+                  std::vector<std::string>{"HEAL", "CANCEL"},
+          "decoded Pokemon Center nurse opens its imported modal service");
+    world.choice.open = false;
+    world.choice.decided = true;
+    world.choice.selected = 0U;
+    pokered::step_world(world, interactions, campaign, {});
+    check(state,
+          campaign.party.members[0].current_hp == 24U &&
+              campaign.party.members[0].status ==
+                  pokered::MajorStatus::none &&
+              campaign.party.members[0].moves[0].pp == 35U &&
+              campaign.has_healing_checkpoint &&
+              campaign.last_healing_map_id == 0U &&
+              world.dialogue.open &&
+              world.dialogue.pages.size() == 3U,
+          "Pokemon Center acceptance heals HP, status, and PP and stores a checkpoint");
+
+    // A campaign that begins indoors can explicitly seed LAST_MAP from its
+    // imported New Game record instead of accidentally returning to itself.
+    world.dialogue = {};
+    check(state,
+          pokered::enter_world_at(
+              world, 37U, 0, 0, error, 0U),
+          "indoor campaign entry accepts an imported previous outdoor map");
+    world.player.move_cooldown = 0U;
+    pokered::step_world(
+        world, interactions, campaign, {.down = true});
+    check(state,
+          world.maps[world.player.map_index].id == 0U,
+          "seeded indoor LAST_MAP exit returns to its imported outdoor map");
+
+    pokered::step_world(
+        world, interactions, campaign, {.start = true});
+    check(state,
+          world.menu.open &&
+              world.menu.page == pokered::FieldMenuPage::root,
+          "Start opens the owned field menu");
+    pokered::step_world(
+        world, interactions, campaign, {.down = true});
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          world.menu.page == pokered::FieldMenuPage::bag,
+          "field menu routes to the campaign bag view");
+    pokered::step_world(
+        world, interactions, campaign, {.back = true});
+    check(state,
+          world.menu.page == pokered::FieldMenuPage::root,
+          "field submenu Back returns to its root");
+    pokered::step_world(
+        world, interactions, campaign, {.back = true});
+    check(state, !world.menu.open,
+          "field menu Back closes from the root");
 
     // Trainer sight is indexed by world cell and owns the approach before it
     // emits the same activation used by direct conversation.
@@ -728,6 +825,12 @@ void test_local_encounter_cache(TestState& state) {
           "imported battle presentation loads for owned battle");
     if (!battle_view.loaded || !battle.active) return;
     pokered::CampaignState campaign;
+    pokered::CampaignProgramCatalog campaign_programs;
+    check(state,
+          pokered::load_campaign_programs(
+              root / "campaign_programs.bin",
+              campaign_programs, error),
+          "campaign content loads for battle item and storage ownership");
     campaign.initialized = true;
     campaign.trainer_id = 7U;
     campaign.party = std::move(party);
@@ -767,16 +870,100 @@ void test_local_encounter_cache(TestState& state) {
     pokered::BattleControlResult control_result;
     check(state,
           pokered::control_battle(
-              rules, battle_rules, campaign, battle_view,
+              rules, battle_rules, campaign_programs, campaign,
+              battle_view,
               {.confirm = true}, control_result, error) &&
               battle_view.ui.mode == pokered::BattleUiMode::moves,
           "battle command enters the imported move menu");
     check(state,
           pokered::control_battle(
-              rules, battle_rules, campaign, battle_view,
+              rules, battle_rules, campaign_programs, campaign,
+              battle_view,
               {.confirm = true}, control_result, error) &&
               campaign.battle.turn == 1U,
           "battle control resolves an ordinary owned turn");
+
+    // Every imported command now has an owned action. Running exits a wild
+    // battle through its message boundary.
+    const auto run = std::find_if(
+        battle_view.ui.definition.standard_commands.slots.begin(),
+        battle_view.ui.definition.standard_commands.slots.end(),
+        [](const pokered::BattleCommandSlot& command) {
+            return command.on_select.text ==
+                   "battle_attempt_escape";
+        });
+    if (campaign.battle.active &&
+        run != battle_view.ui.definition.standard_commands.slots.end()) {
+        battle_view.ui.mode = pokered::BattleUiMode::command;
+        battle_view.ui.definition.standard_commands.selected =
+            static_cast<std::size_t>(
+                run -
+                battle_view.ui.definition.standard_commands.slots.begin());
+        check(state,
+              pokered::control_battle(
+                  rules, battle_rules, campaign_programs, campaign,
+                  battle_view, {.confirm = true}, control_result,
+                  error) &&
+                  campaign.battle.outcome ==
+                      pokered::BattleOutcome::escaped &&
+                  battle_view.ui.mode ==
+                      pokered::BattleUiMode::message,
+              "wild RUN command reaches its owned escape message");
+        check(state,
+              pokered::control_battle(
+                  rules, battle_rules, campaign_programs, campaign,
+                  battle_view, {.confirm = true}, control_result,
+                  error) &&
+                  control_result.finished,
+              "wild escape closes after message acknowledgement");
+    }
+
+    // The ITEM command consumes the cartridge-bound ball profile and stores
+    // the exact wild instance in the campaign party on capture.
+    check(state,
+          pokered::begin_wild_battle(
+              rules, battle_rules, campaign.party,
+              route_one_encounter, 0x12345678U,
+              campaign.battle, error),
+          "capture fixture begins another imported wild battle");
+    pokered::prepare_battle_view(battle_view);
+    battle_view.ui.mode = pokered::BattleUiMode::command;
+    check(state,
+          pokered::sync_battle_view(
+              rules, battle_rules, campaign.party, campaign.battle,
+              battle_view, error),
+          "capture fixture binds its battle view");
+    check(state,
+          pokered::give_inventory_item(
+              campaign.inventory, 1U, 1U),
+          "capture fixture receives the imported Master Ball item");
+    const auto item = std::find_if(
+        battle_view.ui.definition.standard_commands.slots.begin(),
+        battle_view.ui.definition.standard_commands.slots.end(),
+        [](const pokered::BattleCommandSlot& command) {
+            return command.on_select.text ==
+                   "battle_choose_item";
+        });
+    if (item != battle_view.ui.definition.standard_commands.slots.end()) {
+        const std::size_t old_party_size =
+            campaign.party.members.size();
+        battle_view.ui.definition.standard_commands.selected =
+            static_cast<std::size_t>(
+                item -
+                battle_view.ui.definition.standard_commands.slots.begin());
+        check(state,
+              pokered::control_battle(
+                  rules, battle_rules, campaign_programs, campaign,
+                  battle_view, {.confirm = true}, control_result,
+                  error) &&
+                  campaign.battle.outcome ==
+                      pokered::BattleOutcome::captured &&
+                  campaign.party.members.size() ==
+                      old_party_size + 1U &&
+                  pokered::inventory_item_quantity(
+                      campaign.inventory, 1U) == 0U,
+              "battle ITEM uses an imported ball and stores a caught Pokemon");
+    }
 }
 
 void test_local_rule_cache(TestState& state) {
@@ -1132,6 +1319,8 @@ void test_local_rule_cache(TestState& state) {
           capture != nullptr &&
               capture->key == "gen_1_original_capture" &&
               capture->ball_profiles.size() == 5U &&
+              capture->ball_profiles[0].item_id == 1U &&
+              capture->ball_profiles[3].item_id == 4U &&
               capture->status_profiles.size() == 3U &&
               capture->instructions.size() == 8U,
           "original capture formula and modifier profiles resolve by "
@@ -1679,7 +1868,8 @@ void test_local_boot_cache(TestState& state) {
           "New Game handoff retains selected names");
     check(state,
           content.new_game_map_id == 0x26U && content.new_game_x == 3U &&
-              content.new_game_y == 6U,
+              content.new_game_y == 6U &&
+              content.new_game_previous_map_id == 0x00U,
           "New Game placement comes from imported campaign content");
 
     pokered::BootState typed_name;

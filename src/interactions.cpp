@@ -64,11 +64,17 @@ bool read_programs(std::istream& input, std::vector<InteractionProgram>& program
     for (std::uint16_t index = 0; index < count; ++index) {
         InteractionProgram program;
         std::uint8_t status = 0;
+        std::uint8_t builtin = 0;
         std::uint16_t page_count = 0;
-        if (!read_u8(input, status) || status > 3U || !read_u16(input, page_count) ||
+        if (!read_u8(input, status) || status > 3U ||
+            !read_u8(input, builtin) ||
+            builtin >
+                static_cast<std::uint8_t>(InteractionBuiltin::shop) ||
+            !read_u16(input, page_count) ||
             page_count > 64U)
             return false;
         program.status = static_cast<InteractionProgramStatus>(status);
+        program.builtin = static_cast<InteractionBuiltin>(builtin);
         program.pages.reserve(page_count);
         for (std::uint16_t page = 0; page < page_count; ++page) {
             std::uint16_t size = 0;
@@ -77,6 +83,19 @@ bool read_programs(std::istream& input, std::vector<InteractionProgram>& program
             if (!input.read(text.data(), static_cast<std::streamsize>(text.size()))) return false;
             program.pages.push_back(std::move(text));
         }
+        std::uint16_t item_count = 0U;
+        if (!read_u16(input, item_count) || item_count > 256U)
+            return false;
+        for (std::uint16_t item = 0U; item < item_count; ++item) {
+            std::uint16_t item_id = 0U;
+            if (!read_u16(input, item_id) || item_id == 0U ||
+                item_id > 0xFFU)
+                return false;
+        }
+        if (program.builtin ==
+                InteractionBuiltin::pokecenter_nurse &&
+            program.pages.size() != 5U)
+            return false;
         programs.push_back(std::move(program));
     }
     return true;
@@ -128,7 +147,7 @@ bool load_interactions(const std::filesystem::path& path, InteractionCatalog& re
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'W', 'I', '2'}) {
+        magic != std::array{'P', 'W', 'I', '3'}) {
         error = "world interaction cache is missing or has an invalid header";
         return false;
     }

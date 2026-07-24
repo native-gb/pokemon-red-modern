@@ -80,6 +80,7 @@ struct BootContent {
     std::uint8_t new_game_map_id{};
     std::uint8_t new_game_x{};
     std::uint8_t new_game_y{};
+    std::uint8_t new_game_previous_map_id{};
     bool loaded{};
 };
 

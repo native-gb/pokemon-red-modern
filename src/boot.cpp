@@ -329,7 +329,7 @@ bool load_boot_content(const std::filesystem::path& path, BootContent& result,
     std::array<char, 4> magic{};
     std::uint16_t image_count = 0;
     if (!input.read(magic.data(), magic.size()) ||
-        magic != std::array{'P', 'B', 'T', '1'} ||
+        magic != std::array{'P', 'B', 'T', '2'} ||
         !read_u16(input, image_count) || image_count < 10U || image_count > 128U) {
         error = "boot cache has an invalid header";
         return false;
@@ -435,7 +435,8 @@ bool load_boot_content(const std::filesystem::path& path, BootContent& result,
                     static_cast<std::streamsize>(loaded.oak.ending_delay_frames.size())) ||
         !read_u8(input, loaded.new_game_map_id) ||
         !read_u8(input, loaded.new_game_x) ||
-        !read_u8(input, loaded.new_game_y)) {
+        !read_u8(input, loaded.new_game_y) ||
+        !read_u8(input, loaded.new_game_previous_map_id)) {
         error = "boot cache Oak or New Game definition is invalid or truncated";
         return false;
     }

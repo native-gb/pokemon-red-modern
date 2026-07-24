@@ -1,5 +1,6 @@
 #pragma once
 
+#include "field_menu.hpp"
 #include "naming.hpp"
 
 #include <cstddef>
@@ -199,6 +200,17 @@ struct WorldTrainerApproach {
     bool active{};
 };
 
+enum class WorldServiceKind : std::uint8_t {
+    none,
+    pokecenter_nurse,
+};
+
+struct WorldServiceState {
+    WorldServiceKind kind{WorldServiceKind::none};
+    std::vector<std::string> pages;
+    bool active{};
+};
+
 struct WorldScriptMotion {
     std::size_t actor_runtime_index{};
     std::vector<WorldPathCommand> actor_path;
@@ -221,6 +233,8 @@ struct WorldStepInput {
     bool erase{};
     bool submit{};
     bool toggle_case{};
+    bool start{};
+    bool back{};
     const char* text{};
 };
 
@@ -237,11 +251,13 @@ struct WorldState {
     DialogueState dialogue;
     WorldChoiceState choice;
     NamingState naming;
+    FieldMenuState menu;
     WorldWarpState last_warp;
     WorldActorActivation last_actor_activation;
     WorldCellActivation last_cell_activation;
     WorldOpponentRequest opponent_request;
     WorldTrainerApproach trainer_approach;
+    WorldServiceState service;
     WorldScriptMotion script_motion;
     std::size_t current{};
     std::uint16_t current_space{};
@@ -266,9 +282,10 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
 bool initialize_world_runtime(WorldState& world, const InteractionCatalog& interactions,
                               std::string& error);
 bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
-                    std::int32_t y, std::string& error);
+                    std::int32_t y, std::string& error,
+                    std::optional<std::uint8_t> previous_map_id = std::nullopt);
 void step_world(WorldState& world, const InteractionCatalog& interactions,
-                const CampaignState& campaign,
+                CampaignState& campaign,
                 const WorldStepInput& input);
 void select_next_map(WorldState& world);
 void select_previous_map(WorldState& world);

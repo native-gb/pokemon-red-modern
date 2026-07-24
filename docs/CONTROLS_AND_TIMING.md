@@ -38,6 +38,13 @@ Alternate begins with IJKL movement, U/O for A/B, P/Y for Start/Select, Escape
 for the player menu, and right Shift for fast-forward. Both profile slots are
 fully editable, so these are installation defaults rather than engine rules.
 
+In the overworld, Start opens the modern campaign overlay. Its first playable
+slice exposes party HP/status/levels, the imported bag item names and
+quantities, and trainer ID/money/play time. B returns from a detail page and
+then closes the root; Start closes it from any page. The overlay owns input
+while open, so navigation cannot move the player or advance a script behind
+it.
+
 ## Clock domains
 
 Simulation advances at a deterministic 60 Hz. The host maintains separate

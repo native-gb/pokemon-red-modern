@@ -1,5 +1,7 @@
 #pragma once
 
+#include "interaction_kinds.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -16,6 +18,7 @@ enum class InteractionProgramStatus : std::uint8_t {
 
 struct InteractionProgram {
     InteractionProgramStatus status{InteractionProgramStatus::unresolved};
+    InteractionBuiltin builtin{InteractionBuiltin::none};
     std::vector<std::string> pages;
 };
 

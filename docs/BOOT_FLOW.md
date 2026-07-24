@@ -17,7 +17,7 @@ The importer currently accounts for:
 - Professor Oak, Nidorino, player, rival, and shrink-sequence portraits;
 - all eight opening Oak text programs and both sets of default names;
 - UI/font/textbox/status tiles, fade/delay tables, and the imported New Game
-  world placement.
+  world placement plus its previous outdoor-map seed.
 
 The runtime currently executes:
 
@@ -27,6 +27,13 @@ The runtime currently executes:
 - Oak dialogue pages, portrait transitions, default-name menus, and the
   imported controller naming grid plus ordinary typed name entry;
 - the shrink ending and transfer into the imported initial world placement.
+
+New Game begins on Red's upstairs bedroom map, but the downstairs exterior
+door is a cartridge `LAST_MAP` destination. The generated boot record therefore
+owns both `start reds_house_2f at 3 6` and `previous_map pallet_town`.
+The generic world owner validates that the previous map exists and is outdoor
+before accepting the campaign. It no longer guesses that an indoor starting
+map is its own exterior return point.
 
 All boot images are normalized once by the importer and uploaded once as GPU
 textures. The renderer does not decode the ROM or rebuild images per frame.

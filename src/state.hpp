@@ -87,6 +87,11 @@ struct CampaignState {
     std::vector<std::uint16_t> variables;
     std::uint32_t money{};
     std::uint64_t play_steps{};
+    std::uint8_t last_healing_map_id{};
+    std::uint8_t last_healing_x{};
+    std::uint8_t last_healing_y{};
+    bool used_pokemon_center{};
+    bool has_healing_checkpoint{};
     bool imported_initial_state{};
     bool input_locked{};
     bool initialized{};

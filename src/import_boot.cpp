@@ -706,7 +706,7 @@ bool emit_cache(const std::vector<BootImage>& images,
                 const BootTitleDefinition& title, const BootMenuDefinition& menu,
                 const BootOakDefinition& oak, BootImport& result,
                 std::string& error) {
-    std::vector<std::uint8_t> cache{'P', 'B', 'T', '1'};
+    std::vector<std::uint8_t> cache{'P', 'B', 'T', '2'};
     write_u16(cache, images.size());
     for (const BootImage& image : images)
         if (!write_image(cache, image, error)) return false;
@@ -766,6 +766,7 @@ bool emit_cache(const std::vector<BootImage>& images,
     cache.push_back(0x26U);
     cache.push_back(3U);
     cache.push_back(6U);
+    cache.push_back(0x00U);
     result.files.push_back({"compiled/boot_content.bin", std::move(cache)});
     return true;
 }
@@ -792,6 +793,9 @@ bool decode_boot_import(std::span<const std::uint8_t> rom, BootImport& result,
         !emit_cache(images, ui_tiles, title, menu, oak, result, error))
         return false;
 
+    source << "new_game_state pokemon_red_new_game\n"
+           << "    start reds_house_2f at 3 6\n"
+           << "    previous_map pallet_town\n\n";
     add_file(result, "source/boot/boot.sexpr", source.str());
     std::ostringstream report;
     report << "Pokemon Red US Rev 0 boot import\n"

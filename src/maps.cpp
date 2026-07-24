@@ -478,10 +478,24 @@ std::string substitute_campaign_text(std::string text,
     return text;
 }
 
-void open_interaction(WorldState& world, const CampaignState& campaign,
+void open_interaction(WorldState& world, CampaignState& campaign,
                       const InteractionProgram* program) {
     world.dialogue = {};
-    if (program != nullptr && program->status == InteractionProgramStatus::dialogue &&
+    if (program != nullptr &&
+        program->builtin ==
+            InteractionBuiltin::pokecenter_nurse &&
+        program->pages.size() == 5U) {
+        world.service = {
+            .kind = WorldServiceKind::pokecenter_nurse,
+            .pages = program->pages,
+            .active = true,
+        };
+        world.dialogue.pages.push_back(program->pages[0]);
+        world.dialogue.pages.push_back(program->pages[1]);
+        campaign.used_pokemon_center = true;
+        world.dialogue.open = true;
+        world.choice = {};
+    } else if (program != nullptr && program->status == InteractionProgramStatus::dialogue &&
         !program->pages.empty()) {
         for (const std::string& page : program->pages)
             world.dialogue.pages.push_back(
@@ -690,7 +704,8 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
 }
 
 bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
-                    std::int32_t y, std::string& error) {
+                    std::int32_t y, std::string& error,
+                    std::optional<std::uint8_t> previous_map_id) {
     const auto found = std::find_if(world.maps.begin(), world.maps.end(),
                                     [map_id](const WorldMap& map) {
                                         return map.id == map_id;
@@ -712,8 +727,18 @@ bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
         error = "campaign start lies on an impassable world cell";
         return false;
     }
+    std::size_t previous_map_index = map_index;
+    if (previous_map_id.has_value()) {
+        previous_map_index = find_map_by_id(world, *previous_map_id);
+        if (previous_map_index >= world.maps.size() ||
+            world.maps[previous_map_index].world_space >= world.spaces.size() ||
+            !world.spaces[world.maps[previous_map_index].world_space].outdoor) {
+            error = "campaign start references an invalid previous outdoor map";
+            return false;
+        }
+    }
     world.player.map_index = map_index;
-    world.player.last_outdoor_map_index = map_index;
+    world.player.last_outdoor_map_index = previous_map_index;
     world.player.x = x;
     world.player.y = y;
     world.player.visual_global_x = static_cast<float>(global_x);
@@ -735,7 +760,7 @@ bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
 }
 
 void step_world(WorldState& world, const InteractionCatalog& interactions,
-                const CampaignState& campaign,
+                CampaignState& campaign,
                 const WorldStepInput& input) {
     world.player_completed_step = false;
     world.last_actor_activation = {};
@@ -744,6 +769,62 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         world.spatial.size() != world.maps.size())
         return;
     ++world.simulation_tick;
+
+    if (world.menu.open) {
+        step_field_menu(
+            world.menu,
+            {
+                .up = input.up,
+                .down = input.down,
+                .confirm = input.activate,
+                .back = input.back,
+                .start = input.start,
+            });
+        return;
+    }
+
+    // Imported modal services resume only after their generic choice owner has
+    // committed a result. No map or actor identity is special-cased here.
+    if (world.service.active && world.choice.decided) {
+        if (world.service.kind ==
+                WorldServiceKind::pokecenter_nurse &&
+            world.service.pages.size() == 5U) {
+            const bool heal = world.choice.selected == 0U;
+            world.choice = {};
+            world.dialogue = {};
+            if (heal) {
+                heal_party(campaign.party);
+                const WorldMap& map =
+                    world.maps[world.player.map_index];
+                campaign.last_healing_map_id = map.id;
+                campaign.last_healing_x =
+                    static_cast<std::uint8_t>(world.player.x);
+                campaign.last_healing_y =
+                    static_cast<std::uint8_t>(world.player.y);
+                campaign.has_healing_checkpoint = true;
+                world.dialogue.pages.push_back(
+                    world.service.pages[2]);
+                world.dialogue.pages.push_back(
+                    world.service.pages[3]);
+            }
+            world.dialogue.pages.push_back(
+                world.service.pages[4]);
+            world.dialogue.open = true;
+        }
+        world.service = {};
+        return;
+    }
+    if (world.service.active && !world.dialogue.open &&
+        !world.choice.open) {
+        world.choice = {
+            .options = {"HEAL", "CANCEL"},
+            .selected = 0U,
+            .input_cooldown = 0U,
+            .open = true,
+            .decided = false,
+        };
+        return;
+    }
 
     if (world.naming.open) {
         step_naming(
@@ -795,6 +876,11 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
             else
                 world.dialogue = {};
         }
+        return;
+    }
+
+    if (input.start && !campaign.input_locked) {
+        open_field_menu(world.menu);
         return;
     }
 

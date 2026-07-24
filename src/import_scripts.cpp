@@ -30,6 +30,13 @@ constexpr std::size_t kMaximumMapDimension = 128;
 constexpr std::size_t kMaximumWarps = 32;
 constexpr std::size_t kMaximumBackgroundEvents = 32;
 constexpr std::size_t kMaximumActors = 16;
+constexpr std::array<std::size_t, 5> kPokemonCenterTextOffsets{
+    0x0A286DU,
+    0x0A28B4U,
+    0x0A28CEU,
+    0x0A28E8U,
+    0x0A2910U,
+};
 
 struct MapProfile {
     const char* name;
@@ -83,6 +90,8 @@ struct MapProgramInventory {
     bool decoded{};
 };
 
+using PokemonCenterText = std::array<std::string, 5>;
+
 bool has_range(std::span<const std::uint8_t> rom, std::size_t offset, std::size_t size) {
     return offset <= rom.size() && size <= rom.size() - offset;
 }
@@ -132,6 +141,35 @@ void add_text_file(ScriptImport& result, std::string path, std::string text) {
     file.relative_path = std::move(path);
     file.bytes.assign(text.begin(), text.end());
     result.files.push_back(std::move(file));
+}
+
+std::string flatten_pages(const std::vector<std::string>& pages) {
+    std::string flattened;
+    for (const std::string& page : pages) {
+        if (!flattened.empty()) flattened += "\n\n";
+        flattened += page;
+    }
+    return flattened;
+}
+
+bool decode_pokemon_center_text(std::span<const std::uint8_t> rom,
+                                PokemonCenterText& result,
+                                std::string& error) {
+    for (std::size_t index = 0U; index < result.size(); ++index) {
+        const std::size_t offset = kPokemonCenterTextOffsets[index];
+        DecodedTextProgram program;
+        const std::uint8_t bank =
+            static_cast<std::uint8_t>(offset / kBankSize);
+        if (!decode_text_program(rom, bank, offset, program) ||
+            !program.complete || program.pages.empty()) {
+            error =
+                "Pokemon Center shared text is absent from the pinned ROM";
+            return false;
+        }
+        result[index] = flatten_pages(program.pages);
+    }
+    error.clear();
+    return true;
 }
 
 std::string map_slot_key(std::size_t map_id) {
@@ -608,7 +646,9 @@ void emit_reports(const std::vector<MapProgramInventory>& maps, ScriptImport& re
     add_text_file(result, "reports/unresolved_scripts.txt", unresolved.str());
 }
 
-void emit_compiled_index(const std::vector<MapProgramInventory>& maps, ScriptImport& result) {
+void emit_compiled_index(const std::vector<MapProgramInventory>& maps,
+                         const PokemonCenterText& pokemon_center_text,
+                         ScriptImport& result) {
     std::vector<std::uint8_t> bytes{'P', 'M', 'S', '1'};
     write_u16(bytes, maps.size());
     for (const MapProgramInventory& map : maps) {
@@ -629,7 +669,7 @@ void emit_compiled_index(const std::vector<MapProgramInventory>& maps, ScriptImp
 
     // Runtime interaction data is a compact typed cache. The engine never reparses
     // the readable generated sources or reaches back into the cartridge.
-    std::vector<std::uint8_t> interactions{'P', 'W', 'I', '2'};
+    std::vector<std::uint8_t> interactions{'P', 'W', 'I', '3'};
     write_u16(interactions, maps.size());
     for (const MapProgramInventory& map : maps) {
         interactions.push_back(map.map_id);
@@ -671,11 +711,24 @@ void emit_compiled_index(const std::vector<MapProgramInventory>& maps, ScriptImp
                                         : program.interaction ? 2U
                                                               : 1U;
             interactions.push_back(status);
-            write_u16(interactions, program.pages.size());
-            for (const std::string& page : program.pages) {
+            interactions.push_back(
+                static_cast<std::uint8_t>(program.builtin));
+            const bool nurse =
+                program.builtin ==
+                InteractionBuiltin::pokecenter_nurse;
+            const std::span<const std::string> pages =
+                nurse
+                    ? std::span<const std::string>(
+                          pokemon_center_text)
+                    : std::span<const std::string>(program.pages);
+            write_u16(interactions, pages.size());
+            for (const std::string& page : pages) {
                 write_u16(interactions, page.size());
                 interactions.insert(interactions.end(), page.begin(), page.end());
             }
+            write_u16(interactions, program.item_ids.size());
+            for (const std::uint16_t item_id : program.item_ids)
+                write_u16(interactions, item_id);
         }
     }
     result.files.push_back({"compiled/world_interactions.bin", std::move(interactions)});
@@ -689,6 +742,10 @@ bool decode_script_import(std::span<const std::uint8_t> rom, ScriptImport& resul
     if (!verify_pokemon_red_us_rev_0(rom, error)) return false;
 
     std::vector<MapProgramInventory> maps(kMapSlotCount);
+    PokemonCenterText pokemon_center_text;
+    if (!decode_pokemon_center_text(
+            rom, pokemon_center_text, error))
+        return false;
     for (std::size_t map_id = 0; map_id < maps.size(); ++map_id)
         decode_map_program(rom, map_id, maps[map_id]);
     assign_aliases(maps);
@@ -725,7 +782,7 @@ bool decode_script_import(std::span<const std::uint8_t> rom, ScriptImport& resul
         return false;
     }
     emit_reports(maps, result);
-    emit_compiled_index(maps, result);
+    emit_compiled_index(maps, pokemon_center_text, result);
     return true;
 }
 

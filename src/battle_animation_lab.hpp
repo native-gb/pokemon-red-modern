@@ -79,6 +79,8 @@ struct BattleAnimationLab {
     std::uint32_t finished_ticks{};
     bool auto_advance{true};
     bool distinct_battlers{};
+    bool finish_after_message{};
+    bool return_to_command_after_message{};
     bool loaded{};
 };
 

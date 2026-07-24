@@ -105,6 +105,7 @@ add_executable(native-gb-pokemon-red-modern
     src/diagnostics.cpp
     src/encounters.cpp
     src/experience_rules.cpp
+    src/field_menu.cpp
     src/interactions.cpp
     src/inventory.cpp
     src/main.cpp
@@ -117,6 +118,7 @@ add_executable(native-gb-pokemon-red-modern
     src/render/frame.cpp
     src/render/boot.cpp
     src/render/dialogue.cpp
+    src/render/field_menu.cpp
     src/render/maps.cpp
     src/render/naming.cpp
     src/sexpr.cpp
@@ -161,6 +163,7 @@ if(BUILD_TESTING)
         src/diagnostics.cpp
         src/encounters.cpp
         src/experience_rules.cpp
+        src/field_menu.cpp
         src/interactions.cpp
         src/inventory.cpp
         src/maps.cpp

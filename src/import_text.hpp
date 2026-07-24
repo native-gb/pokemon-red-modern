@@ -1,5 +1,7 @@
 #pragma once
 
+#include "interaction_kinds.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -16,6 +18,8 @@ struct DecodedTextProgram {
     bool complete{};
     bool dynamic{};
     bool interaction{};
+    InteractionBuiltin builtin{InteractionBuiltin::none};
+    std::vector<std::uint16_t> item_ids;
     std::string unresolved_reason;
 };
 

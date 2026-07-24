@@ -49,6 +49,7 @@ void finish_world_actor_battle(
     CampaignState& campaign);
 bool control_battle(const RuleCatalog& rules,
                     const BattleRuleCatalog& battle_rules,
+                    const CampaignProgramCatalog& programs,
                     CampaignState& campaign, BattleAnimationLab& view,
                     const BattleControlInput& input,
                     BattleControlResult& result, std::string& error);

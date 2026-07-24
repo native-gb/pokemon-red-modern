@@ -31,6 +31,50 @@ bool recompose(BattleAnimationLab& view, std::string& error) {
     return compose_battle_ui(view.ui, view.ui_tile_map, error);
 }
 
+bool show_battle_message(
+    BattleAnimationLab& view, std::string first, std::string second,
+    bool finish_after, bool return_to_command,
+    std::string& error) {
+    view.ui.message_lines = {
+        std::move(first),
+        std::move(second),
+    };
+    view.ui.mode = BattleUiMode::message;
+    view.finish_after_message = finish_after;
+    view.return_to_command_after_message = return_to_command;
+    return recompose(view, error);
+}
+
+bool has_capture_destination(
+    const CampaignProgramCatalog& programs,
+    const CampaignState& campaign) {
+    if (campaign.party.members.size() < programs.party_capacity)
+        return true;
+    return campaign.storage.current_box <
+               campaign.storage.boxes.size() &&
+           campaign.storage.boxes[campaign.storage.current_box].size() <
+               campaign.storage.box_capacity;
+}
+
+bool store_captured_pokemon(
+    const CampaignProgramCatalog& programs,
+    CampaignState& campaign, PokemonState pokemon) {
+    pokemon.trainer_id = campaign.trainer_id;
+    pokemon.original_trainer = campaign.player_name;
+    if (campaign.party.members.size() < programs.party_capacity) {
+        campaign.party.members.push_back(std::move(pokemon));
+        return true;
+    }
+    if (campaign.storage.current_box >=
+            campaign.storage.boxes.size() ||
+        campaign.storage.boxes[campaign.storage.current_box].size() >=
+            campaign.storage.box_capacity)
+        return false;
+    campaign.storage.boxes[campaign.storage.current_box].push_back(
+        std::move(pokemon));
+    return true;
+}
+
 const WorldActorSpawn* find_actor_spawn(
     const WorldState& world, std::uint8_t map_id,
     std::uint8_t actor_index) {
@@ -276,6 +320,7 @@ void finish_world_actor_battle(
 
 bool control_battle(const RuleCatalog& rules,
                     const BattleRuleCatalog& battle_rules,
+                    const CampaignProgramCatalog& programs,
                     CampaignState& campaign, BattleAnimationLab& view,
                     const BattleControlInput& input,
                     BattleControlResult& result, std::string& error) {
@@ -283,6 +328,30 @@ bool control_battle(const RuleCatalog& rules,
     if (!campaign.battle.active) {
         error = "battle controls require an active owned battle";
         return false;
+    }
+    if (view.ui.mode == BattleUiMode::message) {
+        if (!input.confirm) {
+            error.clear();
+            return true;
+        }
+        if (view.finish_after_message) {
+            campaign.battle.active = false;
+            view.distinct_battlers = false;
+            view.finish_after_message = false;
+            view.return_to_command_after_message = false;
+            result.finished = true;
+            error.clear();
+            return true;
+        }
+        if (view.return_to_command_after_message) {
+            view.return_to_command_after_message = false;
+            view.ui.mode = BattleUiMode::command;
+            return sync_battle_view(
+                rules, battle_rules, campaign.party,
+                campaign.battle, view, error);
+        }
+        error.clear();
+        return true;
     }
     if (input.previous) previous_battle_ui_menu_selection(view);
     if (input.next) next_battle_ui_menu_selection(view);
@@ -298,11 +367,180 @@ bool control_battle(const RuleCatalog& rules,
     if (view.ui.mode == BattleUiMode::command) {
         const BattleCommandMenu& commands =
             view.ui.definition.standard_commands;
-        if (commands.selected < commands.slots.size() &&
-            commands.slots[commands.selected].on_select.text ==
-                "battle_choose_move") {
+        if (commands.selected >= commands.slots.size()) {
+            error.clear();
+            return true;
+        }
+        const std::string& action =
+            commands.slots[commands.selected].on_select.text;
+        if (action == "battle_choose_move") {
             view.ui.mode = BattleUiMode::moves;
             return recompose(view, error);
+        }
+        if (action == "battle_attempt_escape") {
+            if (campaign.battle.kind == BattleKind::trainer)
+                return show_battle_message(
+                    view, "No! There's no", "running from a trainer!",
+                    false, true, error);
+            campaign.battle.outcome = BattleOutcome::escaped;
+            campaign.battle.phase = BattlePhase::finished;
+            return show_battle_message(
+                view, "Got away safely!", {}, true, false, error);
+        }
+        if (action == "battle_choose_item") {
+            if (campaign.battle.kind != BattleKind::wild)
+                return show_battle_message(
+                    view, "The Trainer blocked", "the BALL!",
+                    false, true, error);
+            const CaptureFormulaProgram* capture =
+                find_capture_formula(
+                    battle_rules,
+                    battle_rules.original_capture_formula);
+            if (capture == nullptr) {
+                error =
+                    "battle item command lost its imported capture formula";
+                return false;
+            }
+            std::optional<std::size_t> selected_profile;
+            for (std::size_t profile = 0U;
+                 profile < capture->ball_profiles.size(); ++profile) {
+                if (inventory_item_quantity(
+                        campaign.inventory,
+                        capture->ball_profiles[profile].item_id) != 0U) {
+                    selected_profile = profile;
+                    break;
+                }
+            }
+            if (!selected_profile.has_value())
+                return show_battle_message(
+                    view, "There is no usable", "BALL in the BAG.",
+                    false, true, error);
+            if (!has_capture_destination(programs, campaign))
+                return show_battle_message(
+                    view, "The POKéMON storage", "system is full.",
+                    false, true, error);
+
+            const CaptureBallProfile& ball =
+                capture->ball_profiles[*selected_profile];
+            BattleCaptureAttempt attempt;
+            if (!attempt_battle_capture(
+                    rules, battle_rules, *selected_profile,
+                    campaign.battle, attempt, error))
+                return false;
+            if (!take_inventory_item(
+                    campaign.inventory, ball.item_id, 1U)) {
+                error =
+                    "capture ball disappeared before transaction commit";
+                return false;
+            }
+            const SpeciesRule* species =
+                find_species(rules, attempt.species_dex);
+            const std::string name =
+                species == nullptr ? "POKéMON" : species->name;
+            if (attempt.caught) {
+                PokemonState caught =
+                    campaign.battle.enemy_party.members[
+                        campaign.battle.enemy.active_index];
+                if (!store_captured_pokemon(
+                        programs, campaign, std::move(caught))) {
+                    error =
+                        "capture destination changed during transaction";
+                    return false;
+                }
+                campaign.battle.outcome = BattleOutcome::captured;
+                campaign.battle.phase = BattlePhase::finished;
+                return show_battle_message(
+                    view, "All right!", name + " was caught!",
+                    true, false, error);
+            }
+
+            const PokemonState& enemy =
+                campaign.battle.enemy_party.members[
+                    campaign.battle.enemy.active_index];
+            const std::optional<std::size_t> enemy_move =
+                first_executable_move_slot(
+                    rules, battle_rules, enemy);
+            if (enemy_move.has_value() &&
+                !execute_enemy_battle_action(
+                    rules, battle_rules, campaign.trainer_id,
+                    campaign.party, campaign.battle, *enemy_move,
+                    error))
+                return false;
+            if (!campaign.battle.active) {
+                view.distinct_battlers = false;
+                result.finished = true;
+                error.clear();
+                return true;
+            }
+            view.ui.mode = BattleUiMode::command;
+            if (!sync_battle_view(
+                    rules, battle_rules, campaign.party,
+                    campaign.battle, view, error))
+                return false;
+            const std::string first =
+                attempt.shakes == 0U
+                    ? "Oh no! The POKéMON"
+                    : "Aww! It appeared";
+            const std::string second =
+                attempt.shakes == 0U
+                    ? "broke free!"
+                    : "to be caught!";
+            return show_battle_message(
+                view, first, second, false, true, error);
+        }
+        if (action == "battle_choose_party") {
+            std::optional<std::size_t> next;
+            for (std::size_t offset = 1U;
+                 offset < campaign.party.members.size(); ++offset) {
+                const std::size_t candidate =
+                    (campaign.battle.player.active_index + offset) %
+                    campaign.party.members.size();
+                if (campaign.party.members[candidate].current_hp != 0U) {
+                    next = candidate;
+                    break;
+                }
+            }
+            if (!next.has_value())
+                return show_battle_message(
+                    view, "There is no other", "POKéMON ready.",
+                    false, true, error);
+            if (!switch_player_battler(
+                    battle_rules, campaign.party, *next,
+                    campaign.battle, error))
+                return false;
+            const PokemonState& enemy =
+                campaign.battle.enemy_party.members[
+                    campaign.battle.enemy.active_index];
+            const std::optional<std::size_t> enemy_move =
+                first_executable_move_slot(
+                    rules, battle_rules, enemy);
+            if (enemy_move.has_value() &&
+                !execute_enemy_battle_action(
+                    rules, battle_rules, campaign.trainer_id,
+                    campaign.party, campaign.battle, *enemy_move,
+                    error))
+                return false;
+            if (!campaign.battle.active) {
+                view.distinct_battlers = false;
+                result.finished = true;
+                error.clear();
+                return true;
+            }
+            view.ui.mode = BattleUiMode::command;
+            if (!sync_battle_view(
+                    rules, battle_rules, campaign.party,
+                    campaign.battle, view, error))
+                return false;
+            const PokemonState& selected =
+                campaign.party.members[*next];
+            const SpeciesRule* species =
+                find_species(rules, selected.species_dex);
+            const std::string name =
+                selected.nickname.empty() && species != nullptr
+                    ? species->name
+                    : selected.nickname;
+            return show_battle_message(
+                view, "Go!", name + "!", false, true, error);
         }
         error.clear();
         return true;

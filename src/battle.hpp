@@ -32,6 +32,7 @@ enum class BattleOutcome : std::uint8_t {
     player_victory,
     player_defeat,
     escaped,
+    captured,
 };
 
 enum class BattleEventKind : std::uint8_t {
@@ -80,6 +81,12 @@ struct BattleTurnInput {
     std::size_t enemy_move_slot{};
 };
 
+struct BattleCaptureAttempt {
+    std::uint8_t species_dex{};
+    std::uint8_t shakes{};
+    bool caught{};
+};
+
 bool begin_battle(const RuleCatalog& rules,
                   const BattleRuleCatalog& battle_rules,
                   const PartyState& player_party, PartyState enemy_party,
@@ -105,5 +112,20 @@ bool execute_battle_turn(const RuleCatalog& rules,
                          std::uint16_t player_trainer_id,
                          PartyState& player_party, BattleState& battle,
                          const BattleTurnInput& input, std::string& error);
+bool execute_enemy_battle_action(
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules,
+    std::uint16_t player_trainer_id,
+    PartyState& player_party, BattleState& battle,
+    std::size_t enemy_move_slot, std::string& error);
+bool switch_player_battler(
+    const BattleRuleCatalog& battle_rules,
+    const PartyState& player_party, std::size_t party_index,
+    BattleState& battle, std::string& error);
+bool attempt_battle_capture(
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules,
+    std::size_t ball_profile, BattleState& battle,
+    BattleCaptureAttempt& result, std::string& error);
 
 } // namespace pokered

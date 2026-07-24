@@ -395,25 +395,49 @@ bool decode_commands(DecodeState& state, std::uint8_t bank, std::size_t offset, 
     return false;
 }
 
-std::string_view special_script_name(std::uint8_t command) {
+InteractionBuiltin special_script_kind(std::uint8_t command) {
     switch (command) {
     case 0xFF:
-        return "pokecenter_nurse";
+        return InteractionBuiltin::pokecenter_nurse;
     case 0xFD:
-        return "bills_pc";
+        return InteractionBuiltin::bills_pc;
     case 0xFC:
-        return "players_pc";
+        return InteractionBuiltin::players_pc;
     case 0xF9:
-        return "pokecenter_pc";
+        return InteractionBuiltin::pokecenter_pc;
     case 0xF7:
-        return "prize_vendor";
+        return InteractionBuiltin::prize_vendor;
     case 0xF6:
-        return "cable_club_receptionist";
+        return InteractionBuiltin::cable_club_receptionist;
     case 0xF5:
-        return "vending_machine";
+        return InteractionBuiltin::vending_machine;
     default:
+        return InteractionBuiltin::none;
+    }
+}
+
+std::string_view special_script_name(InteractionBuiltin kind) {
+    switch (kind) {
+    case InteractionBuiltin::pokecenter_nurse:
+        return "pokecenter_nurse";
+    case InteractionBuiltin::bills_pc:
+        return "bills_pc";
+    case InteractionBuiltin::players_pc:
+        return "players_pc";
+    case InteractionBuiltin::pokecenter_pc:
+        return "pokecenter_pc";
+    case InteractionBuiltin::prize_vendor:
+        return "prize_vendor";
+    case InteractionBuiltin::cable_club_receptionist:
+        return "cable_club_receptionist";
+    case InteractionBuiltin::vending_machine:
+        return "vending_machine";
+    case InteractionBuiltin::shop:
+        return "shop";
+    case InteractionBuiltin::none:
         return {};
     }
+    return {};
 }
 
 } // namespace
@@ -440,9 +464,10 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
         .reason = {},
     };
     const std::uint8_t first = rom[offset];
-    const std::string_view special = special_script_name(first);
-    if (!special.empty()) {
-        state.operations << "    invoke_builtin " << special << '\n';
+    result.builtin = special_script_kind(first);
+    if (result.builtin != InteractionBuiltin::none) {
+        state.operations << "    invoke_builtin "
+                         << special_script_name(result.builtin) << '\n';
         state.bytes = 1;
         result.interaction = true;
     } else if (first == 0xFEU) {
@@ -457,9 +482,14 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
         }
         state.operations << "    open_shop\n";
         result.interaction = true;
-        for (std::uint8_t index = 0; index < count; ++index)
-            state.operations << "    item_id " << static_cast<unsigned>(rom[offset + 2U + index])
-                             << '\n';
+        result.builtin = InteractionBuiltin::shop;
+        result.item_ids.reserve(count);
+        for (std::uint8_t index = 0; index < count; ++index) {
+            const std::uint8_t item_id = rom[offset + 2U + index];
+            result.item_ids.push_back(item_id);
+            state.operations << "    item_id "
+                             << static_cast<unsigned>(item_id) << '\n';
+        }
         if (rom[offset + 2U + count] != 0xFFU) {
             result.unresolved_reason = "mart_items_missing_terminator";
             return false;

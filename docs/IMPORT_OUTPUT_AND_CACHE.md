@@ -133,7 +133,8 @@ It also contains the executable ordinary-damage pipeline and all 24 direct
 one-stage/two-stage stat-change programs. Unsupported source effects remain
 explicit import gaps.
 `boot_content.bin` contains normalized boot graphics, layouts, text programs,
-title timing tables, and initial-placement content.
+title timing tables, initial-placement content, and the initial previous-map
+state required by `LAST_MAP` exits.
 `pokemon_rules.bin` contains all imported type slots and interactions, species
 stats and starting moves, move definitions and effect bindings, ordered
 learnsets, evolutions, growth curves, and machine compatibility.
@@ -150,6 +151,13 @@ internal-species-to-Dex mapping. All 346 map-owned opponent actors resolve
 through that policy: 334 select a trainer class and indexed party, while 12
 select a static species and level. The generic runtime therefore contains
 neither Pokemon Red's trainer offset nor Red trainer rosters.
+`world_interactions.bin` retains every decoded interaction's semantic built-in
+kind and bounded payload. Pokémon Center nurse records receive the five shared
+welcome/question/acceptance/result/farewell text resources decoded from the
+ROM. The generic runtime uses that imported family across all centers to open
+HEAL/CANCEL, restore party HP/status/PP, and record the accepted healing
+checkpoint. It contains no Viridian-, Pewter-, map-, or actor-specific nurse
+case.
 `campaign_programs.bin` contains semantically lifted story fibers. Its first
 twenty-eight programs import Pallet Town's Oak interception, all three Oak's Lab
 starter-ball branches, all three first-rival battle branches, the Viridian

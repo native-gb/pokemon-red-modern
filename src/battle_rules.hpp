@@ -70,6 +70,7 @@ struct CaptureFormulaInstruction {
 
 struct CaptureBallProfile {
     std::string key;
+    std::uint8_t item_id{};
     std::uint8_t rejection_ceiling{};
     std::uint8_t hp_divisor{};
     std::uint8_t shake_divisor{};

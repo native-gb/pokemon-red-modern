@@ -1,6 +1,7 @@
 #include "import_battle_rules.hpp"
 
 #include "battle_rules.hpp"
+#include "import_text.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,6 +14,8 @@
 
 namespace pokered::import {
 namespace {
+
+constexpr std::size_t item_names_offset = 0x00472BU;
 
 void write_u16(std::vector<std::uint8_t>& bytes, std::uint16_t value) {
     bytes.push_back(static_cast<std::uint8_t>(value & 0xFFU));
@@ -429,6 +432,45 @@ bool lift_original_capture_formula(
     std::uint8_t first_shake_threshold = 0;
     std::uint8_t second_shake_threshold = 0;
     std::uint8_t third_shake_threshold = 0;
+    std::array<std::uint8_t, 5> ball_item_ids{};
+    std::array<std::string, 4> ball_names{
+        "MASTER BALL",
+        "ULTRA BALL",
+        "GREAT BALL",
+        "POKé BALL",
+    };
+    std::size_t item_cursor = item_names_offset;
+    for (std::uint16_t item_id = 1U;
+         item_id <= ball_names.size(); ++item_id) {
+        std::string name;
+        bool terminated = false;
+        for (std::size_t length = 0U; length < 64U; ++length) {
+            if (item_cursor >= rom.size()) break;
+            const std::uint8_t byte = rom[item_cursor++];
+            if (byte == 0x50U) {
+                terminated = true;
+                break;
+            }
+            name += decode_text_glyph(byte);
+        }
+        const auto found = std::ranges::find(ball_names, name);
+        if (!terminated || found == ball_names.end()) {
+            error =
+                "capture ball item bindings are absent from the verified item-name table";
+            return false;
+        }
+        ball_item_ids[static_cast<std::size_t>(
+            found - ball_names.begin())] =
+            static_cast<std::uint8_t>(item_id);
+    }
+    if (std::ranges::any_of(
+            std::span<const std::uint8_t>(
+                ball_item_ids.data(), ball_names.size()),
+            [](std::uint8_t item_id) { return item_id == 0U; })) {
+        error =
+            "capture formula did not resolve every cartridge ball item";
+        return false;
+    }
     if (!read_immediate(rom, 0x0D70BU, 0x3EU, great_ceiling, error) ||
         !read_immediate(rom, 0x0D715U, 0x3EU, ultra_ceiling, error) ||
         !read_immediate(rom, 0x0D747U, 0x3EU, default_hp_divisor, error) ||
@@ -465,15 +507,15 @@ bool lift_original_capture_formula(
 
     program.key = "gen_1_original_capture";
     program.ball_profiles = {
-        {"master_ball", default_shake_divisor, default_hp_divisor,
+        {"master_ball", ball_item_ids[0], default_shake_divisor, default_hp_divisor,
          default_shake_divisor, true},
-        {"ultra_ball", ultra_ceiling, default_hp_divisor,
+        {"ultra_ball", ball_item_ids[1], ultra_ceiling, default_hp_divisor,
          ultra_shake_divisor, false},
-        {"great_ball", great_ceiling, great_hp_divisor,
+        {"great_ball", ball_item_ids[2], great_ceiling, great_hp_divisor,
          great_shake_divisor, false},
-        {"poke_ball", default_shake_divisor, default_hp_divisor,
+        {"poke_ball", ball_item_ids[3], default_shake_divisor, default_hp_divisor,
          default_shake_divisor, false},
-        {"safari_ball", ultra_ceiling, default_hp_divisor,
+        {"safari_ball", 0U, ultra_ceiling, default_hp_divisor,
          ultra_shake_divisor, false},
     };
     program.status_profiles = {
@@ -598,6 +640,8 @@ void emit_source(const DamageFormulaProgram& program,
     for (const CaptureBallProfile& profile : capture.ball_profiles) {
         capture_source
             << "    ball_profile " << profile.key << '\n'
+            << "        item_id "
+            << static_cast<unsigned>(profile.item_id) << '\n'
             << "        rejection_ceiling "
             << static_cast<unsigned>(profile.rejection_ceiling) << '\n'
             << "        hp_divisor "
@@ -865,7 +909,7 @@ void emit_cache(const DamageFormulaProgram& program,
                 const AccuracyFormulaProgram& accuracy,
                 const std::vector<MoveEffectProgram>& move_effects,
                 BattleRuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '8'};
+    std::vector<std::uint8_t> bytes{'P', 'B', 'R', '9'};
     write_u16(bytes, 1U);
     write_u16(bytes, 0U);
     write_string(bytes, program.key);
@@ -899,6 +943,7 @@ void emit_cache(const DamageFormulaProgram& program,
               static_cast<std::uint16_t>(capture.ball_profiles.size()));
     for (const CaptureBallProfile& profile : capture.ball_profiles) {
         write_string(bytes, profile.key);
+        bytes.push_back(profile.item_id);
         bytes.push_back(profile.rejection_ceiling);
         bytes.push_back(profile.hp_divisor);
         bytes.push_back(profile.shake_divisor);

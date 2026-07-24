@@ -201,7 +201,7 @@ bool load_battle_rules(const std::filesystem::path& path,
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'B', 'R', '8'}) {
+        magic != std::array{'P', 'B', 'R', '9'}) {
         error = "battle rule cache is missing or has an invalid header";
         return false;
     }
@@ -345,6 +345,7 @@ bool load_battle_rules(const std::filesystem::path& path,
             std::uint8_t guaranteed = 0;
             if (!read_string(input, profile.key) ||
                 !profile_keys.insert(profile.key).second ||
+                !read_u8(input, profile.item_id) ||
                 !read_u8(input, profile.rejection_ceiling) ||
                 !read_u8(input, profile.hp_divisor) ||
                 !read_u8(input, profile.shake_divisor) ||

@@ -644,4 +644,167 @@ bool execute_battle_turn(const RuleCatalog& rules,
     return true;
 }
 
+bool execute_enemy_battle_action(
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules,
+    std::uint16_t player_trainer_id,
+    PartyState& player_party, BattleState& battle,
+    std::size_t enemy_move_slot, std::string& error) {
+    if (!battle.active ||
+        battle.phase != BattlePhase::choose_action ||
+        battle.outcome != BattleOutcome::ongoing ||
+        battle.player.active_index >= player_party.members.size() ||
+        battle.enemy.active_index >= battle.enemy_party.members.size()) {
+        error = "battle is not ready for an enemy-only action";
+        return false;
+    }
+    const DamageFormulaProgram* damage = find_damage_formula(
+        battle_rules, battle_rules.original_damage_formula);
+    const CriticalHitProgram* critical = find_critical_hit_program(
+        battle_rules, battle_rules.original_critical_hit_program);
+    const AccuracyFormulaProgram* accuracy = find_accuracy_formula(
+        battle_rules, battle_rules.original_accuracy_formula);
+    const ExperienceFormulaProgram* experience =
+        find_experience_formula(
+            battle_rules,
+            battle_rules.original_experience_formula);
+    const StatFormulaProgram* stats = find_stat_formula(
+        battle_rules, battle_rules.original_stat_formula);
+    if (damage == nullptr || critical == nullptr ||
+        accuracy == nullptr || experience == nullptr ||
+        stats == nullptr) {
+        error =
+            "enemy-only action has incomplete original formula bindings";
+        return false;
+    }
+
+    PartyState player_work = player_party;
+    BattleState battle_work = battle;
+    battle_work.events.clear();
+    battle_work.phase = BattlePhase::resolving;
+    PokemonState& player_pokemon =
+        player_work.members[battle_work.player.active_index];
+    PokemonState& enemy_pokemon =
+        battle_work.enemy_party.members[battle_work.enemy.active_index];
+    SelectedMove enemy_move;
+    if (!select_move(
+            rules, battle_rules, enemy_pokemon,
+            enemy_move_slot, enemy_move, error))
+        return false;
+
+    ActionResult action;
+    if (!execute_action(
+            rules, *damage, *critical, *accuracy, enemy_pokemon,
+            player_pokemon, battle_work.enemy, battle_work.player,
+            false, enemy_move, battle_work, action, error))
+        return false;
+    if (action.target_fainted &&
+        !settle_faint(
+            rules, *experience, *stats, accuracy->neutral_stage,
+            player_trainer_id, true, player_work, battle_work,
+            error))
+        return false;
+    if (battle_work.active)
+        battle_work.phase = BattlePhase::choose_action;
+    ++battle_work.turn;
+    player_party = std::move(player_work);
+    battle = std::move(battle_work);
+    error.clear();
+    return true;
+}
+
+bool switch_player_battler(
+    const BattleRuleCatalog& battle_rules,
+    const PartyState& player_party, std::size_t party_index,
+    BattleState& battle, std::string& error) {
+    const AccuracyFormulaProgram* accuracy = find_accuracy_formula(
+        battle_rules, battle_rules.original_accuracy_formula);
+    if (!battle.active ||
+        battle.phase != BattlePhase::choose_action ||
+        battle.outcome != BattleOutcome::ongoing ||
+        party_index >= player_party.members.size() ||
+        party_index == battle.player.active_index ||
+        player_party.members[party_index].current_hp == 0U ||
+        accuracy == nullptr) {
+        error = "battle cannot switch to the requested party member";
+        return false;
+    }
+    battle.player.active_index = party_index;
+    reset_stages(battle.player, accuracy->neutral_stage);
+    battle.events.clear();
+    battle.events.push_back({
+        .kind = BattleEventKind::sent_out,
+        .player_actor = true,
+        .text = player_party.members[party_index].nickname,
+    });
+    error.clear();
+    return true;
+}
+
+bool attempt_battle_capture(
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules,
+    std::size_t ball_profile, BattleState& battle,
+    BattleCaptureAttempt& result, std::string& error) {
+    result = {};
+    if (!battle.active ||
+        battle.phase != BattlePhase::choose_action ||
+        battle.outcome != BattleOutcome::ongoing ||
+        battle.kind != BattleKind::wild ||
+        battle.enemy.active_index >=
+            battle.enemy_party.members.size()) {
+        error = "capture requires an active wild battle";
+        return false;
+    }
+    const CaptureFormulaProgram* capture = find_capture_formula(
+        battle_rules, battle_rules.original_capture_formula);
+    const PokemonState& target =
+        battle.enemy_party.members[battle.enemy.active_index];
+    const SpeciesRule* species =
+        find_species(rules, target.species_dex);
+    if (capture == nullptr || species == nullptr ||
+        ball_profile >= capture->ball_profiles.size()) {
+        error = "capture lost its imported formula, species, or ball profile";
+        return false;
+    }
+    std::size_t status_profile = 0U;
+    if (target.status == MajorStatus::burn ||
+        target.status == MajorStatus::paralysis ||
+        target.status == MajorStatus::poison)
+        status_profile = 1U;
+    else if (target.status == MajorStatus::freeze ||
+             target.status == MajorStatus::sleep)
+        status_profile = 2U;
+    if (status_profile >= capture->status_profiles.size()) {
+        error = "capture status has no imported modifier profile";
+        return false;
+    }
+
+    const std::array<std::uint8_t, 512> random =
+        preview_random(battle.random_state);
+    CaptureFormulaResult formula;
+    if (!execute_capture_formula(
+            *capture,
+            {
+                .ball_profile = static_cast<std::uint16_t>(
+                    ball_profile),
+                .status_profile = static_cast<std::uint16_t>(
+                    status_profile),
+                .catch_rate = species->catch_rate,
+                .current_hp = target.current_hp,
+                .maximum_hp = target.stats.hp,
+            },
+            random, formula, error))
+        return false;
+    consume_random(
+        battle.random_state, formula.random_bytes_consumed);
+    result = {
+        .species_dex = target.species_dex,
+        .shakes = formula.shakes,
+        .caught = formula.caught,
+    };
+    error.clear();
+    return true;
+}
+
 } // namespace pokered

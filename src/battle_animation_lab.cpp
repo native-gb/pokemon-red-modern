@@ -443,6 +443,8 @@ void prepare_battle_view(BattleAnimationLab& lab) {
     const auto targets = battle_targets();
     lab.animation.targets.assign(targets.begin(), targets.end());
     lab.animation.finished = true;
+    lab.finish_after_message = false;
+    lab.return_to_command_after_message = false;
 }
 
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab) {

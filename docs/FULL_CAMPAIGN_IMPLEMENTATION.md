@@ -1080,6 +1080,21 @@ The exact horn, smoke, scrolling ship-erasure presentation and optional
 ship-room NPC conversations remain presentation/content-completion work; the
 required rival → captain → HM01 → departure progression is executable.
 
+The title-through-Brock playtest slice now seeds New Game's imported Pallet
+Town `LAST_MAP` owner, so Red's upstairs-to-downstairs path exits the house
+instead of returning upstairs. Decoded Pokémon Center nurses are executable
+through one generic service owner using the five shared ROM text resources,
+HEAL/CANCEL choice, full HP/status/PP healing, and a stored blackout
+checkpoint.
+
+All four standard battle command symbols now have live owners. FIGHT retains
+ordinary imported move execution; RUN exits wild battles and rejects trainer
+escape; ITEM selects an available ROM-bound Ball profile, runs the imported
+capture formula, preserves the caught instance in party/current box, and
+gives the enemy its turn after failure; PKMN selects another usable party
+member and gives the enemy its switch turn. The modern Start overlay exposes
+read-only party, bag, and trainer state during this playtest pass.
+
 This is not full-campaign completion. The next campaign blocker begins with
 the explicitly prioritized title-through-Brock playable acceptance pass.
 Later map programs still require semantic lifting and the remaining acceptance

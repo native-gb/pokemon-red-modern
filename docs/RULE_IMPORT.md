@@ -97,8 +97,18 @@ It contains five ball profiles, three status modifier profiles, and ordered
 operations for the first-roll ceiling and rejection sampling, guaranteed
 capture, status subtraction, HP-derived capture value, catch-rate comparison,
 second roll, and failure shake tier. The numeric constants are read from the
-verified cartridge routine during import. Item records will bind to stable
-ball-profile IDs; the runtime does not switch on Red item IDs.
+verified cartridge routine during import. The importer also resolves each
+ordinary inventory Ball profile's item ID from the cartridge item-name table
+and emits that binding beside the profile. Safari Ball remains an unbound
+Safari-battle resource rather than pretending to be ordinary bag item 5
+(which is Town Map). The runtime searches those imported bindings; it does not
+switch on Red item IDs.
+
+The ordinary battle owner now consumes this program from the imported ITEM
+command. It commits one bound Ball only after verifying party/current-box
+capacity, preserves the generated wild Pokémon instance on success, and
+executes the enemy's ordinary action after a failed throw. RUN and party
+switching likewise dispatch from the imported command `on_select` symbols.
 
 The original experience-award calculation is executable as a fourth imported
 semantic program. Its readable source is:

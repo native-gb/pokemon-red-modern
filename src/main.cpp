@@ -12,6 +12,7 @@
 #include "maps.hpp"
 #include "render/dialogue.hpp"
 #include "render/boot.hpp"
+#include "render/field_menu.hpp"
 #include "render/frame.hpp"
 #include "render/maps.hpp"
 #include "render/naming.hpp"
@@ -258,6 +259,8 @@ int main(int argc, char** argv) {
     bool pending_world_erase = false;
     bool pending_world_submit = false;
     bool pending_world_toggle_case = false;
+    bool pending_world_start = false;
+    bool pending_world_back = false;
     std::string pending_world_text;
     std::string pending_boot_text;
     pokered::ControlButtons previous_controls;
@@ -350,6 +353,10 @@ int main(int argc, char** argv) {
                 (controls.start && !previous_controls.start);
             pending_world_toggle_case |=
                 controls.select && !previous_controls.select;
+            pending_world_start |=
+                controls.start && !previous_controls.start;
+            pending_world_back |=
+                controls.back && !previous_controls.back;
             pending_world_text += host_input.text;
         }
         if (!tools_own_input && game.mode == pokered::Mode::title) {
@@ -453,7 +460,8 @@ int main(int argc, char** argv) {
             pokered::BattleControlResult battle_result;
             std::string control_error;
             if (!pokered::control_battle(
-                    rules, battle_rules, campaign, animation_lab,
+                    rules, battle_rules, campaign_programs, campaign,
+                    animation_lab,
                     {
                         .previous =
                             (controls.up && !previous_controls.up) ||
@@ -508,7 +516,8 @@ int main(int argc, char** argv) {
                         !pokered::enter_world_at(
                             world, boot_content.new_game_map_id,
                             boot_content.new_game_x, boot_content.new_game_y,
-                            boot_error)) {
+                            boot_error,
+                            boot_content.new_game_previous_map_id)) {
                         std::fprintf(stderr, "%s\n", boot_error.c_str());
                         render_failed = true;
                         running = false;
@@ -529,6 +538,8 @@ int main(int argc, char** argv) {
                                         .submit = pending_world_submit,
                                         .toggle_case =
                                             pending_world_toggle_case,
+                                        .start = pending_world_start,
+                                        .back = pending_world_back,
                                         .text =
                                             pending_world_text.empty()
                                                 ? nullptr
@@ -538,6 +549,8 @@ int main(int argc, char** argv) {
                 pending_world_erase = false;
                 pending_world_submit = false;
                 pending_world_toggle_case = false;
+                pending_world_start = false;
+                pending_world_back = false;
                 pending_world_text.clear();
                 std::string campaign_step_error;
                 if (!pokered::service_campaign_programs(
@@ -602,6 +615,8 @@ int main(int argc, char** argv) {
                             renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_dialogue_overlay(world);
         pokered::render::draw_naming_overlay(world);
+        pokered::render::draw_field_menu_overlay(
+            world, campaign, campaign_programs, rules);
         imgui_render_layer();
         pokered::present_window(window);
 
