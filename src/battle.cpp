@@ -369,7 +369,6 @@ bool settle_faint(const RuleCatalog& rules,
             error.clear();
             return true;
         }
-        battle.player.pending_active_index = *next;
         reset_stages(battle.player, neutral_stage);
         battle.events.push_back({
             .kind = BattleEventKind::sent_out,
@@ -379,6 +378,7 @@ bool settle_faint(const RuleCatalog& rules,
             .enemy_species_dex =
                 battle.enemy_party.members[
                     battle.enemy.active_index].species_dex,
+            .battler_index = *next,
             .text = player_party.members[*next].nickname,
         });
         battle.phase = BattlePhase::choose_action;
@@ -419,7 +419,6 @@ bool settle_faint(const RuleCatalog& rules,
         error.clear();
         return true;
     }
-    battle.enemy.pending_active_index = *next;
     reset_stages(battle.enemy, neutral_stage);
     battle.events.push_back({
         .kind = BattleEventKind::sent_out,
@@ -427,6 +426,7 @@ bool settle_faint(const RuleCatalog& rules,
         .player_species_dex = recipient.species_dex,
         .enemy_species_dex =
             battle.enemy_party.members[*next].species_dex,
+        .battler_index = *next,
         .text = battle.enemy_party.members[*next].nickname,
     });
     battle.phase = BattlePhase::choose_action;
@@ -759,7 +759,6 @@ bool switch_player_battler(
         return false;
     }
     battle.player.active_index = party_index;
-    battle.player.pending_active_index.reset();
     reset_stages(battle.player, accuracy->neutral_stage);
     battle.events.clear();
     battle.events.push_back({
@@ -770,27 +769,9 @@ bool switch_player_battler(
         .enemy_species_dex =
             battle.enemy_party.members[
                 battle.enemy.active_index].species_dex,
+        .battler_index = party_index,
         .text = player_party.members[party_index].nickname,
     });
-    error.clear();
-    return true;
-}
-
-bool commit_pending_battler(const PartyState& player_party,
-                            BattleState& battle, bool player_side,
-                            std::string& error) {
-    BattleSideState& side =
-        player_side ? battle.player : battle.enemy;
-    const std::size_t party_size =
-        player_side ? player_party.members.size()
-                    : battle.enemy_party.members.size();
-    if (!side.pending_active_index.has_value() ||
-        *side.pending_active_index >= party_size) {
-        error = "battle send-out has no valid pending battler";
-        return false;
-    }
-    side.active_index = *side.pending_active_index;
-    side.pending_active_index.reset();
     error.clear();
     return true;
 }

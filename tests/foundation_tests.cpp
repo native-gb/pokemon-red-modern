@@ -968,7 +968,7 @@ void test_local_encounter_cache(TestState& state) {
     campaign.party = std::move(party);
     campaign.battle = std::move(battle);
     battle_view.ui.mode = pokered::BattleUiMode::command;
-    pokered::prepare_battle_view(battle_view);
+    pokered::initialize_gameplay_battle_mode(battle_view);
     check(state,
           pokered::sync_battle_view(
               rules, battle_rules, campaign.party, campaign.battle,
@@ -1074,7 +1074,7 @@ void test_local_encounter_cache(TestState& state) {
               route_one_encounter, 0x12345678U,
               campaign.battle, error),
           "capture fixture begins another imported wild battle");
-    pokered::prepare_battle_view(battle_view);
+    pokered::initialize_gameplay_battle_mode(battle_view);
     battle_view.ui.mode = pokered::BattleUiMode::command;
     check(state,
           pokered::sync_battle_view(

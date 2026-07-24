@@ -43,6 +43,7 @@ BattleEventPresentation event_message(const RuleCatalog& rules,
     BattleEventPresentation result;
     result.player_species_dex = event.player_species_dex;
     result.enemy_species_dex = event.enemy_species_dex;
+    result.battler_index = event.battler_index;
     result.enemy_turn = !event.player_actor;
     if (event.kind == BattleEventKind::used_move) {
         const MoveRule* move = find_move(rules, event.move_id);
@@ -157,12 +158,18 @@ bool advance_event_presentation(
         BattleSideState& side =
             player_side ? campaign.battle.player
                         : campaign.battle.enemy;
-        if (next.reveal_battler &&
-            side.pending_active_index.has_value()) {
-            if (!commit_pending_battler(
-                    campaign.party, campaign.battle,
-                    player_side, error) ||
-                !sync_battle_view(
+        if (next.reveal_battler) {
+            const PartyState& party =
+                player_side ? campaign.party
+                            : campaign.battle.enemy_party;
+            if (next.battler_index >= party.members.size() ||
+                party.members[next.battler_index].current_hp == 0U) {
+                error =
+                    "battle send-out references an unavailable battler";
+                return false;
+            }
+            side.active_index = next.battler_index;
+            if (!sync_battle_view(
                     rules, battle_rules, campaign.party,
                     campaign.battle, view, error))
                 return false;
@@ -283,7 +290,7 @@ bool begin_actor_battle(
     }
 
     view.ui.mode = BattleUiMode::command;
-    prepare_battle_view(view);
+    initialize_gameplay_battle_mode(view);
     if (!sync_battle_view(rules, battle_rules, campaign.party,
                           campaign.battle, view, error)) {
         campaign.battle = {};
@@ -338,7 +345,7 @@ bool begin_world_wild_battle(
         return false;
     }
     view.ui.mode = BattleUiMode::command;
-    prepare_battle_view(view);
+    initialize_gameplay_battle_mode(view);
     if (!sync_battle_view(rules, battle_rules, campaign.party,
                           campaign.battle, view, error)) {
         campaign.battle = {};
@@ -443,7 +450,7 @@ bool begin_campaign_trainer_battle(
         return false;
 
     view.ui.mode = BattleUiMode::command;
-    prepare_battle_view(view);
+    initialize_gameplay_battle_mode(view);
     if (!sync_battle_view(rules, battle_rules, campaign.party,
                           campaign.battle, view, error)) {
         campaign.battle = {};

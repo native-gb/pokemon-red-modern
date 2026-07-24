@@ -30,6 +30,7 @@ struct BattleEventPresentation {
     std::uint8_t animation_id{};
     std::uint8_t player_species_dex{};
     std::uint8_t enemy_species_dex{};
+    std::size_t battler_index{};
     bool enemy_turn{};
     bool hide_battler{};
     bool reveal_battler{};
@@ -143,7 +144,8 @@ void cycle_battle_ui_mode(BattleAnimationLab& lab);
 void next_battle_ui_menu_selection(BattleAnimationLab& lab);
 void previous_battle_ui_menu_selection(BattleAnimationLab& lab);
 void cycle_battle_ui_status(BattleAnimationLab& lab);
-void prepare_battle_view(BattleAnimationLab& lab);
+void initialize_battle_lab_mode(BattleAnimationLab& lab);
+void initialize_gameplay_battle_mode(BattleAnimationLab& lab);
 void begin_battle_presentation(BattleAnimationLab& lab,
                                bool trainer_battle);
 void begin_battle_exit_presentation(BattleAnimationLab& lab);

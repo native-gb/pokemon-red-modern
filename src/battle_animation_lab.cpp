@@ -476,7 +476,7 @@ void cycle_battle_ui_status(BattleAnimationLab& lab) {
     (void)compose_battle_ui(lab.ui, lab.ui_tile_map, error);
 }
 
-void prepare_battle_view(BattleAnimationLab& lab) {
+void initialize_gameplay_battle_mode(BattleAnimationLab& lab) {
     if (!lab.loaded) return;
     lab.presentation = {};
     lab.animation = {};
@@ -496,6 +496,24 @@ void prepare_battle_view(BattleAnimationLab& lab) {
     lab.finish_after_event_queue = false;
     lab.player_battler_hidden = false;
     lab.enemy_battler_hidden = false;
+    lab.distinct_battlers = true;
+}
+
+void initialize_battle_lab_mode(BattleAnimationLab& lab) {
+    if (!lab.loaded) return;
+    lab.presentation = {};
+    lab.gameplay_program = {};
+    lab.gameplay_queue.clear();
+    lab.gameplay_queue_cursor = 0U;
+    lab.event_queue.clear();
+    lab.event_queue_cursor = 0U;
+    lab.gameplay_animation_active = false;
+    lab.event_animation_pending = false;
+    lab.finish_after_event_queue = false;
+    lab.player_battler_hidden = false;
+    lab.enemy_battler_hidden = false;
+    lab.distinct_battlers = false;
+    restart_battle_animation_lab(lab);
 }
 
 void begin_battle_presentation(BattleAnimationLab& lab,

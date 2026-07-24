@@ -172,17 +172,21 @@ int main(int argc, char** argv) {
     if (!pokered::load_boot_content(boot_cache, boot_content, boot_error))
         std::fprintf(stderr, "%s\n", boot_error.c_str());
 
-    pokered::BattleAnimationLab animation_lab;
+    pokered::BattleAnimationLab battle_lab;
+    pokered::BattleAnimationLab gameplay_battle;
     pokered::Diagnostics animation_diagnostics;
     const std::filesystem::path generated_animation_root =
         data_root / "imports" / "pokemon_red_us_rev_0" / "source" / "animations" / "battle_moves";
-    if (!pokered::load_battle_animation_lab(generated_animation_root, animation_lab,
+    if (!pokered::load_battle_animation_lab(generated_animation_root, battle_lab,
                                             animation_diagnostics)) {
         for (const pokered::Diagnostic& diagnostic : animation_diagnostics.entries)
             std::fprintf(stderr, "%s\n", pokered::format_diagnostic(diagnostic).c_str());
     } else {
         std::printf("Loaded %zu battle animation lab programs from %s\n",
-                    animation_lab.entries.size(), generated_animation_root.c_str());
+                    battle_lab.entries.size(), generated_animation_root.c_str());
+        pokered::initialize_battle_lab_mode(battle_lab);
+        gameplay_battle = battle_lab;
+        pokered::initialize_gameplay_battle_mode(gameplay_battle);
     }
 
     pokered::WorldState world;
@@ -525,7 +529,7 @@ int main(int argc, char** argv) {
         clocks.fast_forward = fast_forward;
 
         if (!tools_own_input &&
-            host_input.toggle_lab_view && world.loaded && animation_lab.loaded &&
+            host_input.toggle_lab_view && world.loaded && battle_lab.loaded &&
             (game.mode == pokered::Mode::overworld ||
              game.mode == pokered::Mode::battle_lab))
             game.mode =
@@ -536,13 +540,13 @@ int main(int argc, char** argv) {
             if (game.mode == pokered::Mode::overworld)
                 pokered::select_previous_map(world);
             else
-                pokered::previous_battle_animation_lab(animation_lab);
+                pokered::previous_battle_animation_lab(battle_lab);
         }
         if (!tools_own_input && host_input.next_animation) {
             if (game.mode == pokered::Mode::overworld)
                 pokered::select_next_map(world);
             else
-                pokered::next_battle_animation_lab(animation_lab);
+                pokered::next_battle_animation_lab(battle_lab);
         }
         if (!tools_own_input &&
             game.mode == pokered::Mode::overworld) {
@@ -577,37 +581,42 @@ int main(int argc, char** argv) {
         }
         if (!tools_own_input &&
             game.mode == pokered::Mode::battle_lab && input.previous_species)
-            pokered::previous_battle_species(animation_lab);
+            pokered::previous_battle_species(battle_lab);
         if (!tools_own_input &&
             game.mode == pokered::Mode::battle_lab && input.next_species)
-            pokered::next_battle_species(animation_lab);
+            pokered::next_battle_species(battle_lab);
         if (!tools_own_input &&
             game.mode == pokered::Mode::battle_lab &&
             input.cycle_battle_ui)
-            pokered::cycle_battle_ui_mode(animation_lab);
+            pokered::cycle_battle_ui_mode(battle_lab);
         if (!tools_own_input &&
             game.mode == pokered::Mode::battle_lab &&
             input.previous_battle_ui_selection)
-            pokered::previous_battle_ui_menu_selection(animation_lab);
+            pokered::previous_battle_ui_menu_selection(battle_lab);
         if (!tools_own_input &&
             game.mode == pokered::Mode::battle_lab &&
             input.next_battle_ui_selection)
-            pokered::next_battle_ui_menu_selection(animation_lab);
+            pokered::next_battle_ui_menu_selection(battle_lab);
         if (!tools_own_input &&
             game.mode == pokered::Mode::battle_lab && input.cycle_battle_status)
-            pokered::cycle_battle_ui_status(animation_lab);
+            pokered::cycle_battle_ui_status(battle_lab);
         if (!tools_own_input && input.restart_animation)
-            pokered::restart_battle_animation_lab(animation_lab);
+            pokered::restart_battle_animation_lab(battle_lab);
         if (!tools_own_input && input.reload_animation_sources) {
             pokered::Diagnostics reload_diagnostics;
-            if (!pokered::reload_battle_animation_lab(animation_lab, reload_diagnostics)) {
+            if (!pokered::reload_battle_animation_lab(battle_lab, reload_diagnostics)) {
                 for (const pokered::Diagnostic& diagnostic : reload_diagnostics.entries)
                     std::fprintf(stderr, "%s\n", pokered::format_diagnostic(diagnostic).c_str());
+            } else {
+                pokered::initialize_battle_lab_mode(battle_lab);
+                gameplay_battle = battle_lab;
+                pokered::initialize_gameplay_battle_mode(
+                    gameplay_battle);
             }
         }
         if (!tools_own_input &&
             input.toggle_animation_auto_advance)
-            animation_lab.auto_advance = !animation_lab.auto_advance;
+            battle_lab.auto_advance = !battle_lab.auto_advance;
 
         // Real battle controls dispatch through the owned battle controller.
         // The developer animation lab remains an independent game mode.
@@ -617,7 +626,7 @@ int main(int argc, char** argv) {
             std::string control_error;
             if (!pokered::control_battle(
                     rules, battle_rules, campaign_programs, campaign,
-                    animation_lab,
+                    gameplay_battle,
                     {
                         .left =
                             controls.left && !previous_controls.left,
@@ -639,7 +648,7 @@ int main(int argc, char** argv) {
                 pokered::finish_world_actor_battle(
                     interactions, world, campaign);
                 pokered::begin_battle_exit_presentation(
-                    animation_lab);
+                    gameplay_battle);
             }
         }
 
@@ -754,7 +763,7 @@ int main(int argc, char** argv) {
                 if (trainers.loaded &&
                     !pokered::begin_campaign_trainer_battle(
                         trainers, world, rules, battle_rules, campaign,
-                        animation_lab, campaign_battle_began,
+                        gameplay_battle, campaign_battle_began,
                         campaign_battle_error)) {
                     std::fprintf(stderr, "%s\n",
                                  campaign_battle_error.c_str());
@@ -764,7 +773,7 @@ int main(int argc, char** argv) {
                 if (!campaign_battle_began && trainers.loaded &&
                     !pokered::service_world_actor_battle(
                         interactions, trainers, world, rules,
-                        battle_rules, campaign, animation_lab,
+                        battle_rules, campaign, gameplay_battle,
                         actor_battle_began, actor_battle_error)) {
                     std::fprintf(stderr, "%s\n",
                                  actor_battle_error.c_str());
@@ -775,7 +784,7 @@ int main(int argc, char** argv) {
                     encounters.loaded &&
                     !pokered::begin_world_wild_battle(
                         encounters, campaign_programs, world, rules,
-                        battle_rules, campaign, animation_lab,
+                        battle_rules, campaign, gameplay_battle,
                         battle_began, wild_error)) {
                     std::fprintf(stderr, "%s\n", wild_error.c_str());
                 }
@@ -784,28 +793,28 @@ int main(int argc, char** argv) {
                     game.mode = pokered::Mode::battle;
             }
             if (!game.paused && game.mode == pokered::Mode::battle_lab)
-                pokered::step_battle_animation_lab(animation_lab);
+                pokered::step_battle_animation_lab(battle_lab);
             if (!game.paused && game.mode == pokered::Mode::battle)
-                pokered::step_gameplay_battle_animations(animation_lab);
+                pokered::step_gameplay_battle_animations(gameplay_battle);
             if (!game.paused && game.mode == pokered::Mode::battle) {
                 play_battle_animation_cues(
-                    audio, animation_lab.animation);
-                if (animation_lab.presentation.phase ==
+                    audio, gameplay_battle.animation);
+                if (gameplay_battle.presentation.phase ==
                         pokered::BattlePresentationPhase::
                             opponent_arrival &&
-                    animation_lab.presentation.tick == 0U)
+                    gameplay_battle.presentation.tick == 0U)
                     play_active_battle_cry(
                         audio, rules, campaign, true);
-                else if (animation_lab.presentation.phase ==
+                else if (gameplay_battle.presentation.phase ==
                              pokered::BattlePresentationPhase::
                                  player_deployment &&
-                         animation_lab.presentation.tick == 0U)
+                         gameplay_battle.presentation.tick == 0U)
                     play_active_battle_cry(
                         audio, rules, campaign, false);
             }
             if (game.mode == pokered::Mode::battle &&
                 pokered::consume_battle_return_to_world(
-                    animation_lab)) {
+                    gameplay_battle)) {
                 if (pending_blackout) {
                     pokered::heal_party(campaign.party);
                     campaign.money /= 2U;
@@ -899,7 +908,7 @@ int main(int argc, char** argv) {
                     dispatch_error);
             } else if (game.mode == pokered::Mode::battle) {
                 (void)audio.request_battle_music(
-                    animation_lab.presentation.trainer_battle,
+                    gameplay_battle.presentation.trainer_battle,
                     dispatch_error);
             }
             audio_accumulator =
@@ -926,14 +935,17 @@ int main(int argc, char** argv) {
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
                                            window.frame.render_width, window.frame.render_height,
                                            game, catalog, boot_content, boot, boot_resources,
-                                           animation_lab, world, world_resources) ||
+                                           game.mode == pokered::Mode::battle
+                                               ? gameplay_battle
+                                               : battle_lab,
+                                           world, world_resources) ||
             !pokered::draw_window(window)) {
             std::fprintf(stderr, "could not render frame: %s\n", SDL_GetError());
             render_failed = true;
             break;
         }
 
-        pokered::draw_tools(tools, window.runtime, game, catalog, boot, animation_lab,
+        pokered::draw_tools(tools, window.runtime, game, catalog, boot, battle_lab,
                             world, rules, presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
         pokered::render::draw_field_menu_overlay(

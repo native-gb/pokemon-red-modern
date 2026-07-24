@@ -37,10 +37,12 @@ presentation is finished.
   in the developer lab. Move-name, faint, EXP, and terminal result pages own
   the sequence, and terminal state returns to the world only after those pages
   are acknowledged. The two-column command menu navigates spatially.
-- Fainted battlers retain their actual species identity through the faint
-  sequence, then slide out rather than falling back to the animation-lab
-  preview species. A living replacement is recorded as pending battle state;
-  its imported send-out event commits the new active index only after the
+- Gameplay battles and the developer Battle Lab own separately initialized
+  mutable view state. Lab species cycling, animation queues, visibility, and
+  UI state cannot leak into a campaign battle.
+- A faint hides the defeated side in presentation state without changing its
+  species identity. A later send-out event carries the replacement party
+  index; that event changes the active battler and reveals it only after the
   faint and EXP presentation has completed.
 - Grass cells repaint their imported foreground pixels over the player's
   feet. A total party defeat now heals and relocates to the last Center, or
