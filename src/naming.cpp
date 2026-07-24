@@ -96,41 +96,64 @@ void step_naming(const NamingInput& input, NamingState& state) {
         --state.input_cooldown;
     } else if (input.left || input.right || input.up || input.down) {
         if (input.up) {
-            state.row =
-                state.row == 0U
-                    ? static_cast<std::uint8_t>(kNamingRows)
-                    : static_cast<std::uint8_t>(state.row - 1U);
-            if (state.row == kNamingRows) state.column = 0U;
+            if (state.row == 0U) {
+                state.row = static_cast<std::uint8_t>(kNamingRows);
+                state.column = state.column >= 4U ? 1U : 0U;
+            } else if (state.row == kNamingRows) {
+                state.row =
+                    static_cast<std::uint8_t>(kNamingRows - 1U);
+                state.column = state.column == 0U ? 0U : 7U;
+            } else {
+                --state.row;
+            }
         } else if (input.down) {
-            state.row =
-                state.row == kNamingRows
-                    ? 0U
-                    : static_cast<std::uint8_t>(state.row + 1U);
-            if (state.row == kNamingRows) state.column = 0U;
-        } else if (state.row < kNamingRows && input.left) {
-            state.column =
-                state.column == 0U
-                    ? static_cast<std::uint8_t>(kNamingColumns - 1U)
-                    : static_cast<std::uint8_t>(state.column - 1U);
-        } else if (state.row < kNamingRows && input.right) {
-            state.column = static_cast<std::uint8_t>(
-                (state.column + 1U) % kNamingColumns);
+            if (state.row == kNamingRows - 1U) {
+                state.row = static_cast<std::uint8_t>(kNamingRows);
+                state.column = state.column >= 4U ? 1U : 0U;
+            } else if (state.row == kNamingRows) {
+                state.row = 0U;
+                state.column = state.column == 0U ? 0U : 8U;
+            } else {
+                ++state.row;
+                if (state.row == kNamingRows - 1U &&
+                    state.column == kNamingColumns - 1U)
+                    --state.column;
+            }
+        } else if (input.left || input.right) {
+            if (state.row == kNamingRows) {
+                state.column =
+                    static_cast<std::uint8_t>(
+                        state.column == 0U ? 1U : 0U);
+            } else {
+                const std::uint8_t columns =
+                    state.row == kNamingRows - 1U
+                        ? static_cast<std::uint8_t>(
+                              kNamingColumns - 1U)
+                        : static_cast<std::uint8_t>(
+                              kNamingColumns);
+                state.column = input.left
+                    ? static_cast<std::uint8_t>(
+                          (state.column + columns - 1U) %
+                          columns)
+                    : static_cast<std::uint8_t>(
+                          (state.column + 1U) % columns);
+            }
         }
         state.input_cooldown = 8U;
     }
 
     if (!input.confirm) return;
     if (state.row == kNamingRows) {
-        state.lowercase = !state.lowercase;
+        if (state.column == 0U) {
+            state.lowercase = !state.lowercase;
+        } else if (!state.value.empty()) {
+            state.open = false;
+            state.decided = true;
+        }
         return;
     }
     const std::string& cell =
         naming_cell(state, state.row, state.column);
-    if (cell == "END") {
-        state.open = false;
-        state.decided = true;
-        return;
-    }
     append_cell(state, cell);
 }
 

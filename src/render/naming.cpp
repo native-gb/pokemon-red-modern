@@ -50,7 +50,11 @@ void draw_naming_overlay(const WorldState& world) {
                              static_cast<float>(kNamingColumns);
     constexpr float cell_height = 65.0F;
     for (std::uint8_t row = 0U; row < kNamingRows; ++row) {
-        for (std::uint8_t column = 0U; column < kNamingColumns;
+        const std::uint8_t columns =
+            row == kNamingRows - 1U
+                ? static_cast<std::uint8_t>(kNamingColumns - 1U)
+                : static_cast<std::uint8_t>(kNamingColumns);
+        for (std::uint8_t column = 0U; column < columns;
              ++column) {
             const float x =
                 grid_left + static_cast<float>(column) * cell_width;
@@ -77,15 +81,25 @@ void draw_naming_overlay(const WorldState& world) {
     const ImVec2 action_minimum{
         grid_left - 12.0F,
         grid_top + static_cast<float>(kNamingRows) * cell_height - 5.0F};
-    const ImVec2 action_maximum{action_minimum.x + 250.0F,
-                                action_minimum.y + 48.0F};
-    if (naming.row == kNamingRows)
-        draw->AddRectFilled(action_minimum, action_maximum,
+    const ImVec2 case_maximum{action_minimum.x + 250.0F,
+                              action_minimum.y + 48.0F};
+    const ImVec2 end_minimum{
+        maximum.x - 118.0F, action_minimum.y};
+    const ImVec2 end_maximum{
+        maximum.x - 30.0F, action_minimum.y + 48.0F};
+    if (naming.row == kNamingRows && naming.column == 0U)
+        draw->AddRectFilled(action_minimum, case_maximum,
+                            IM_COL32(230, 207, 218, 255));
+    if (naming.row == kNamingRows && naming.column == 1U)
+        draw->AddRectFilled(end_minimum, end_maximum,
                             IM_COL32(230, 207, 218, 255));
     draw->AddText(ImGui::GetFont(), 25.0F,
                   {action_minimum.x + 12.0F, action_minimum.y + 9.0F},
                   IM_COL32(35, 25, 35, 255), case_action.data(),
                   case_action.data() + case_action.size());
+    draw->AddText(ImGui::GetFont(), 25.0F,
+                  {end_minimum.x + 12.0F, end_minimum.y + 9.0F},
+                  IM_COL32(35, 25, 35, 255), "END");
 }
 
 } // namespace pokered::render

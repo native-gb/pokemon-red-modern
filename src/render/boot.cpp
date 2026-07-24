@@ -411,15 +411,8 @@ bool draw_naming(SDL_Renderer* renderer, const ViewLayout& view,
         !draw_box(renderer, view, resources, 0U, 4U, 20U, 11U))
         return false;
     for (std::uint8_t row = 0U; row < 5U; ++row) {
-        for (std::uint8_t column = 0U; column < 9U; ++column) {
-            // Red's final naming cell is one dedicated END tile. Rendering
-            // three ordinary glyphs here extends through the right border.
-            if (row == 4U && column == 8U) {
-                if (!draw_tile(renderer, view, resources, 0x70,
-                               18.0F * 8.0F, 13.0F * 8.0F))
-                    return false;
-                continue;
-            }
+        const std::uint8_t columns = row == 4U ? 8U : 9U;
+        for (std::uint8_t column = 0U; column < columns; ++column) {
             if (!draw_text(renderer, view, resources,
                            boot_naming_cell(state, row, column),
                            2U + static_cast<std::size_t>(column) * 2U,
@@ -429,10 +422,14 @@ bool draw_naming(SDL_Renderer* renderer, const ViewLayout& view,
     }
     if (!draw_text(renderer, view, resources,
                    state.naming_lowercase ? "UPPER CASE" : "lower case", 2U, 16U,
-                   12U, 1U))
+                   12U, 1U) ||
+        !draw_text(renderer, view, resources, "END", 16U, 16U,
+                   3U, 1U))
         return false;
     const std::size_t cursor_x =
-        state.naming_row == 5U ? 1U : 1U + state.naming_column * 2U;
+        state.naming_row == 5U
+            ? (state.naming_column == 0U ? 1U : 15U)
+            : 1U + state.naming_column * 2U;
     const std::size_t cursor_y =
         state.naming_row == 5U ? 16U : 5U + state.naming_row * 2U;
     return draw_tile(renderer, view, resources, 0xED,

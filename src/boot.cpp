@@ -590,22 +590,54 @@ bool step_boot(const BootContent& content, const BootInput& input, BootState& st
         if (input.cancel_pressed || input.erase_pressed) {
             erase_last_naming_character(state.naming_value);
         } else if (input.up_pressed) {
-            state.naming_row =
-                static_cast<std::uint8_t>((state.naming_row + 5U) % 6U);
+            if (state.naming_row == 0U) {
+                state.naming_row = 5U;
+                state.naming_column =
+                    state.naming_column >= 4U ? 1U : 0U;
+            } else if (state.naming_row == 5U) {
+                state.naming_row = 4U;
+                state.naming_column =
+                    state.naming_column == 0U ? 0U : 7U;
+            } else {
+                --state.naming_row;
+            }
         } else if (input.down_pressed) {
-            state.naming_row =
-                static_cast<std::uint8_t>((state.naming_row + 1U) % 6U);
-        } else if (input.left_pressed && state.naming_row < 5U) {
-            state.naming_column =
-                static_cast<std::uint8_t>((state.naming_column + 8U) % 9U);
-        } else if (input.right_pressed && state.naming_row < 5U) {
-            state.naming_column =
-                static_cast<std::uint8_t>((state.naming_column + 1U) % 9U);
+            if (state.naming_row == 4U) {
+                state.naming_row = 5U;
+                state.naming_column =
+                    state.naming_column >= 4U ? 1U : 0U;
+            } else if (state.naming_row == 5U) {
+                state.naming_row = 0U;
+                state.naming_column =
+                    state.naming_column == 0U ? 0U : 8U;
+            } else {
+                ++state.naming_row;
+                if (state.naming_row == 4U &&
+                    state.naming_column == 8U)
+                    state.naming_column = 7U;
+            }
+        } else if (input.left_pressed || input.right_pressed) {
+            if (state.naming_row == 5U) {
+                state.naming_column =
+                    static_cast<std::uint8_t>(
+                        state.naming_column == 0U ? 1U : 0U);
+            } else {
+                const std::uint8_t columns =
+                    state.naming_row == 4U ? 8U : 9U;
+                state.naming_column = input.left_pressed
+                    ? static_cast<std::uint8_t>(
+                          (state.naming_column + columns - 1U) %
+                          columns)
+                    : static_cast<std::uint8_t>(
+                          (state.naming_column + 1U) % columns);
+            }
         } else if (input.confirm_pressed) {
             if (state.naming_row == 5U) {
-                state.naming_lowercase = !state.naming_lowercase;
-            } else if (state.naming_row == 4U && state.naming_column == 8U) {
-                if (!state.naming_value.empty()) finish_naming(state);
+                if (state.naming_column == 0U)
+                    state.naming_lowercase =
+                        !state.naming_lowercase;
+                else if (!state.naming_value.empty())
+                    finish_naming(state);
             } else if (state.naming_value.size() < 7U) {
                 state.naming_value +=
                     boot_naming_cell(state, state.naming_row, state.naming_column);

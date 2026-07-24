@@ -1975,7 +1975,7 @@ void test_local_boot_cache(TestState& state) {
     constexpr std::array<std::array<std::uint8_t, 2>, 5>
         vega_and_end{{
             {2U, 3U}, {0U, 4U}, {0U, 6U}, {0U, 0U},
-            {4U, 8U},
+            {5U, 1U},
         }};
     for (const auto& cell : vega_and_end) {
         grid_name.naming_row = cell[0];
@@ -2068,8 +2068,9 @@ void test_local_pallet_campaign_program(TestState& state) {
     controller_name.row = 0U;
     controller_name.column = 0U;
     pokered::step_naming({.confirm = true}, controller_name);
-    controller_name.row = 4U;
-    controller_name.column = 8U;
+    controller_name.row =
+        static_cast<std::uint8_t>(pokered::kNamingRows);
+    controller_name.column = 1U;
     pokered::step_naming({.confirm = true}, controller_name);
     check(state,
           controller_name.decided && !controller_name.open &&
@@ -2301,7 +2302,7 @@ void test_local_pallet_campaign_program(TestState& state) {
             constexpr std::array<std::array<std::uint8_t, 2>, 6>
                 ember_and_end{{
                     {0U, 4U}, {1U, 3U}, {0U, 1U},
-                    {0U, 4U}, {1U, 8U}, {4U, 8U},
+                    {0U, 4U}, {1U, 8U}, {5U, 1U},
                 }};
             for (const auto& cell : ember_and_end) {
                 world.naming.row = cell[0];
