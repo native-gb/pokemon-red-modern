@@ -265,6 +265,21 @@ constexpr std::size_t kRoute25LeftBillSetOffset = 0x051602U;
 constexpr std::size_t kRoute25HideNuggetGuyOffset = 0x051604U;
 constexpr std::size_t kRoute25HideBillOffset = 0x05160EU;
 constexpr std::size_t kRoute25ShowRareBillOffset = 0x051618U;
+constexpr std::size_t kCeruleanRocketCoordsOffset = 0x01954FU;
+constexpr std::size_t kCeruleanRocketEventCheckOffset = 0x0194C8U;
+constexpr std::size_t kCeruleanRocketEventSetOffset = 0x0194B4U;
+constexpr std::size_t kCeruleanRocketPreBattleTextOffset = 0x0196D9U;
+constexpr std::size_t kCeruleanRocketReceivedTmTextOffset = 0x0196DEU;
+constexpr std::size_t kCeruleanRocketNoRoomTextOffset = 0x0196E9U;
+constexpr std::size_t kCeruleanRocketGiveUpTextOffset = 0x0196EEU;
+constexpr std::size_t kCeruleanRocketReturnTmTextOffset = 0x0196F3U;
+constexpr std::size_t kCeruleanRocketTmGrantOffset = 0x0196B3U;
+constexpr std::size_t kCeruleanRocketShowGuardOffset = 0x074875U;
+constexpr std::size_t kCeruleanRocketHideGuardOffset = 0x07487FU;
+constexpr std::size_t kCeruleanRocketHideActorOffset = 0x074889U;
+constexpr std::size_t kCeruleanTrashedHouseObjectOffset = 0x01D6BFU;
+constexpr std::size_t kCeruleanTrashedHouseStolenTextOffset = 0x01D6ABU;
+constexpr std::size_t kCeruleanTrashedHouseAcceptedTextOffset = 0x01D6B0U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -714,6 +729,31 @@ struct BillsHouseProgram {
     DecodedTextProgram no_room;
     DecodedTextProgram why_go;
     DecodedTextProgram rare_pokemon;
+};
+
+struct CeruleanRocketProgram {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::uint8_t trainer_class{};
+    std::uint16_t trainer_party{};
+    std::array<std::pair<std::uint8_t, std::uint8_t>, 2>
+        trigger_cells;
+    std::uint32_t beat_flag{};
+    std::uint16_t tm_item_id{};
+    std::uint8_t tm_quantity{};
+    std::string tm_name;
+    ToggleActor rocket_actor;
+    ToggleActor guard_before;
+    ToggleActor guard_after;
+    std::uint8_t house_map_id{};
+    std::uint8_t house_owner_actor_index{};
+    DecodedTextProgram pre_battle;
+    DecodedTextProgram give_up;
+    DecodedTextProgram return_tm;
+    DecodedTextProgram received_tm;
+    DecodedTextProgram no_room;
+    DecodedTextProgram house_stolen;
+    DecodedTextProgram house_accepted;
 };
 
 struct CampaignInitialState {
@@ -1172,6 +1212,74 @@ bool decode_map_actor_position(
             (text_flags & 0xC0U) == 0U ? 6U : 8U;
     }
     error = "map actor position owner is unavailable";
+    return false;
+}
+
+bool decode_map_trainer_tuple(
+    std::span<const std::uint8_t> rom,
+    std::size_t object_offset, std::uint8_t actor_index,
+    std::uint8_t& trainer_class, std::uint16_t& trainer_party,
+    std::string& error) {
+    if (actor_index == 0U ||
+        object_offset + 2U > rom.size()) {
+        error = "map trainer owner is invalid";
+        return false;
+    }
+    std::size_t cursor = object_offset + 1U;
+    const std::uint8_t warp_count = rom[cursor++];
+    if (static_cast<std::size_t>(warp_count) >
+        (rom.size() - cursor) / 4U) {
+        error = "map trainer warp table is truncated";
+        return false;
+    }
+    cursor += static_cast<std::size_t>(warp_count) * 4U;
+    if (cursor >= rom.size()) {
+        error = "map trainer background header is truncated";
+        return false;
+    }
+    const std::uint8_t background_count = rom[cursor++];
+    if (static_cast<std::size_t>(background_count) >
+        (rom.size() - cursor) / 3U) {
+        error = "map trainer background table is truncated";
+        return false;
+    }
+    cursor +=
+        static_cast<std::size_t>(background_count) * 3U;
+    if (cursor >= rom.size()) {
+        error = "map trainer table is truncated";
+        return false;
+    }
+    const std::uint8_t actor_count = rom[cursor++];
+    for (std::uint8_t actor = 1U;
+         actor <= actor_count; ++actor) {
+        if (cursor + 6U > rom.size()) {
+            error = "map trainer record is truncated";
+            return false;
+        }
+        const std::uint8_t text_flags = rom[cursor + 5U];
+        const std::size_t record_size =
+            (text_flags & 0xC0U) == 0U ? 6U : 8U;
+        if (cursor + record_size > rom.size()) {
+            error = "map trainer parameter tuple is truncated";
+            return false;
+        }
+        if (actor == actor_index) {
+            if ((text_flags & 0xC0U) != 0x40U ||
+                rom[cursor + 6U] <= kTrainerOpponentOffset ||
+                rom[cursor + 7U] == 0U) {
+                error =
+                    "map trainer tuple does not match the verified layout";
+                return false;
+            }
+            trainer_class = static_cast<std::uint8_t>(
+                rom[cursor + 6U] - kTrainerOpponentOffset);
+            trainer_party = static_cast<std::uint16_t>(
+                rom[cursor + 7U] - 1U);
+            return true;
+        }
+        cursor += record_size;
+    }
+    error = "map trainer owner is unavailable";
     return false;
 }
 
@@ -3704,6 +3812,143 @@ bool decode_bills_house_program(
     return true;
 }
 
+bool decode_cerulean_rocket_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ToggleActor>& toggle_actors,
+    const std::vector<ImportedItemName>& item_names,
+    CeruleanRocketProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 3U;
+    result.house_map_id = 62U;
+    if (!decode_map_actor_owner(
+            rom, kCeruleanCityObjectOffset, 2U,
+            result.actor_index, error) ||
+        !decode_map_trainer_tuple(
+            rom, kCeruleanCityObjectOffset,
+            result.actor_index, result.trainer_class,
+            result.trainer_party, error) ||
+        !decode_map_actor_owner(
+            rom, kCeruleanTrashedHouseObjectOffset, 1U,
+            result.house_owner_actor_index, error))
+        return false;
+
+    if (kCeruleanRocketCoordsOffset + 5U > rom.size() ||
+        rom[kCeruleanRocketCoordsOffset + 4U] != 0xFFU) {
+        error =
+            "Cerulean Rocket trigger cells are truncated";
+        return false;
+    }
+    for (std::size_t index = 0U;
+         index < result.trigger_cells.size(); ++index) {
+        result.trigger_cells[index] = {
+            rom[kCeruleanRocketCoordsOffset + index * 2U + 1U],
+            rom[kCeruleanRocketCoordsOffset + index * 2U],
+        };
+    }
+
+    std::uint32_t set_beat = 0U;
+    if (!decode_checked_event(
+            rom, kCeruleanRocketEventCheckOffset,
+            result.beat_flag, error) ||
+        !decode_set_event(
+            rom, kCeruleanRocketEventSetOffset,
+            set_beat, error) ||
+        set_beat != result.beat_flag) {
+        if (error.empty())
+            error =
+                "Cerulean Rocket battle event check and mutation disagree";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 3>
+        give_item_call{0xCDU, 0x2EU, 0x3EU};
+    if (kCeruleanRocketTmGrantOffset + 6U > rom.size() ||
+        rom[kCeruleanRocketTmGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kCeruleanRocketTmGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "Cerulean Rocket TM grant does not match the verified ROM";
+        return false;
+    }
+    result.tm_quantity =
+        rom[kCeruleanRocketTmGrantOffset + 1U];
+    result.tm_item_id =
+        rom[kCeruleanRocketTmGrantOffset + 2U];
+    const auto tm = std::ranges::find_if(
+        item_names,
+        [&](const ImportedItemName& candidate) {
+            return candidate.item_id == result.tm_item_id;
+        });
+    if (result.tm_quantity == 0U ||
+        tm == item_names.end()) {
+        error =
+            "Cerulean Rocket TM is missing from the imported item catalogue";
+        return false;
+    }
+    result.tm_name = tm->name;
+
+    if (!decode_toggle_operation(
+            rom, kCeruleanRocketShowGuardOffset, 0x15U,
+            toggle_actors, result.guard_before, error) ||
+        !decode_toggle_operation(
+            rom, kCeruleanRocketHideGuardOffset, 0x11U,
+            toggle_actors, result.guard_after, error) ||
+        !decode_toggle_operation(
+            rom, kCeruleanRocketHideActorOffset, 0x11U,
+            toggle_actors, result.rocket_actor, error))
+        return false;
+    if (result.rocket_actor.map_id != result.map_id ||
+        result.rocket_actor.actor_index !=
+            result.actor_index ||
+        result.guard_before.map_id != result.map_id ||
+        result.guard_after.map_id != result.map_id) {
+        error =
+            "Cerulean Rocket success toggles do not own the decoded city actors";
+        return false;
+    }
+
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 5>
+        city_texts{{
+            {kCeruleanRocketPreBattleTextOffset,
+             &result.pre_battle},
+            {kCeruleanRocketGiveUpTextOffset,
+             &result.give_up},
+            {kCeruleanRocketReturnTmTextOffset,
+             &result.return_tm},
+            {kCeruleanRocketReceivedTmTextOffset,
+             &result.received_tm},
+            {kCeruleanRocketNoRoomTextOffset,
+             &result.no_room},
+        }};
+    for (const auto& [offset, text] : city_texts)
+        if (!decode_text_program(
+                rom, 0x06U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Cerulean Rocket dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    if (!decode_text_program(
+            rom, 0x07U,
+            kCeruleanTrashedHouseStolenTextOffset,
+            result.house_stolen) ||
+        !result.house_stolen.complete ||
+        result.house_stolen.pages.empty() ||
+        !decode_text_program(
+            rom, 0x07U,
+            kCeruleanTrashedHouseAcceptedTextOffset,
+            result.house_accepted) ||
+        !result.house_accepted.complete ||
+        result.house_accepted.pages.empty()) {
+        error =
+            "Cerulean trashed-house owner dialogue could not be decoded from the pinned ROM";
+        return false;
+    }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -5113,6 +5358,80 @@ GeneratedFile readable_bills_house_source(
     };
 }
 
+GeneratedFile readable_cerulean_rocket_source(
+    const CeruleanRocketProgram& rocket) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Cerulean Rocket and trashed-house programs.\n"
+        << "; Trigger cells, trainer tuple, event, TM28 transaction, actor toggles, and dialogue are ROM-derived.\n\n"
+        << "campaign_template cerulean_rocket_thief_battle\n"
+        << "    triggers\n";
+    for (const auto& [x, y] : rocket.trigger_cells)
+        source << "        player_cell "
+               << static_cast<unsigned>(x) << ' '
+               << static_cast<unsigned>(y) << '\n';
+    source
+        << "        actor_activation "
+        << static_cast<unsigned>(rocket.actor_index)
+        << "\n    absent_flag 0x" << std::hex
+        << rocket.beat_flag << std::dec
+        << "\n    say\n"
+        << page_source(rocket.pre_battle.pages, "        ")
+        << "    start_trainer_battle class "
+        << static_cast<unsigned>(rocket.trainer_class)
+        << " party " << rocket.trainer_party << '\n'
+        << "    if_player_won say\n"
+        << page_source(rocket.give_up.pages, "        ")
+        << "    if_player_lost end\n"
+        << "    set_flag 0x" << std::hex
+        << rocket.beat_flag << std::dec
+        << "\n    continue cerulean_rocket_return_tm\n\n"
+        << "campaign_program cerulean_rocket_return_tm_retry\n"
+        << "    required_flag 0x" << std::hex
+        << rocket.beat_flag << std::dec
+        << "\n    trigger map cerulean_city actor_activation "
+        << static_cast<unsigned>(rocket.actor_index)
+        << "\n    continue cerulean_rocket_return_tm\n\n"
+        << "campaign_fragment cerulean_rocket_return_tm\n"
+        << "    say\n"
+        << page_source(rocket.return_tm.pages, "        ")
+        << "    try_give_item "
+        << source_quote(rocket.tm_name) << " rom_id "
+        << rocket.tm_item_id << " quantity "
+        << static_cast<unsigned>(rocket.tm_quantity)
+        << "\n    if_item_grant_failed say\n"
+        << page_source(rocket.no_room.pages, "        ")
+        << "    else\n"
+        << "        say\n"
+        << page_source(rocket.received_tm.pages, "            ")
+        << "        show_actor map_"
+        << static_cast<unsigned>(rocket.guard_before.map_id)
+        << " actor "
+        << static_cast<unsigned>(
+               rocket.guard_before.actor_index)
+        << "\n        hide_actor map_"
+        << static_cast<unsigned>(rocket.guard_after.map_id)
+        << " actor "
+        << static_cast<unsigned>(
+               rocket.guard_after.actor_index)
+        << "\n        hide_actor rocket\n\n"
+        << "interaction cerulean_trashed_house_owner_before_tm28\n"
+        << "    say\n"
+        << page_source(rocket.house_stolen.pages, "        ")
+        << "\ninteraction cerulean_trashed_house_owner_after_tm28\n"
+        << "    required_item "
+        << source_quote(rocket.tm_name) << " quantity 1\n"
+        << "    say\n"
+        << page_source(rocket.house_accepted.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/cerulean_rocket.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -5399,6 +5718,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_bills_house_program(
             rom, toggle_actors, item_names,
             bills_house, error))
+        return false;
+    CeruleanRocketProgram cerulean_rocket;
+    if (!decode_cerulean_rocket_program(
+            rom, toggle_actors, item_names,
+            cerulean_rocket, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -7428,7 +7752,173 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(rare_pokemon));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'L'};
+    const auto append_cerulean_rocket_reward =
+        [&](std::vector<Instruction>& reward) {
+            reward.push_back(
+                dialogue(cerulean_rocket.return_tm.pages));
+            reward.push_back(operation(
+                Opcode::try_give_item,
+                cerulean_rocket.tm_quantity, 0U,
+                cerulean_rocket.tm_item_id));
+            const std::size_t no_room_jump =
+                reward.size();
+            reward.push_back(operation(
+                Opcode::jump_if_item_grant_failed));
+            reward.push_back(
+                dialogue(cerulean_rocket.received_tm.pages));
+            reward.push_back(operation(
+                Opcode::show_actor,
+                cerulean_rocket.guard_before.actor_index,
+                0U, cerulean_rocket.guard_before.map_id));
+            reward.push_back(operation(
+                Opcode::hide_actor,
+                cerulean_rocket.guard_after.actor_index,
+                0U, cerulean_rocket.guard_after.map_id));
+            reward.push_back(operation(
+                Opcode::hide_actor,
+                cerulean_rocket.rocket_actor.actor_index,
+                0U, cerulean_rocket.rocket_actor.map_id));
+            reward.push_back(
+                operation(Opcode::unlock_input));
+            reward.push_back(
+                operation(Opcode::end));
+            reward[no_room_jump].value =
+                static_cast<std::uint32_t>(
+                    reward.size());
+            reward.push_back(
+                dialogue(cerulean_rocket.no_room.pages));
+            reward.push_back(
+                operation(Opcode::unlock_input));
+            reward.push_back(
+                operation(Opcode::end));
+        };
+
+    const auto cerulean_rocket_battle =
+        [&](std::string key, TriggerKind trigger,
+            std::uint8_t trigger_x, std::uint8_t trigger_y,
+            std::uint8_t player_facing,
+            std::uint8_t actor_facing) {
+            Program battle;
+            battle.key = std::move(key);
+            battle.trigger_kind = trigger;
+            battle.trigger_map = cerulean_rocket.map_id;
+            battle.trigger_x = trigger_x;
+            battle.trigger_y = trigger_y;
+            battle.trigger_width = 1U;
+            battle.trigger_height = 1U;
+            battle.absent_flag =
+                cerulean_rocket.beat_flag;
+            battle.instructions.push_back(
+                operation(Opcode::lock_input));
+            if (trigger ==
+                TriggerKind::player_rectangle) {
+                battle.instructions.push_back(operation(
+                    Opcode::face_player, player_facing));
+                battle.instructions.push_back(operation(
+                    Opcode::face_actor,
+                    cerulean_rocket.actor_index,
+                    actor_facing,
+                    cerulean_rocket.map_id));
+            }
+            battle.instructions.push_back(
+                dialogue(
+                    cerulean_rocket.pre_battle.pages));
+            battle.instructions.push_back(operation(
+                Opcode::start_trainer_battle,
+                cerulean_rocket.trainer_class, 0U,
+                cerulean_rocket.trainer_party));
+            Instruction give_up =
+                operation(Opcode::say_if_player_won);
+            give_up.pages =
+                cerulean_rocket.give_up.pages;
+            battle.instructions.push_back(
+                std::move(give_up));
+            battle.instructions.push_back(
+                operation(Opcode::end_if_player_lost));
+            battle.instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                cerulean_rocket.beat_flag));
+            append_cerulean_rocket_reward(
+                battle.instructions);
+            return battle;
+        };
+    programs.push_back(cerulean_rocket_battle(
+        "cerulean_rocket_thief_north_cell",
+        TriggerKind::player_rectangle,
+        cerulean_rocket.trigger_cells[0].first,
+        cerulean_rocket.trigger_cells[0].second,
+        0U, 1U));
+    programs.push_back(cerulean_rocket_battle(
+        "cerulean_rocket_thief_south_cell",
+        TriggerKind::player_rectangle,
+        cerulean_rocket.trigger_cells[1].first,
+        cerulean_rocket.trigger_cells[1].second,
+        1U, 0U));
+    programs.push_back(cerulean_rocket_battle(
+        "cerulean_rocket_thief_actor",
+        TriggerKind::actor_activation,
+        cerulean_rocket.actor_index, 0U, 0U, 0U));
+
+    Program rocket_reward_retry;
+    rocket_reward_retry.key =
+        "cerulean_rocket_thief_tm28_retry";
+    rocket_reward_retry.trigger_kind =
+        TriggerKind::actor_activation;
+    rocket_reward_retry.trigger_map =
+        cerulean_rocket.map_id;
+    rocket_reward_retry.trigger_x =
+        cerulean_rocket.actor_index;
+    rocket_reward_retry.required_flag =
+        cerulean_rocket.beat_flag;
+    rocket_reward_retry.instructions.push_back(
+        operation(Opcode::lock_input));
+    append_cerulean_rocket_reward(
+        rocket_reward_retry.instructions);
+    programs.push_back(
+        std::move(rocket_reward_retry));
+
+    Program house_after;
+    house_after.key =
+        "cerulean_trashed_house_owner_after_tm28";
+    house_after.trigger_kind =
+        TriggerKind::actor_activation;
+    house_after.trigger_map =
+        cerulean_rocket.house_map_id;
+    house_after.trigger_x =
+        cerulean_rocket.house_owner_actor_index;
+    house_after.required_item_id =
+        cerulean_rocket.tm_item_id;
+    house_after.required_item_quantity = 1U;
+    house_after.instructions.push_back(
+        operation(Opcode::lock_input));
+    house_after.instructions.push_back(
+        dialogue(cerulean_rocket.house_accepted.pages));
+    house_after.instructions.push_back(
+        operation(Opcode::unlock_input));
+    house_after.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(house_after));
+
+    Program house_before;
+    house_before.key =
+        "cerulean_trashed_house_owner_before_tm28";
+    house_before.trigger_kind =
+        TriggerKind::actor_activation;
+    house_before.trigger_map =
+        cerulean_rocket.house_map_id;
+    house_before.trigger_x =
+        cerulean_rocket.house_owner_actor_index;
+    house_before.instructions.push_back(
+        operation(Opcode::lock_input));
+    house_before.instructions.push_back(
+        dialogue(cerulean_rocket.house_stolen.pages));
+    house_before.instructions.push_back(
+        operation(Opcode::unlock_input));
+    house_before.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(house_before));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'M'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -7515,6 +8005,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_bills_house_source(
             bills_house));
+    result.files.push_back(
+        readable_cerulean_rocket_source(
+            cerulean_rocket));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

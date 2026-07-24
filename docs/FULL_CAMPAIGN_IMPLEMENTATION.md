@@ -933,9 +933,35 @@ teleporter's exact timed sound/visual sequence and the later four-entry
 rare-Pokémon PC viewer remain explicit presentation/UI work; they must be
 imported before the Bill slice is considered presentation-complete.
 
+Cerulean's Rocket thief and TM28 recovery are now a six-program imported
+progression slice. The importer derives both automatic trigger cells, the
+direct actor owner, Rocket class 30 party 4, the defeated event, TM28 item
+tuple and name, all three affected actor toggles, the trashed-house owner, and
+all seven dialogue programs from the verified ROM. The engine receives only
+generic player-cell, actor-activation, trainer-battle, inventory transaction,
+flag, dialogue, and actor-visibility operations.
+
+Both automatic approaches face the player and Rocket toward one another before
+the challenge. A loss leaves the event clear. A victory presents the imported
+give-up response and records the event before attempting the TM transaction,
+so a full bag leaves the defeated Rocket available without replaying the
+battle. A later activation retries the return, grants TM28 when space exists,
+restores the first Cerulean guard, removes the replacement guard, and hides the
+Rocket. The trashed-house owner independently selects his before/after response
+from actual TM28 possession, matching the cartridge rather than relying on the
+battle event.
+
+The focused fixture enters the north automatic cell, verifies imported
+level-17 Machop and Drowzee, returns a victory with a deliberately full bag,
+checks the persistent event and visible retry actor, frees one stack, retries
+TM28, verifies all three actor states, and confirms the house owner's
+possession-dependent response. Readable content is generated at
+`source/scripts/campaign/cerulean_rocket.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-the Cerulean Rocket thief and TM28 path. Every later map program still requires
-semantic lifting and the remaining acceptance gates above stay open.
+Route 5, the Day Care, the Underground Path, and Vermilion progression. Every
+later map program still requires semantic lifting and the remaining acceptance
+gates above stay open.
 
 ## Playable acceptance
 

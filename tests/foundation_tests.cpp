@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 62U &&
+              programs.programs.size() == 68U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 23> source_names{
+    constexpr std::array<std::string_view, 24> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1819,6 +1819,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "cerulean_gym.sexpr",
         "route_24_nugget_bridge.sexpr",
         "bills_house.sexpr",
+        "cerulean_rocket.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -3555,6 +3556,171 @@ void test_local_pallet_campaign_program(TestState& state) {
               world.dialogue.pages.front().find(
                   "rare") != std::string::npos,
           "post-help Bill uses his imported rare-Pokemon dialogue");
+
+    // The Cerulean thief owns two automatic approach cells and a direct actor
+    // trigger. Exercise one automatic path with a full bag, then verify the
+    // cartridge's post-battle actor retry grants TM28 and swaps all three
+    // affected city actors.
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "post-help Bill dialogue completes");
+        if (!error.empty()) break;
+    }
+    std::vector<std::uint16_t> rocket_fillers;
+    for (std::uint16_t item_id = 120U;
+         campaign.inventory.stacks.size() <
+             campaign.inventory.stack_capacity &&
+         item_id < 220U;
+         ++item_id) {
+        if (pokered::inventory_item_quantity(
+                campaign.inventory, item_id) == 0U &&
+            pokered::give_inventory_item(
+                campaign.inventory, item_id, 1U))
+            rocket_fillers.push_back(item_id);
+    }
+    check(state,
+          campaign.inventory.stacks.size() ==
+              campaign.inventory.stack_capacity,
+          "campaign fixture fills the bag for the Cerulean Rocket reward");
+    check(state,
+          pokered::enter_world_at(
+              world, 3U, 30, 7, error),
+          "campaign fixture reaches the north Cerulean thief trigger");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "Stay out") != std::string::npos,
+          "Cerulean thief automatic cell starts imported dialogue");
+    for (std::size_t guard = 0U;
+         guard < 1000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Cerulean thief challenge advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id ==
+                  30U &&
+              campaign.trainer_battle_request.trainer_party_index ==
+                  4U,
+          "Cerulean thief selects imported Rocket class 30 party 4");
+    bool thief_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign,
+              battle_view, thief_began, error),
+          "Cerulean thief request begins its battle");
+    check(state,
+          thief_began &&
+              campaign.battle.enemy_party.members.size() ==
+                  2U &&
+              campaign.battle.enemy_party.members[0].species_dex ==
+                  66U &&
+              campaign.battle.enemy_party.members[0].level ==
+                  17U &&
+              campaign.battle.enemy_party.members[1].species_dex ==
+                  96U &&
+              campaign.battle.enemy_party.members[1].level ==
+                  17U,
+          "Cerulean thief materializes imported Machop and Drowzee");
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Cerulean thief victory and full-bag reward advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6BADFU) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 0xE4U) == 0U &&
+              actor_visible(3U, 2U),
+          "Cerulean thief defeat persists while a full bag leaves TM28 retryable");
+
+    check(state, !rocket_fillers.empty(),
+          "Cerulean Rocket fixture owns a removable filler stack");
+    if (!rocket_fillers.empty())
+        check(state,
+              pokered::take_inventory_item(
+                  campaign.inventory,
+                  rocket_fillers.back(), 1U),
+              "campaign fixture frees one TM28 bag slot");
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 3U,
+        .actor_index = 2U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Cerulean thief TM28 retry starts after freeing room");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Cerulean thief TM28 retry advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 0xE4U) == 1U &&
+              actor_visible(3U, 6U) &&
+              !actor_visible(3U, 11U) &&
+              !actor_visible(3U, 2U),
+          "TM28 retry grants the imported item and swaps Cerulean city actors");
+
+    world.dialogue = {};
+    check(state,
+          pokered::enter_world_at(
+              world, 62U, 2, 3, error),
+          "campaign fixture enters the trashed house");
+    world.last_actor_activation = {
+        .map_id = 62U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "lost is lost") != std::string::npos,
+          "trashed-house owner selects imported post-TM28 dialogue by possession");
 }
 
 } // namespace
