@@ -51,12 +51,15 @@ struct BattleEvent {
     BattleEventKind kind{BattleEventKind::used_move};
     bool player_actor{};
     std::uint8_t move_id{};
+    std::uint8_t player_species_dex{};
+    std::uint8_t enemy_species_dex{};
     std::uint16_t value{};
     std::string text;
 };
 
 struct BattleSideState {
     std::size_t active_index{};
+    std::optional<std::size_t> pending_active_index;
     // Attack, Defense, Speed, Special, Accuracy, and Evasion.
     std::array<std::uint8_t, 6> stat_stages{};
     bool focused{};
@@ -122,6 +125,9 @@ bool switch_player_battler(
     const BattleRuleCatalog& battle_rules,
     const PartyState& player_party, std::size_t party_index,
     BattleState& battle, std::string& error);
+bool commit_pending_battler(const PartyState& player_party,
+                            BattleState& battle, bool player_side,
+                            std::string& error);
 bool attempt_battle_capture(
     const RuleCatalog& rules,
     const BattleRuleCatalog& battle_rules,

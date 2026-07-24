@@ -39,7 +39,9 @@ presentation is finished.
   are acknowledged. The two-column command menu navigates spatially.
 - Fainted battlers retain their actual species identity through the faint
   sequence, then slide out rather than falling back to the animation-lab
-  preview species.
+  preview species. A living replacement is recorded as pending battle state;
+  its imported send-out event commits the new active index only after the
+  faint and EXP presentation has completed.
 - Grass cells repaint their imported foreground pixels over the player's
   feet. A total party defeat now heals and relocates to the last Center, or
   home before the first Center, halves money, and opens a blackout message.

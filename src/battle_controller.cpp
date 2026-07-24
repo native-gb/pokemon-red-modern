@@ -41,6 +41,8 @@ bool show_battle_message(
 BattleEventPresentation event_message(const RuleCatalog& rules,
                                       const BattleEvent& event) {
     BattleEventPresentation result;
+    result.player_species_dex = event.player_species_dex;
+    result.enemy_species_dex = event.enemy_species_dex;
     result.enemy_turn = !event.player_actor;
     if (event.kind == BattleEventKind::used_move) {
         const MoveRule* move = find_move(rules, event.move_id);
@@ -84,50 +86,21 @@ bool show_current_event(BattleAnimationLab& view,
     }
     const BattleEventPresentation& event =
         view.event_queue[view.event_queue_cursor];
+    if (event.player_species_dex != 0U)
+        view.player_species = static_cast<std::size_t>(
+            event.player_species_dex - 1U);
+    if (event.enemy_species_dex != 0U)
+        view.enemy_species = static_cast<std::size_t>(
+            event.enemy_species_dex - 1U);
     if (event.reveal_battler) {
         if (event.enemy_turn) {
-            if (view.has_pending_enemy_species) {
-                view.enemy_species =
-                    view.pending_enemy_species;
-                view.has_pending_enemy_species = false;
-            }
             view.enemy_battler_hidden = false;
         } else {
-            if (view.has_pending_player_species) {
-                view.player_species =
-                    view.pending_player_species;
-                view.has_pending_player_species = false;
-            }
             view.player_battler_hidden = false;
         }
     }
     return show_battle_message(
         view, event.first, event.second, false, false, error);
-}
-
-void retain_fainted_species_until_send_out(
-    const BattleState& battle, std::size_t previous_player,
-    std::size_t previous_enemy, BattleAnimationLab& view) {
-    const auto has_event = [&](BattleEventKind kind, bool player) {
-        return std::ranges::any_of(
-            battle.events,
-            [&](const BattleEvent& event) {
-                return event.kind == kind &&
-                       event.player_actor == player;
-            });
-    };
-    if (has_event(BattleEventKind::fainted, true) &&
-        has_event(BattleEventKind::sent_out, true)) {
-        view.pending_player_species = view.player_species;
-        view.has_pending_player_species = true;
-        view.player_species = previous_player;
-    }
-    if (has_event(BattleEventKind::fainted, false) &&
-        has_event(BattleEventKind::sent_out, false)) {
-        view.pending_enemy_species = view.enemy_species;
-        view.has_pending_enemy_species = true;
-        view.enemy_species = previous_enemy;
-    }
 }
 
 bool begin_event_presentation(const RuleCatalog& rules,
@@ -177,8 +150,25 @@ bool advance_event_presentation(
             view.player_battler_hidden = true;
     }
     ++view.event_queue_cursor;
-    if (view.event_queue_cursor < view.event_queue.size())
+    if (view.event_queue_cursor < view.event_queue.size()) {
+        const BattleEventPresentation& next =
+            view.event_queue[view.event_queue_cursor];
+        const bool player_side = !next.enemy_turn;
+        BattleSideState& side =
+            player_side ? campaign.battle.player
+                        : campaign.battle.enemy;
+        if (next.reveal_battler &&
+            side.pending_active_index.has_value()) {
+            if (!commit_pending_battler(
+                    campaign.party, campaign.battle,
+                    player_side, error) ||
+                !sync_battle_view(
+                    rules, battle_rules, campaign.party,
+                    campaign.battle, view, error))
+                return false;
+        }
         return show_current_event(view, error);
+    }
 
     view.event_queue.clear();
     view.event_queue_cursor = 0U;
@@ -754,10 +744,6 @@ bool control_battle(const RuleCatalog& rules,
         error.clear();
         return true;
     }
-    const std::size_t previous_player_species =
-        view.player_species;
-    const std::size_t previous_enemy_species =
-        view.enemy_species;
     if (!execute_battle_turn(
             rules, battle_rules, campaign.trainer_id, campaign.party,
             campaign.battle,
@@ -772,9 +758,6 @@ bool control_battle(const RuleCatalog& rules,
             rules, battle_rules, campaign.party,
             campaign.battle, view, error))
         return false;
-    retain_fainted_species_until_send_out(
-        campaign.battle, previous_player_species,
-        previous_enemy_species, view);
     return begin_event_presentation(
         rules, campaign.battle, view, error);
 }

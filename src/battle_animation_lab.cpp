@@ -496,8 +496,6 @@ void prepare_battle_view(BattleAnimationLab& lab) {
     lab.finish_after_event_queue = false;
     lab.player_battler_hidden = false;
     lab.enemy_battler_hidden = false;
-    lab.has_pending_player_species = false;
-    lab.has_pending_enemy_species = false;
 }
 
 void begin_battle_presentation(BattleAnimationLab& lab,

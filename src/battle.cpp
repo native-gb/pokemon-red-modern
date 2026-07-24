@@ -140,10 +140,16 @@ bool execute_action(const RuleCatalog& rules,
     }
 
     --selected.state->pp;
+    const std::uint8_t player_species_dex =
+        player_actor ? attacker.species_dex : defender.species_dex;
+    const std::uint8_t enemy_species_dex =
+        player_actor ? defender.species_dex : attacker.species_dex;
     battle.events.push_back({
         .kind = BattleEventKind::used_move,
         .player_actor = player_actor,
         .move_id = selected.rule->id,
+        .player_species_dex = player_species_dex,
+        .enemy_species_dex = enemy_species_dex,
         .text = attacker.nickname + " used " + selected.rule->name,
     });
 
@@ -182,6 +188,8 @@ bool execute_action(const RuleCatalog& rules,
                     .kind = BattleEventKind::missed,
                     .player_actor = player_actor,
                     .move_id = selected.rule->id,
+                    .player_species_dex = player_species_dex,
+                    .enemy_species_dex = enemy_species_dex,
                     .text = "The attack missed",
                 });
             }
@@ -210,6 +218,8 @@ bool execute_action(const RuleCatalog& rules,
                     .kind = BattleEventKind::critical_hit,
                     .player_actor = player_actor,
                     .move_id = selected.rule->id,
+                    .player_species_dex = player_species_dex,
+                    .enemy_species_dex = enemy_species_dex,
                     .text = "A critical hit",
                 });
             break;
@@ -273,6 +283,8 @@ bool execute_action(const RuleCatalog& rules,
                 .kind = BattleEventKind::dealt_damage,
                 .player_actor = player_actor,
                 .move_id = selected.rule->id,
+                .player_species_dex = player_species_dex,
+                .enemy_species_dex = enemy_species_dex,
                 .value = damage,
                 .text = {},
             });
@@ -281,6 +293,8 @@ bool execute_action(const RuleCatalog& rules,
                 battle.events.push_back({
                     .kind = BattleEventKind::fainted,
                     .player_actor = !player_actor,
+                    .player_species_dex = player_species_dex,
+                    .enemy_species_dex = enemy_species_dex,
                     .text = defender.nickname + " fainted",
                 });
                 result.target_fainted = true;
@@ -297,6 +311,8 @@ bool execute_action(const RuleCatalog& rules,
                         .kind = BattleEventKind::failed,
                         .player_actor = player_actor,
                         .move_id = selected.rule->id,
+                        .player_species_dex = player_species_dex,
+                        .enemy_species_dex = enemy_species_dex,
                         .text = "But it failed",
                     });
                 }
@@ -320,6 +336,8 @@ bool execute_action(const RuleCatalog& rules,
                     instruction.operands[0] == 0U ? player_actor
                                                   : !player_actor,
                 .move_id = selected.rule->id,
+                .player_species_dex = player_species_dex,
+                .enemy_species_dex = enemy_species_dex,
                 .value = side.stat_stages[stage_index],
                 .text = {},
             });
@@ -351,11 +369,16 @@ bool settle_faint(const RuleCatalog& rules,
             error.clear();
             return true;
         }
-        battle.player.active_index = *next;
+        battle.player.pending_active_index = *next;
         reset_stages(battle.player, neutral_stage);
         battle.events.push_back({
             .kind = BattleEventKind::sent_out,
             .player_actor = true,
+            .player_species_dex =
+                player_party.members[*next].species_dex,
+            .enemy_species_dex =
+                battle.enemy_party.members[
+                    battle.enemy.active_index].species_dex,
             .text = player_party.members[*next].nickname,
         });
         battle.phase = BattlePhase::choose_action;
@@ -379,6 +402,8 @@ bool settle_faint(const RuleCatalog& rules,
         battle.events.push_back({
             .kind = BattleEventKind::gained_experience,
             .player_actor = true,
+            .player_species_dex = recipient.species_dex,
+            .enemy_species_dex = defeated.species_dex,
             .value = static_cast<std::uint16_t>(
                 std::min<std::uint32_t>(
                     award.experience_gained,
@@ -394,11 +419,14 @@ bool settle_faint(const RuleCatalog& rules,
         error.clear();
         return true;
     }
-    battle.enemy.active_index = *next;
+    battle.enemy.pending_active_index = *next;
     reset_stages(battle.enemy, neutral_stage);
     battle.events.push_back({
         .kind = BattleEventKind::sent_out,
         .player_actor = false,
+        .player_species_dex = recipient.species_dex,
+        .enemy_species_dex =
+            battle.enemy_party.members[*next].species_dex,
         .text = battle.enemy_party.members[*next].nickname,
     });
     battle.phase = BattlePhase::choose_action;
@@ -731,13 +759,38 @@ bool switch_player_battler(
         return false;
     }
     battle.player.active_index = party_index;
+    battle.player.pending_active_index.reset();
     reset_stages(battle.player, accuracy->neutral_stage);
     battle.events.clear();
     battle.events.push_back({
         .kind = BattleEventKind::sent_out,
         .player_actor = true,
+        .player_species_dex =
+            player_party.members[party_index].species_dex,
+        .enemy_species_dex =
+            battle.enemy_party.members[
+                battle.enemy.active_index].species_dex,
         .text = player_party.members[party_index].nickname,
     });
+    error.clear();
+    return true;
+}
+
+bool commit_pending_battler(const PartyState& player_party,
+                            BattleState& battle, bool player_side,
+                            std::string& error) {
+    BattleSideState& side =
+        player_side ? battle.player : battle.enemy;
+    const std::size_t party_size =
+        player_side ? player_party.members.size()
+                    : battle.enemy_party.members.size();
+    if (!side.pending_active_index.has_value() ||
+        *side.pending_active_index >= party_size) {
+        error = "battle send-out has no valid pending battler";
+        return false;
+    }
+    side.active_index = *side.pending_active_index;
+    side.pending_active_index.reset();
     error.clear();
     return true;
 }
