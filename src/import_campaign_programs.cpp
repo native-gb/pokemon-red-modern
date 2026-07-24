@@ -444,6 +444,8 @@ enum class Opcode : std::uint8_t {
     actor_path_by_player_x,
     actor_path_by_player_y,
     actor_path_by_player_facing,
+    set_music_scene,
+    restore_map_music,
     emit_audio_cue,
     present_pokemon,
     start_trainer_battle,
@@ -5252,6 +5254,7 @@ GeneratedFile readable_pallet_source(const std::vector<std::string>& hey_wait,
            << "    initially_hide actor oaks_lab 5\n"
            << "    initially_hide actor oaks_lab 8\n"
            << "    lock_input\n"
+           << "    set_music_scene meet_prof_oak\n"
            << "    set_flag 0x" << std::hex << kOakAppearedFlag << std::dec << "\n"
            << "    say\n"
            << page_source(hey_wait, "        ") << "    show_actor 1\n"
@@ -5288,6 +5291,7 @@ GeneratedFile readable_pallet_source(const std::vector<std::string>& hey_wait,
     for (const PathCommand command : lab_player_path)
         source << ' ' << path_name(command);
     source << "\n"
+           << "    restore_map_music\n"
            << "    set_flag 0x" << std::hex << kFollowedOakFlag << "\n"
            << "    set_flag 0x" << kFollowedOakSecondFlag << std::dec << "\n"
            << "    say\n"
@@ -7457,6 +7461,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
 
     std::vector<Instruction> instructions;
     instructions.push_back(operation(Opcode::lock_input));
+    instructions.push_back(operation(
+        Opcode::set_music_scene, 1U));
     instructions.push_back(operation(Opcode::set_flag, 0U, 0U, kOakAppearedFlag));
     instructions.push_back(dialogue(hey_wait.pages));
     instructions.push_back(operation(Opcode::show_actor, 1U, 0U, 0U));
@@ -7481,6 +7487,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     player_enters.actor_path = std::vector<PathCommand>(lab_player_path.size(), PathCommand::wait);
     player_enters.player_path = lab_player_path;
     instructions.push_back(std::move(player_enters));
+    instructions.push_back(operation(
+        Opcode::restore_map_music));
     instructions.push_back(operation(Opcode::set_flag, 0U, 0U, kFollowedOakFlag));
     instructions.push_back(operation(Opcode::set_flag, 0U, 0U, kFollowedOakSecondFlag));
     for (const DecodedTextProgram& text : lab_choice_text)
@@ -10416,7 +10424,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(departure));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'S'};
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'T'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);

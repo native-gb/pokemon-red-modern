@@ -62,6 +62,8 @@ enum class CampaignOpcode : std::uint8_t {
     actor_path_by_player_x,
     actor_path_by_player_y,
     actor_path_by_player_facing,
+    set_music_scene,
+    restore_map_music,
     emit_audio_cue,
     present_pokemon,
     start_trainer_battle,

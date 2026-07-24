@@ -956,9 +956,27 @@ int main(int argc, char** argv) {
             } else if (game.mode == pokered::Mode::overworld &&
                 world.player.initialized &&
                 world.player.map_index < world.maps.size()) {
-                (void)audio.request_map_music(
-                    world.maps[world.player.map_index].id,
-                    dispatch_error);
+                if (world.music_override.active) {
+                    pokered::AudioScene scene =
+                        pokered::AudioScene::title;
+                    switch (world.music_override.scene) {
+                    case pokered::WorldMusicScene::title:
+                        scene = pokered::AudioScene::title;
+                        break;
+                    case pokered::WorldMusicScene::meet_prof_oak:
+                        scene = pokered::AudioScene::oak_intro;
+                        break;
+                    case pokered::WorldMusicScene::intro_battle:
+                        scene = pokered::AudioScene::intro_battle;
+                        break;
+                    }
+                    (void)audio.request_scene_music(
+                        scene, dispatch_error);
+                } else {
+                    (void)audio.request_map_music(
+                        world.maps[world.player.map_index].id,
+                        dispatch_error);
+                }
             } else if (game.mode == pokered::Mode::battle) {
                 (void)audio.request_battle_music(
                     gameplay_battle.presentation.trainer_battle,

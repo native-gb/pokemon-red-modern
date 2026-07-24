@@ -39,7 +39,7 @@ if [[ "$world_magic" != "PMVD" || "$interaction_magic" != "PWI3" ||
       "$encounter_magic" != "PEC1" ||
       "$trainer_magic" != "PTC2" ||
       "$boot_magic" != "PBT2" ||
-      "$campaign_magic" != "PCPS" ||
+      "$campaign_magic" != "PCPT" ||
       "$audio_magic" != "PRA6" ]]; then
     rom="$repo_root/../native-gb-pokemon-red/roms/pokemon_red.gb"
     if [[ ! -f "$rom" ]]; then

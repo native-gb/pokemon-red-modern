@@ -220,6 +220,22 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
+    case CampaignOpcode::set_music_scene:
+        return instruction.a <=
+                   static_cast<std::uint8_t>(
+                       WorldMusicScene::intro_battle) &&
+               instruction.b == 0U &&
+               instruction.value == 0U &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::restore_map_music:
+        return instruction.a == 0U &&
+               instruction.b == 0U &&
+               instruction.value == 0U &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
     case CampaignOpcode::emit_audio_cue:
         return instruction.a ==
                    static_cast<std::uint8_t>(
@@ -543,7 +559,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'S'}) {
+        magic != std::array{'P', 'C', 'P', 'T'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -1253,6 +1269,16 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             fiber.waiting_pokemon_presentation = true;
             error.clear();
             return true;
+        case CampaignOpcode::set_music_scene:
+            world.music_override = {
+                .scene = static_cast<WorldMusicScene>(
+                    instruction.a),
+                .active = true,
+            };
+            break;
+        case CampaignOpcode::restore_map_music:
+            world.music_override.active = false;
+            break;
         case CampaignOpcode::emit_audio_cue:
             world.audio_event = {
                 .serial = world.audio_event.serial + 1U,

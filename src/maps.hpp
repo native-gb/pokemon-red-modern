@@ -241,6 +241,17 @@ struct WorldAudioEvent {
     WorldAudioCue cue{WorldAudioCue::none};
 };
 
+enum class WorldMusicScene : std::uint8_t {
+    title,
+    meet_prof_oak,
+    intro_battle,
+};
+
+struct WorldMusicOverride {
+    WorldMusicScene scene{WorldMusicScene::title};
+    bool active{};
+};
+
 struct WorldActorActivation {
     std::uint8_t map_id{};
     std::uint8_t actor_index{};
@@ -322,6 +333,7 @@ struct WorldState {
     WorldChoiceState choice;
     WorldPokemonPresentation pokemon_presentation;
     WorldAudioEvent audio_event;
+    WorldMusicOverride music_override;
     NamingState naming;
     FieldMenuState menu;
     WorldWarpState last_warp;
