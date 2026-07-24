@@ -322,6 +322,62 @@ constexpr std::size_t kUndergroundRoute5TradeScriptOffset = 0x05D6B2U;
 constexpr std::size_t kVermilionTradeScriptOffset = 0x019C17U;
 constexpr std::uint32_t kTradeFlagBase =
     static_cast<std::uint32_t>(0xD737U) * 8U;
+constexpr std::size_t kSSAnne2FObjectOffset = 0x061514U;
+constexpr std::size_t kSSAnne1FObjectOffset = 0x061277U;
+constexpr std::size_t kVermilionDockObjectOffset = 0x01DCC6U;
+constexpr std::size_t kSSAnneRivalTriggerCoordsOffset =
+    0x061411U;
+constexpr std::size_t kSSAnneRivalDownFourOffset = 0x06140CU;
+constexpr std::size_t kSSAnneRivalDownThreeOffset = 0x06140DU;
+constexpr std::size_t kSSAnneRivalSelectorOffset = 0x061447U;
+constexpr std::size_t kSSAnneRivalExitAroundOffset = 0x0614B7U;
+constexpr std::size_t kSSAnneRivalExitDownOffset = 0x0614B9U;
+constexpr std::size_t kSSAnneRivalExitStateWriteOffset =
+    0x0614B1U;
+constexpr std::size_t kSSAnneRivalPreBattleTextOffset =
+    0x061500U;
+constexpr std::size_t kSSAnneRivalDefeatedTextOffset =
+    0x061505U;
+constexpr std::size_t kSSAnneRivalVictoryTextOffset =
+    0x06150AU;
+constexpr std::size_t kSSAnneRivalCutMasterTextOffset =
+    0x06150FU;
+constexpr std::size_t kSSAnneCaptainObjectOffset = 0x061946U;
+constexpr std::size_t kSSAnneCaptainBackgroundOffset =
+    0x06194CU;
+constexpr std::size_t kSSAnneCaptainGotHmCheckOffset =
+    0x0618AEU;
+constexpr std::size_t kSSAnneCaptainItemGrantOffset =
+    0x0618C1U;
+constexpr std::size_t kSSAnneCaptainGotHmSetOffset =
+    0x0618CFU;
+constexpr std::size_t kSSAnneCaptainRubbedSetOffset =
+    0x06191AU;
+constexpr std::size_t kSSAnneCaptainRubTextOffset = 0x0618ECU;
+constexpr std::size_t kSSAnneCaptainBetterTextOffset =
+    0x061927U;
+constexpr std::size_t kSSAnneCaptainReceivedTextOffset =
+    0x06192CU;
+constexpr std::size_t kSSAnneCaptainHealthyTextOffset =
+    0x061932U;
+constexpr std::size_t kSSAnneCaptainNoRoomTextOffset =
+    0x061937U;
+constexpr std::size_t kSSAnneCaptainTrashTextOffset =
+    0x06193CU;
+constexpr std::size_t kSSAnneCaptainBookTextOffset =
+    0x061941U;
+constexpr std::size_t kSSAnneDepartureStartedSetOffset =
+    0x01DB6AU;
+constexpr std::size_t kSSAnneDepartureLeftSetOffset =
+    0x01DB9BU;
+constexpr std::size_t kSSAnneDepartureWalkedOutSetOffset =
+    0x01DB98U;
+constexpr std::size_t kSSAnneDeparturePastGuardSetOffset =
+    0x0197D3U;
+constexpr std::size_t kSSAnneDockExitStepCountOffset =
+    0x01DB7DU;
+constexpr std::size_t kSSAnneCityExitStepCountOffset =
+    0x0197D7U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -348,6 +404,7 @@ enum class TriggerKind : std::uint8_t {
     map_presence,
     cell_activation,
     cell_activation_any_facing,
+    warp_arrival,
 };
 
 enum class Opcode : std::uint8_t {
@@ -888,6 +945,53 @@ struct InGameTradeCatalogue {
     std::array<TradeBinding, 2> active_bindings;
     DecodedTextProgram connect;
     DecodedTextProgram traded_for;
+};
+
+struct SSAnneProgram {
+    std::uint8_t rival_map_id{};
+    std::uint8_t rival_actor_index{};
+    std::uint8_t rival_spawn_x{};
+    std::uint8_t rival_spawn_y{};
+    std::array<std::pair<std::uint8_t, std::uint8_t>, 2>
+        rival_trigger_cells;
+    std::vector<PathCommand> rival_down_three;
+    std::vector<PathCommand> rival_down_four;
+    std::vector<PathCommand> rival_exit_around;
+    std::vector<PathCommand> rival_exit_down;
+    std::uint32_t rival_completed_flag{};
+    std::array<RivalBattleChoice, 3> rival_battles;
+    DecodedTextProgram rival_pre_battle;
+    DecodedTextProgram rival_defeated;
+    DecodedTextProgram rival_victory;
+    DecodedTextProgram rival_cut_master;
+
+    std::uint8_t captain_map_id{};
+    std::uint8_t captain_actor_index{};
+    std::uint16_t hm_item_id{};
+    std::uint8_t hm_quantity{};
+    std::string hm_name;
+    std::uint32_t got_hm_flag{};
+    std::uint32_t rubbed_captain_flag{};
+    DecodedTextProgram captain_rub;
+    DecodedTextProgram captain_better;
+    DecodedTextProgram captain_received;
+    DecodedTextProgram captain_healthy;
+    DecodedTextProgram captain_no_room;
+    DecodedTextProgram captain_trash;
+    DecodedTextProgram captain_book;
+    std::pair<std::uint8_t, std::uint8_t>
+        captain_trash_cell;
+    std::pair<std::uint8_t, std::uint8_t>
+        captain_book_cell;
+
+    std::uint8_t departure_source_map_id{};
+    std::uint8_t departure_destination_map_id{};
+    std::uint8_t departure_destination_warp{};
+    std::uint32_t ship_left_flag{};
+    std::uint32_t started_walking_flag{};
+    std::uint32_t walked_out_flag{};
+    std::uint32_t walked_past_guard_flag{};
+    std::vector<PathCommand> departure_path;
 };
 
 struct CampaignInitialState {
@@ -4661,6 +4765,377 @@ bool decode_in_game_trade_catalogue(
     return true;
 }
 
+bool decode_ss_anne_program(
+    std::span<const std::uint8_t> rom,
+    const std::array<StarterChoice, 3>& starters,
+    const std::vector<ToggleActor>& toggle_actors,
+    const std::vector<ImportedItemName>& item_names,
+    const VermilionTicketGateProgram& vermilion_gate,
+    SSAnneProgram& result, std::string& error) {
+    result = {};
+    result.rival_map_id = 96U;
+    result.captain_map_id = 101U;
+    result.departure_source_map_id = 95U;
+    result.departure_destination_map_id = 94U;
+    result.departure_destination_warp = 1U;
+
+    if (!decode_map_actor_owner(
+            rom, kSSAnne2FObjectOffset, 2U,
+            result.rival_actor_index, error) ||
+        !decode_map_actor_position(
+            rom, kSSAnne2FObjectOffset,
+            result.rival_actor_index,
+            result.rival_spawn_x,
+            result.rival_spawn_y, error) ||
+        kSSAnneRivalTriggerCoordsOffset + 5U >
+            rom.size() ||
+        rom[kSSAnneRivalTriggerCoordsOffset + 4U] !=
+            0xFFU) {
+        if (error.empty())
+            error =
+                "S.S. Anne rival owner or trigger cells do not match the verified ROM";
+        return false;
+    }
+    for (std::size_t index = 0U;
+         index < result.rival_trigger_cells.size();
+         ++index)
+        result.rival_trigger_cells[index] = {
+            rom[kSSAnneRivalTriggerCoordsOffset +
+                index * 2U + 1U],
+            rom[kSSAnneRivalTriggerCoordsOffset +
+                index * 2U],
+        };
+    if (result.rival_trigger_cells[0].second !=
+            result.rival_trigger_cells[1].second ||
+        result.rival_trigger_cells[1].first !=
+            result.rival_trigger_cells[0].first + 1U ||
+        !decode_direct_npc_path(
+            rom, kSSAnneRivalDownThreeOffset,
+            result.rival_down_three, error) ||
+        !decode_direct_npc_path(
+            rom, kSSAnneRivalDownFourOffset,
+            result.rival_down_four, error) ||
+        !decode_direct_npc_path(
+            rom, kSSAnneRivalExitAroundOffset,
+            result.rival_exit_around, error) ||
+        !decode_direct_npc_path(
+            rom, kSSAnneRivalExitDownOffset,
+            result.rival_exit_down, error) ||
+        result.rival_down_three.size() != 3U ||
+        result.rival_down_four.size() != 4U ||
+        result.rival_exit_around.size() != 6U ||
+        result.rival_exit_down.size() != 4U ||
+        kSSAnneRivalExitStateWriteOffset + 5U >
+            rom.size() ||
+        rom[kSSAnneRivalExitStateWriteOffset] !=
+            0x3EU ||
+        rom[kSSAnneRivalExitStateWriteOffset + 1U] !=
+            0x03U ||
+        rom[kSSAnneRivalExitStateWriteOffset + 2U] !=
+            0xEAU) {
+        if (error.empty())
+            error =
+                "S.S. Anne rival movement does not match the verified ROM";
+        return false;
+    }
+    result.rival_completed_flag =
+        static_cast<std::uint32_t>(
+            static_cast<std::uint16_t>(
+                rom[kSSAnneRivalExitStateWriteOffset +
+                    3U] |
+                static_cast<std::uint16_t>(
+                    rom[kSSAnneRivalExitStateWriteOffset +
+                        4U])
+                    << 8U)) *
+        8U;
+    const auto rival_toggle = std::ranges::find_if(
+        toggle_actors,
+        [&](const ToggleActor& actor) {
+            return actor.map_id ==
+                       result.rival_map_id &&
+                   actor.actor_index ==
+                       result.rival_actor_index;
+        });
+    if (rival_toggle == toggle_actors.end() ||
+        rival_toggle->initially_visible) {
+        error =
+            "S.S. Anne rival is not initially hidden by the imported toggle table";
+        return false;
+    }
+
+    constexpr std::array<std::pair<std::size_t, std::uint8_t>, 18>
+        selector_signature{{
+            {0U, 0x3EU},  {2U, 0xEAU}, {3U, 0x59U},
+            {4U, 0xD0U},  {5U, 0xFAU}, {6U, 0x15U},
+            {7U, 0xD7U},  {8U, 0xFEU}, {10U, 0x20U},
+            {12U, 0x3EU}, {14U, 0x18U},
+            {16U, 0xFEU}, {18U, 0x20U},
+            {20U, 0x3EU}, {22U, 0x18U},
+            {24U, 0x3EU}, {26U, 0xEAU},
+            {27U, 0x5DU},
+        }};
+    if (kSSAnneRivalSelectorOffset + 29U >
+        rom.size()) {
+        error =
+            "S.S. Anne rival trainer selector is truncated";
+        return false;
+    }
+    for (const auto& [relative, expected] :
+         selector_signature)
+        if (rom[kSSAnneRivalSelectorOffset + relative] !=
+            expected) {
+            error =
+                "S.S. Anne rival trainer selector does not match the verified ROM";
+            return false;
+        }
+    const std::uint8_t opponent =
+        rom[kSSAnneRivalSelectorOffset + 1U];
+    const std::uint8_t first_species =
+        dex_for_internal_species(
+            rom,
+            rom[kSSAnneRivalSelectorOffset + 9U]);
+    const std::uint8_t second_species =
+        dex_for_internal_species(
+            rom,
+            rom[kSSAnneRivalSelectorOffset + 17U]);
+    const std::array<std::uint8_t, 3>
+        one_based_parties{
+            rom[kSSAnneRivalSelectorOffset + 13U],
+            rom[kSSAnneRivalSelectorOffset + 21U],
+            rom[kSSAnneRivalSelectorOffset + 25U],
+        };
+    if (opponent <= kTrainerOpponentOffset ||
+        first_species == 0U ||
+        second_species == 0U) {
+        error =
+            "S.S. Anne rival trainer selector contains invalid content";
+        return false;
+    }
+    std::array<bool, 3> assigned{};
+    for (std::size_t index = 0U;
+         index < starters.size(); ++index) {
+        const std::uint8_t rival_species =
+            starters[index].rival_species;
+        const std::size_t party =
+            rival_species == first_species
+                ? 0U
+                : rival_species == second_species
+                      ? 1U
+                      : 2U;
+        if (one_based_parties[party] == 0U) {
+            error =
+                "S.S. Anne rival trainer party is invalid";
+            return false;
+        }
+        result.rival_battles[index] = {
+            .rival_species = rival_species,
+            .trainer_class =
+                static_cast<std::uint8_t>(
+                    opponent -
+                    kTrainerOpponentOffset),
+            .trainer_party =
+                static_cast<std::uint16_t>(
+                    one_based_parties[party] - 1U),
+        };
+        assigned[party] = true;
+    }
+    if (!std::ranges::all_of(
+            assigned,
+            [](bool value) { return value; })) {
+        error =
+            "S.S. Anne rival selector does not cover all starter branches";
+        return false;
+    }
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 4>
+        rival_texts{{
+            {kSSAnneRivalPreBattleTextOffset,
+             &result.rival_pre_battle},
+            {kSSAnneRivalDefeatedTextOffset,
+             &result.rival_defeated},
+            {kSSAnneRivalVictoryTextOffset,
+             &result.rival_victory},
+            {kSSAnneRivalCutMasterTextOffset,
+             &result.rival_cut_master},
+        }};
+    for (const auto& [offset, text] : rival_texts)
+        if (!decode_text_program(
+                rom, 0x18U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "S.S. Anne rival dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+
+    if (!decode_map_actor_owner(
+            rom, kSSAnneCaptainObjectOffset, 1U,
+            result.captain_actor_index, error) ||
+        !decode_checked_event(
+            rom, kSSAnneCaptainGotHmCheckOffset,
+            result.got_hm_flag, error) ||
+        !decode_set_event(
+            rom, kSSAnneCaptainGotHmSetOffset,
+            result.ship_left_flag, error) ||
+        result.ship_left_flag !=
+            result.got_hm_flag ||
+        !decode_set_event(
+            rom, kSSAnneCaptainRubbedSetOffset,
+            result.rubbed_captain_flag, error) ||
+        result.rubbed_captain_flag !=
+            result.got_hm_flag + 1U) {
+        if (error.empty())
+            error =
+                "S.S. Anne captain event ownership does not match the verified ROM";
+        return false;
+    }
+    constexpr std::array<std::uint8_t, 3>
+        give_item_call{0xCDU, 0x2EU, 0x3EU};
+    if (kSSAnneCaptainItemGrantOffset + 6U >
+            rom.size() ||
+        rom[kSSAnneCaptainItemGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kSSAnneCaptainItemGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "S.S. Anne captain HM grant does not match the verified ROM";
+        return false;
+    }
+    result.hm_quantity =
+        rom[kSSAnneCaptainItemGrantOffset + 1U];
+    result.hm_item_id =
+        rom[kSSAnneCaptainItemGrantOffset + 2U];
+    const auto hm = std::ranges::find_if(
+        item_names,
+        [&](const ImportedItemName& item) {
+            return item.item_id == result.hm_item_id;
+        });
+    if (result.hm_quantity == 0U ||
+        hm == item_names.end()) {
+        error =
+            "S.S. Anne captain HM is missing from the imported item catalogue";
+        return false;
+    }
+    result.hm_name = hm->name;
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 7>
+        captain_texts{{
+            {kSSAnneCaptainRubTextOffset,
+             &result.captain_rub},
+            {kSSAnneCaptainBetterTextOffset,
+             &result.captain_better},
+            {kSSAnneCaptainReceivedTextOffset,
+             &result.captain_received},
+            {kSSAnneCaptainHealthyTextOffset,
+             &result.captain_healthy},
+            {kSSAnneCaptainNoRoomTextOffset,
+             &result.captain_no_room},
+            {kSSAnneCaptainTrashTextOffset,
+             &result.captain_trash},
+            {kSSAnneCaptainBookTextOffset,
+             &result.captain_book},
+        }};
+    for (const auto& [offset, text] : captain_texts)
+        if (!decode_text_program(
+                rom, 0x18U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "S.S. Anne captain dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    if (kSSAnneCaptainBackgroundOffset + 7U >
+            rom.size() ||
+        rom[kSSAnneCaptainBackgroundOffset] !=
+            2U ||
+        rom[kSSAnneCaptainBackgroundOffset + 3U] !=
+            2U ||
+        rom[kSSAnneCaptainBackgroundOffset + 6U] !=
+            3U) {
+        error =
+            "S.S. Anne captain background interactions do not match the verified ROM";
+        return false;
+    }
+    result.captain_trash_cell = {
+        rom[kSSAnneCaptainBackgroundOffset + 2U],
+        rom[kSSAnneCaptainBackgroundOffset + 1U],
+    };
+    result.captain_book_cell = {
+        rom[kSSAnneCaptainBackgroundOffset + 5U],
+        rom[kSSAnneCaptainBackgroundOffset + 4U],
+    };
+    resolve_item_name_buffer(
+        result.captain_received, result.hm_name);
+
+    constexpr std::array<std::uint8_t, 10>
+        ship_exit_warps{
+            0x0CU, 0x0BU, 0x00U, 0x1AU, 0x01U,
+            0x5EU, 0x00U, 0x1BU, 0x01U, 0x5EU,
+        };
+    constexpr std::array<std::uint8_t, 10>
+        dock_warps{
+            0x0FU, 0x02U, 0x00U, 0x0EU, 0x05U,
+            0xFFU, 0x02U, 0x0EU, 0x01U, 0x5FU,
+        };
+    if (!has_bytes(
+            rom, kSSAnne1FObjectOffset,
+            ship_exit_warps) ||
+        !has_bytes(
+            rom, kVermilionDockObjectOffset,
+            dock_warps) ||
+        result.got_hm_flag / 8U > 0xFFFFU) {
+        error =
+            "S.S. Anne departure warps do not match the verified ROM";
+        return false;
+    }
+    const std::uint16_t event_address =
+        static_cast<std::uint16_t>(
+            result.got_hm_flag / 8U);
+    if (!decode_reused_event(
+            rom, kSSAnneDepartureLeftSetOffset,
+            event_address, true,
+            result.ship_left_flag, error) ||
+        result.ship_left_flag !=
+            vermilion_gate.ship_left_flag ||
+        !decode_reused_event(
+            rom, kSSAnneDepartureStartedSetOffset,
+            event_address, true,
+            result.started_walking_flag, error) ||
+        !decode_reused_event(
+            rom, kSSAnneDepartureWalkedOutSetOffset,
+            event_address, true,
+            result.walked_out_flag, error) ||
+        !decode_reused_event(
+            rom,
+            kSSAnneDeparturePastGuardSetOffset,
+            event_address, true,
+            result.walked_past_guard_flag, error) ||
+        kSSAnneDockExitStepCountOffset >= rom.size() ||
+        kSSAnneCityExitStepCountOffset >= rom.size()) {
+        if (error.empty())
+            error =
+                "S.S. Anne departure events do not match the verified ROM";
+        return false;
+    }
+    const std::size_t departure_steps =
+        static_cast<std::size_t>(
+            rom[kSSAnneDockExitStepCountOffset]) +
+        static_cast<std::size_t>(
+            rom[kSSAnneCityExitStepCountOffset]);
+    if (departure_steps != 5U ||
+        result.started_walking_flag !=
+            result.ship_left_flag + 2U ||
+        result.walked_out_flag !=
+            result.ship_left_flag + 3U ||
+        result.walked_past_guard_flag !=
+            result.ship_left_flag + 1U) {
+        error =
+            "S.S. Anne departure path or event ordering is invalid";
+        return false;
+    }
+    result.departure_path.assign(
+        departure_steps, PathCommand::up);
+    return true;
+}
+
 DecodedTextProgram resolved_trade_text(
     DecodedTextProgram text,
     const TradeDefinition& trade) {
@@ -6437,6 +6912,181 @@ GeneratedFile readable_in_game_trades_source(
     };
 }
 
+GeneratedFile readable_ss_anne_source(
+    const SSAnneProgram& ship) {
+    const auto path = [](const std::vector<PathCommand>& commands) {
+        std::ostringstream result;
+        for (const PathCommand command : commands) {
+            switch (command) {
+            case PathCommand::down:
+                result << " down";
+                break;
+            case PathCommand::up:
+                result << " up";
+                break;
+            case PathCommand::left:
+                result << " left";
+                break;
+            case PathCommand::right:
+                result << " right";
+                break;
+            case PathCommand::wait:
+                result << " wait";
+                break;
+            case PathCommand::face_down:
+                result << " face_down";
+                break;
+            }
+        }
+        return result.str();
+    };
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 S.S. Anne progression programs.\n"
+        << "; Rival triggers/movement/parties, captain HM service, ship-exit warps, movement counts, and events are ROM-derived.\n\n";
+    for (const RivalBattleChoice& battle :
+         ship.rival_battles)
+        source
+            << "campaign_program ss_anne_rival_for_starter_"
+            << static_cast<unsigned>(
+                   battle.rival_species)
+            << "\n    trigger map_id "
+            << static_cast<unsigned>(
+                   ship.rival_map_id)
+            << " rectangle "
+            << static_cast<unsigned>(
+                   ship.rival_trigger_cells[0].first)
+            << ' '
+            << static_cast<unsigned>(
+                   ship.rival_trigger_cells[0].second)
+            << " 2 1\n    absent_flag 0x"
+            << std::hex << ship.rival_completed_flag
+            << std::dec
+            << "\n    required_variable rival_starter "
+            << static_cast<unsigned>(
+                   battle.rival_species)
+            << "\n    show_actor "
+            << static_cast<unsigned>(
+                   ship.rival_actor_index)
+            << "\n    approach_if_player_x "
+            << static_cast<unsigned>(
+                   ship.rival_trigger_cells[0].first)
+            << "\n        equal"
+            << path(ship.rival_down_three)
+            << "\n        otherwise"
+            << path(ship.rival_down_four)
+            << "\n    say\n"
+            << page_source(
+                   ship.rival_pre_battle.pages,
+                   "        ")
+            << "    start_trainer_battle class "
+            << static_cast<unsigned>(
+                   battle.trainer_class)
+            << " party " << battle.trainer_party
+            << "\n    if_player_won say\n"
+            << page_source(
+                   ship.rival_defeated.pages,
+                   "        ")
+            << "    if_player_lost say\n"
+            << page_source(
+                   ship.rival_victory.pages,
+                   "        ")
+            << "    on_victory set_flag 0x"
+            << std::hex << ship.rival_completed_flag
+            << std::dec << '\n'
+            << "    on_victory say\n"
+            << page_source(
+                   ship.rival_cut_master.pages,
+                   "        ")
+            << "    on_victory exit_if_player_x "
+            << static_cast<unsigned>(
+                   ship.rival_trigger_cells[1].first)
+            << "\n        equal"
+            << path(ship.rival_exit_down)
+            << "\n        otherwise"
+            << path(ship.rival_exit_around)
+            << "\n\n";
+    source
+        << "campaign_program ss_anne_captain_hm01\n"
+        << "    trigger map_id "
+        << static_cast<unsigned>(
+               ship.captain_map_id)
+        << " actor_activation "
+        << static_cast<unsigned>(
+               ship.captain_actor_index)
+        << "\n    absent_flag 0x" << std::hex
+        << ship.got_hm_flag << std::dec
+        << "\n    say\n"
+        << page_source(
+               ship.captain_rub.pages, "        ")
+        << "    set_flag 0x" << std::hex
+        << ship.rubbed_captain_flag << std::dec
+        << "\n    say\n"
+        << page_source(
+               ship.captain_better.pages, "        ")
+        << "    try_give_item "
+        << source_quote(ship.hm_name)
+        << " rom_id " << ship.hm_item_id
+        << " quantity "
+        << static_cast<unsigned>(
+               ship.hm_quantity)
+        << "\n    if_bag_full say\n"
+        << page_source(
+               ship.captain_no_room.pages, "        ")
+        << "    otherwise say\n"
+        << page_source(
+               ship.captain_received.pages,
+               "        ")
+        << "    otherwise set_flag 0x"
+        << std::hex << ship.got_hm_flag
+        << std::dec
+        << "\n\ncampaign_program ss_anne_captain_after_hm01\n"
+        << "    trigger map_id "
+        << static_cast<unsigned>(
+               ship.captain_map_id)
+        << " actor_activation "
+        << static_cast<unsigned>(
+               ship.captain_actor_index)
+        << "\n    required_flag 0x"
+        << std::hex << ship.got_hm_flag
+        << std::dec << "\n    say\n"
+        << page_source(
+               ship.captain_healthy.pages,
+               "        ")
+        << "\ncampaign_program ss_anne_departure\n"
+        << "    trigger warp_arrival source_map_id "
+        << static_cast<unsigned>(
+               ship.departure_source_map_id)
+        << " source_warp any destination_map_id "
+        << static_cast<unsigned>(
+               ship.departure_destination_map_id)
+        << " destination_warp "
+        << static_cast<unsigned>(
+               ship.departure_destination_warp)
+        << "\n    required_flag 0x" << std::hex
+        << ship.got_hm_flag
+        << "\n    absent_flag 0x"
+        << ship.ship_left_flag << std::dec
+        << "\n    set_flag 0x" << std::hex
+        << ship.ship_left_flag
+        << "\n    set_flag 0x"
+        << ship.started_walking_flag << std::dec
+        << "\n    player_path"
+        << path(ship.departure_path)
+        << "\n    set_flag 0x" << std::hex
+        << ship.walked_out_flag
+        << "\n    set_flag 0x"
+        << ship.walked_past_guard_flag
+        << std::dec << '\n';
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/ss_anne.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -6749,6 +7399,12 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     InGameTradeCatalogue in_game_trades;
     if (!decode_in_game_trade_catalogue(
             rom, in_game_trades, error))
+        return false;
+    SSAnneProgram ss_anne;
+    if (!decode_ss_anne_program(
+            rom, starter_choices, toggle_actors,
+            item_names, vermilion_ticket_gate,
+            ss_anne, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -9482,7 +10138,265 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(offer));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'Q'};
+    for (const RivalBattleChoice& battle :
+         ss_anne.rival_battles) {
+        Program rival;
+        rival.key =
+            "ss_anne_rival_for_starter_" +
+            std::to_string(
+                battle.rival_species);
+        rival.trigger_kind =
+            TriggerKind::player_rectangle;
+        rival.trigger_map =
+            ss_anne.rival_map_id;
+        rival.trigger_x =
+            ss_anne.rival_trigger_cells[0].first;
+        rival.trigger_y =
+            ss_anne.rival_trigger_cells[0].second;
+        rival.trigger_width = 2U;
+        rival.trigger_height = 1U;
+        rival.absent_flag =
+            ss_anne.rival_completed_flag;
+        rival.required_variable =
+            kRivalStarterVariable;
+        rival.required_variable_value =
+            battle.rival_species;
+        rival.instructions.push_back(
+            operation(Opcode::lock_input));
+        rival.instructions.push_back(operation(
+            Opcode::place_actor,
+            ss_anne.rival_actor_index,
+            ss_anne.rival_map_id,
+            packed_position(
+                ss_anne.rival_spawn_x,
+                ss_anne.rival_spawn_y)));
+        rival.instructions.push_back(operation(
+            Opcode::show_actor,
+            ss_anne.rival_actor_index, 0U,
+            ss_anne.rival_map_id));
+        Instruction approach = operation(
+            Opcode::actor_path_by_player_x,
+            ss_anne.rival_actor_index,
+            ss_anne.rival_trigger_cells[0].first,
+            ss_anne.rival_map_id);
+        approach.actor_path =
+            ss_anne.rival_down_three;
+        approach.player_path =
+            ss_anne.rival_down_four;
+        rival.instructions.push_back(
+            std::move(approach));
+        rival.instructions.push_back(operation(
+            Opcode::face_player,
+            ss_anne.rival_actor_index));
+        rival.instructions.push_back(
+            dialogue(
+                ss_anne.rival_pre_battle.pages));
+        rival.instructions.push_back(operation(
+            Opcode::start_trainer_battle,
+            battle.trainer_class, 0U,
+            battle.trainer_party));
+        Instruction defeated =
+            operation(Opcode::say_if_player_won);
+        defeated.pages =
+            ss_anne.rival_defeated.pages;
+        rival.instructions.push_back(
+            std::move(defeated));
+        Instruction victory =
+            operation(Opcode::say_if_player_lost);
+        victory.pages =
+            ss_anne.rival_victory.pages;
+        rival.instructions.push_back(
+            std::move(victory));
+        const std::size_t victory_jump =
+            rival.instructions.size();
+        rival.instructions.push_back(
+            operation(Opcode::jump_if_player_won));
+        rival.instructions.push_back(operation(
+            Opcode::hide_actor,
+            ss_anne.rival_actor_index, 0U,
+            ss_anne.rival_map_id));
+        rival.instructions.push_back(
+            operation(Opcode::unlock_input));
+        rival.instructions.push_back(
+            operation(Opcode::end));
+        rival.instructions[victory_jump].value =
+            static_cast<std::uint32_t>(
+                rival.instructions.size());
+        rival.instructions.push_back(operation(
+            Opcode::set_flag, 0U, 0U,
+            ss_anne.rival_completed_flag));
+        rival.instructions.push_back(
+            dialogue(
+                ss_anne.rival_cut_master.pages));
+        Instruction exit = operation(
+            Opcode::actor_path_by_player_x,
+            ss_anne.rival_actor_index,
+            ss_anne.rival_trigger_cells[1].first,
+            ss_anne.rival_map_id);
+        exit.actor_path =
+            ss_anne.rival_exit_down;
+        exit.player_path =
+            ss_anne.rival_exit_around;
+        rival.instructions.push_back(
+            std::move(exit));
+        rival.instructions.push_back(operation(
+            Opcode::hide_actor,
+            ss_anne.rival_actor_index, 0U,
+            ss_anne.rival_map_id));
+        rival.instructions.push_back(
+            operation(Opcode::unlock_input));
+        rival.instructions.push_back(
+            operation(Opcode::end));
+        programs.push_back(std::move(rival));
+    }
+
+    Program captain;
+    captain.key = "ss_anne_captain_hm01";
+    captain.trigger_kind =
+        TriggerKind::actor_activation;
+    captain.trigger_map =
+        ss_anne.captain_map_id;
+    captain.trigger_x =
+        ss_anne.captain_actor_index;
+    captain.absent_flag =
+        ss_anne.got_hm_flag;
+    captain.instructions.push_back(
+        operation(Opcode::lock_input));
+    captain.instructions.push_back(
+        dialogue(ss_anne.captain_rub.pages));
+    captain.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        ss_anne.rubbed_captain_flag));
+    captain.instructions.push_back(
+        dialogue(ss_anne.captain_better.pages));
+    captain.instructions.push_back(operation(
+        Opcode::try_give_item,
+        ss_anne.hm_quantity, 0U,
+        ss_anne.hm_item_id));
+    const std::size_t captain_bag_full_jump =
+        captain.instructions.size();
+    captain.instructions.push_back(operation(
+        Opcode::jump_if_item_grant_failed));
+    captain.instructions.push_back(
+        dialogue(
+            ss_anne.captain_received.pages));
+    captain.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        ss_anne.got_hm_flag));
+    captain.instructions.push_back(
+        operation(Opcode::unlock_input));
+    captain.instructions.push_back(
+        operation(Opcode::end));
+    captain.instructions[
+        captain_bag_full_jump].value =
+        static_cast<std::uint32_t>(
+            captain.instructions.size());
+    captain.instructions.push_back(
+        dialogue(
+            ss_anne.captain_no_room.pages));
+    captain.instructions.push_back(
+        operation(Opcode::unlock_input));
+    captain.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(captain));
+
+    Program captain_after;
+    captain_after.key =
+        "ss_anne_captain_after_hm01";
+    captain_after.trigger_kind =
+        TriggerKind::actor_activation;
+    captain_after.trigger_map =
+        ss_anne.captain_map_id;
+    captain_after.trigger_x =
+        ss_anne.captain_actor_index;
+    captain_after.required_flag =
+        ss_anne.got_hm_flag;
+    captain_after.instructions.push_back(
+        operation(Opcode::lock_input));
+    captain_after.instructions.push_back(
+        dialogue(
+            ss_anne.captain_healthy.pages));
+    captain_after.instructions.push_back(
+        operation(Opcode::unlock_input));
+    captain_after.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(
+        std::move(captain_after));
+
+    const auto captain_background =
+        [&](std::string key,
+            std::pair<std::uint8_t, std::uint8_t> cell,
+            const DecodedTextProgram& text) {
+            Program background;
+            background.key = std::move(key);
+            background.trigger_kind =
+                TriggerKind::
+                    cell_activation_any_facing;
+            background.trigger_map =
+                ss_anne.captain_map_id;
+            background.trigger_x = cell.first;
+            background.trigger_y = cell.second;
+            background.instructions.push_back(
+                operation(Opcode::lock_input));
+            background.instructions.push_back(
+                dialogue(text.pages));
+            background.instructions.push_back(
+                operation(Opcode::unlock_input));
+            background.instructions.push_back(
+                operation(Opcode::end));
+            return background;
+        };
+    programs.push_back(captain_background(
+        "ss_anne_captain_trash",
+        ss_anne.captain_trash_cell,
+        ss_anne.captain_trash));
+    programs.push_back(captain_background(
+        "ss_anne_captain_seasick_book",
+        ss_anne.captain_book_cell,
+        ss_anne.captain_book));
+
+    Program departure;
+    departure.key = "ss_anne_departure";
+    departure.trigger_kind =
+        TriggerKind::warp_arrival;
+    departure.trigger_map =
+        ss_anne.departure_destination_map_id;
+    departure.trigger_x =
+        ss_anne.departure_source_map_id;
+    departure.trigger_y = 0xFFU;
+    departure.trigger_width =
+        ss_anne.departure_destination_warp;
+    departure.required_flag =
+        ss_anne.got_hm_flag;
+    departure.absent_flag =
+        ss_anne.ship_left_flag;
+    departure.instructions.push_back(
+        operation(Opcode::lock_input));
+    departure.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        ss_anne.ship_left_flag));
+    departure.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        ss_anne.started_walking_flag));
+    Instruction departure_path =
+        operation(Opcode::player_path);
+    departure_path.player_path =
+        ss_anne.departure_path;
+    departure.instructions.push_back(
+        std::move(departure_path));
+    departure.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        ss_anne.walked_out_flag));
+    departure.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        ss_anne.walked_past_guard_flag));
+    departure.instructions.push_back(
+        operation(Opcode::unlock_input));
+    departure.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(departure));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'R'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -9585,6 +10499,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_in_game_trades_source(
             in_game_trades));
+    result.files.push_back(
+        readable_ss_anne_source(ss_anne));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

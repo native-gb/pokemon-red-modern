@@ -1045,9 +1045,45 @@ ten-record catalogue and two current bindings are readable at
 already decoded; their actor bindings will be added as their later maps enter
 the playable campaign.
 
+The critical S.S. Anne campaign path is now imported end to end. Blue's 2F
+encounter derives its two trigger cells, hidden actor and spawn, three/four-step
+approaches, both post-battle exits, RIVAL2 class and all three
+starter-dependent parties, dialogue, and persistent map-script state from the
+ROM. A loss hides and resets Blue for retry; a victory records the normalized
+`wSSAnne2FCurScript` state, presents the Cut-master lead, runs the side-specific
+exit, and removes him.
+
+The captain is a retryable semantic inventory transaction. His actor, both
+background interactions, HM01 tuple/name, got-HM and rubbed-back events, and
+all seven text programs are imported. Rubbing his back records its event
+before the item attempt as on the cartridge. A full bag retains HM01 and leaves
+the reward event clear; a later activation retries, grants HM01, and changes
+the captain to his healthy response.
+
+Ship departure uses a generic exact warp-arrival trigger rather than a map
+presence approximation. The importer cross-validates both ship doors, dock
+warp, got-HM predicate, four contiguous departure events, and the source
+three-plus-two automatic north-step counts. Exiting after HM01 records the
+ship-left/started/walked-out/past-guard states and escorts the player through
+the dock into Vermilion. This exposed and fixed a general return-warp defect:
+maps sharing a connected render space can no longer overwrite `LAST_MAP`
+merely because the combined space is outdoor; only a real cross-space outdoor
+departure updates the return point.
+
+The focused fixture materializes Blue's level-specific Pidgeotto, Raticate,
+Kadabra, and Wartortle party, completes his imported exit, proves the captain's
+full-bag retry and HM01 grant, then takes the actual ship warp and verifies all
+four departure events and the final Vermilion coordinate. Readable content is
+generated at `source/scripts/campaign/ss_anne.sexpr`.
+
+The exact horn, smoke, scrolling ship-erasure presentation and optional
+ship-room NPC conversations remain presentation/content-completion work; the
+required rival → captain → HM01 → departure progression is executable.
+
 This is not full-campaign completion. The next campaign blocker begins with
-the S.S. Anne campaign. Every later map program still requires semantic
-lifting and the remaining acceptance gates above stay open.
+the explicitly prioritized title-through-Brock playable acceptance pass.
+Later map programs still require semantic lifting and the remaining acceptance
+gates above stay open.
 
 ## Playable acceptance
 

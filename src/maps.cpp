@@ -405,14 +405,17 @@ bool activate_world_warp(WorldState& world) {
     const WorldWarp* source_warp = warp_at(source, world.player.x, world.player.y);
     if (source_warp == nullptr) return false;
 
-    if (source.world_space < world.spaces.size() && world.spaces[source.world_space].outdoor)
-        world.player.last_outdoor_map_index = source_index;
     const std::size_t destination_index =
         source_warp->destination_map_id == 0xFFU
             ? world.player.last_outdoor_map_index
             : find_map_by_id(world, source_warp->destination_map_id);
     if (destination_index >= world.maps.size()) return false;
     const WorldMap& destination = world.maps[destination_index];
+    if (source_warp->destination_map_id != 0xFFU &&
+        source.world_space < world.spaces.size() &&
+        world.spaces[source.world_space].outdoor &&
+        source.world_space != destination.world_space)
+        world.player.last_outdoor_map_index = source_index;
     if (source_warp->destination_warp_index >= destination.warps.size()) return false;
     const WorldWarp& destination_warp =
         destination.warps[source_warp->destination_warp_index];
@@ -1267,7 +1270,14 @@ bool apply_player_path_command(WorldState& world, WorldPathCommand command,
     const std::size_t target_map =
         find_map_for_global_cell(world, world.player.map_index, global_x, global_y);
     if (target_map >= world.maps.size() || !is_passable(world, target_map, global_x, global_y)) {
-        error = "campaign player path is blocked by terrain";
+        error =
+            "campaign player path is blocked from map " +
+            std::to_string(map.id) + " at " +
+            std::to_string(world.player.x) + ',' +
+            std::to_string(world.player.y) +
+            " toward global cell " +
+            std::to_string(global_x) + ',' +
+            std::to_string(global_y);
         return false;
     }
     const WorldMap& target = world.maps[target_map];

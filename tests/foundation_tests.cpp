@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 145U &&
+              programs.programs.size() == 153U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 29> source_names{
+    constexpr std::array<std::string_view, 30> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1825,6 +1825,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "daycare.sexpr",
         "hidden_items.sexpr",
         "in_game_trades.sexpr",
+        "ss_anne.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -4221,6 +4222,237 @@ void test_local_pallet_campaign_program(TestState& state) {
               world.dialogue.pages.front().find(
                   "old") != std::string::npos,
           "completed Route 5 trade switches to its imported after-trade dialogue");
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "completed trade response closes");
+        if (!error.empty()) break;
+    }
+
+    // The ship rival's trigger pair, hidden spawn, two approach streams,
+    // starter-dependent RIVAL2 party, and exit are one imported program.
+    check(state,
+          pokered::enter_world_at(
+              world, 96U, 36, 8, error),
+          "campaign fixture reaches the S.S. Anne rival trigger");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world,
+              campaign, error) &&
+              campaign.fiber.active &&
+              campaign.input_locked,
+          "S.S. Anne rival starts from the imported trigger pair");
+    for (std::size_t guard = 0U;
+         guard < 2000U &&
+         !campaign.trainer_battle_request.pending;
+         ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "S.S. Anne rival approach and challenge advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request
+                      .trainer_class_id == 42U &&
+              campaign.trainer_battle_request
+                      .trainer_party_index == 0U,
+          "S.S. Anne rival selects imported RIVAL2 party 1 for Squirtle");
+    bool ship_rival_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules,
+              campaign, battle_view,
+              ship_rival_began, error),
+          "S.S. Anne rival request begins its battle");
+    check(state,
+          ship_rival_began &&
+              campaign.battle.enemy_party.members.size() ==
+                  4U &&
+              campaign.battle.enemy_party.members[0]
+                      .species_dex == 17U &&
+              campaign.battle.enemy_party.members[0]
+                      .level == 19U &&
+              campaign.battle.enemy_party.members[1]
+                      .species_dex == 20U &&
+              campaign.battle.enemy_party.members[1]
+                      .level == 16U &&
+              campaign.battle.enemy_party.members[2]
+                      .species_dex == 64U &&
+              campaign.battle.enemy_party.members[2]
+                      .level == 18U &&
+              campaign.battle.enemy_party.members[3]
+                      .species_dex == 8U &&
+              campaign.battle.enemy_party.members[3]
+                      .level == 20U,
+          "S.S. Anne rival materializes imported Pidgeotto Raticate Kadabra Wartortle");
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active;
+         ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "S.S. Anne rival victory and exit advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6B328U) &&
+              !actor_visible(96U, 2U) &&
+              !campaign.input_locked,
+          "S.S. Anne rival records its imported script state and exits");
+
+    // The captain records the back-rub state even when the bag is full, but
+    // keeps HM01 and its event retryable until an inventory slot is free.
+    check(state,
+          campaign.inventory.stacks.size() ==
+              campaign.inventory.stack_capacity,
+          "S.S. Anne captain fixture begins with a full bag");
+    check(state,
+          pokered::enter_world_at(
+              world, 101U, 4, 3, error),
+          "campaign fixture enters the captain's room");
+    world.last_actor_activation = {
+        .map_id = 101U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world,
+              campaign, error),
+          "S.S. Anne captain full-bag service starts");
+    for (std::size_t guard = 0U;
+         guard < 2000U && campaign.fiber.active;
+         ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "S.S. Anne captain full-bag flow advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6C019U) &&
+              !pokered::campaign_flag(
+                  campaign, 0x6C018U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 196U) == 0U,
+          "captain retains HM01 after recording the imported back-rub event");
+    check(state,
+          pokered::take_inventory_item(
+              campaign.inventory, 16U, 1U),
+          "campaign fixture frees the hidden Full Restore slot for HM01");
+    world.last_actor_activation = {
+        .map_id = 101U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world,
+              campaign, error),
+          "S.S. Anne captain HM01 retry starts");
+    for (std::size_t guard = 0U;
+         guard < 2000U && campaign.fiber.active;
+         ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "S.S. Anne captain HM01 retry advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6C018U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 196U) == 1U,
+          "captain grants imported HM01 and records its event");
+
+    // Exiting either ship-door cell into dock warp 1 after HM01 owns the
+    // departure state and the ROM's three-plus-two automatic north steps.
+    check(state,
+          pokered::enter_world_at(
+              world, 95U, 26, 1, error),
+          "campaign fixture reaches the S.S. Anne exit");
+    for (std::size_t index = 0U;
+         index < world.maps.size(); ++index)
+        if (world.maps[index].id == 5U)
+            world.player.last_outdoor_map_index = index;
+    pokered::step_world(
+        world, interactions, campaign, {.up = true});
+    check(state,
+          world.last_warp.occurred &&
+              world.last_warp.source_map_id == 95U &&
+              world.last_warp.destination_map_id == 94U &&
+              world.last_warp.destination_warp_index ==
+                  1U &&
+              world.player.map_index <
+                  world.maps.size() &&
+              world.maps[world.player.map_index].id ==
+                  94U &&
+              world.player.x == 14 &&
+              world.player.y == 2 &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+          "ship exit starts its exact imported warp-arrival program");
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active;
+         ++guard) {
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "S.S. Anne departure movement advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6C01AU) &&
+              pokered::campaign_flag(
+                  campaign, 0x6C01BU) &&
+              pokered::campaign_flag(
+                  campaign, 0x6C01CU) &&
+              pokered::campaign_flag(
+                  campaign, 0x6C01DU) &&
+              world.player.map_index <
+                  world.maps.size() &&
+              world.maps[world.player.map_index].id ==
+                  5U &&
+              world.player.x == 18 &&
+              world.player.y == 28 &&
+              !campaign.input_locked,
+          "S.S. Anne departure records all four events and escorts the player past the guard");
 }
 
 } // namespace
