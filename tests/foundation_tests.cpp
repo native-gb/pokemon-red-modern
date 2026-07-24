@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 47U &&
+              programs.programs.size() == 52U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 20> source_names{
+    constexpr std::array<std::string_view, 21> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1816,6 +1816,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "mt_moon_fossils.sexpr",
         "mt_moon_magikarp_sale.sexpr",
         "cerulean_rival.sexpr",
+        "cerulean_gym.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -3171,6 +3172,105 @@ void test_local_pallet_campaign_program(TestState& state) {
               !actor_visible(3U, 1U) &&
               !campaign.input_locked,
           "Cerulean rival victory records the event and hides Blue after his imported exit");
+
+    check(state,
+          pokered::enter_world_at(
+              world, 65U, 4, 12, error),
+          "campaign fixture reaches Misty");
+    world.last_actor_activation = {
+        .map_id = 65U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "Hi, you're") != std::string::npos,
+          "Misty activation starts imported pre-battle dialogue");
+    for (std::size_t guard = 0U;
+         guard < 2000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Misty challenge advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id ==
+                  35U &&
+              campaign.trainer_battle_request.trainer_party_index ==
+                  0U,
+          "Misty selects imported trainer class 35 party 0");
+    bool misty_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign,
+              battle_view, misty_began, error),
+          "Misty request begins its battle");
+    check(state,
+          misty_began &&
+              campaign.battle.enemy_party.members.size() ==
+                  2U &&
+              campaign.battle.enemy_party.members[0].species_dex ==
+                  120U &&
+              campaign.battle.enemy_party.members[0].level ==
+                  18U &&
+              campaign.battle.enemy_party.members[1].species_dex ==
+                  121U &&
+              campaign.battle.enemy_party.members[1].level ==
+                  21U,
+          "Misty materializes imported Staryu and Starmie party");
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Misty victory and reward flow advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(campaign, 0x6BAF7U) &&
+              pokered::campaign_flag(campaign, 0x6BAF6U) &&
+              pokered::campaign_flag(campaign, 0x69AB1U) &&
+              pokered::campaign_flag(campaign, 0x6B951U) &&
+              pokered::campaign_flag(campaign, 0x6BAF2U) &&
+              pokered::campaign_flag(campaign, 0x6BAF3U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 0xD3U) == 1U &&
+              !campaign.input_locked,
+          "Misty victory grants imported Cascade Badge state and TM11");
+
+    world.dialogue = {};
+    world.last_actor_activation = {
+        .map_id = 65U,
+        .actor_index = 4U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "beat MISTY") != std::string::npos,
+          "Cerulean Gym guide switches to imported post-Misty dialogue");
 }
 
 } // namespace

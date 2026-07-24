@@ -202,6 +202,25 @@ constexpr std::size_t kCeruleanRivalPreBattleTextOffset = 0x019668U;
 constexpr std::size_t kCeruleanRivalDefeatedTextOffset = 0x01966DU;
 constexpr std::size_t kCeruleanRivalVictoryTextOffset = 0x019672U;
 constexpr std::size_t kCeruleanRivalAfterBattleTextOffset = 0x019677U;
+constexpr std::size_t kCeruleanGymObjectOffset = 0x05C834U;
+constexpr std::size_t kCeruleanGymMistyActorOffset = 0x05C840U;
+constexpr std::size_t kCeruleanGymMistyCheckOffset = 0x05C772U;
+constexpr std::size_t kCeruleanGymGotTmCheckOffset = 0x05C779U;
+constexpr std::size_t kCeruleanGymBeatMistySetOffset = 0x05C714U;
+constexpr std::size_t kCeruleanGymTmGrantOffset = 0x05C719U;
+constexpr std::size_t kCeruleanGymGotTmSetOffset = 0x05C728U;
+constexpr std::size_t kCeruleanGymObtainedBadgeSetOffset = 0x05C736U;
+constexpr std::size_t kCeruleanGymBeatGymSetOffset = 0x05C73BU;
+constexpr std::size_t kCeruleanGymTrainer0SetOffset = 0x05C740U;
+constexpr std::size_t kCeruleanGymTrainer1SetOffset = 0x05C745U;
+constexpr std::size_t kCeruleanGymPreBattleTextOffset = 0x05C7BEU;
+constexpr std::size_t kCeruleanGymTmExplanationTextOffset = 0x05C7C3U;
+constexpr std::size_t kCeruleanGymBadgeInfoTextOffset = 0x05C7C8U;
+constexpr std::size_t kCeruleanGymReceivedTmTextOffset = 0x05C7CDU;
+constexpr std::size_t kCeruleanGymNoRoomTextOffset = 0x05C7D3U;
+constexpr std::size_t kCeruleanGymBadgeTextOffset = 0x05C7D8U;
+constexpr std::size_t kCeruleanGymGuideBeforeTextOffset = 0x05C82AU;
+constexpr std::size_t kCeruleanGymGuideAfterTextOffset = 0x05C82FU;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -561,6 +580,31 @@ struct CeruleanRivalProgram {
     DecodedTextProgram defeated;
     DecodedTextProgram victory;
     DecodedTextProgram after_battle;
+};
+
+struct CeruleanGymProgram {
+    std::uint8_t map_id{};
+    std::uint8_t misty_actor_index{};
+    std::uint8_t guide_actor_index{};
+    std::uint8_t trainer_class{};
+    std::uint16_t trainer_party{};
+    std::uint32_t beat_misty_flag{};
+    std::uint32_t got_tm_flag{};
+    std::uint32_t obtained_badge_flag{};
+    std::uint32_t beat_gym_flag{};
+    std::uint32_t trainer_0_flag{};
+    std::uint32_t trainer_1_flag{};
+    std::uint16_t tm_item_id{};
+    std::uint8_t tm_quantity{};
+    std::string tm_name;
+    DecodedTextProgram pre_battle;
+    DecodedTextProgram badge;
+    DecodedTextProgram badge_info;
+    DecodedTextProgram received_tm;
+    DecodedTextProgram no_room;
+    DecodedTextProgram tm_explanation;
+    DecodedTextProgram guide_before;
+    DecodedTextProgram guide_after;
 };
 
 struct CampaignInitialState {
@@ -2943,6 +2987,153 @@ bool decode_cerulean_rival_program(
             error =
                 "Cerulean rival dialogue could not be decoded from the pinned ROM";
             return false;
+    }
+    return true;
+}
+
+bool decode_cerulean_gym_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ImportedItemName>& item_names,
+    CeruleanGymProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 65U;
+    if (!decode_map_actor_owner(
+            rom, kCeruleanGymObjectOffset, 1U,
+            result.misty_actor_index, error) ||
+        !decode_map_actor_owner(
+            rom, kCeruleanGymObjectOffset, 4U,
+            result.guide_actor_index, error) ||
+        kCeruleanGymMistyActorOffset + 8U > rom.size() ||
+        (rom[kCeruleanGymMistyActorOffset + 5U] & 0xC0U) !=
+            0x40U ||
+        (rom[kCeruleanGymMistyActorOffset + 5U] & 0x3FU) !=
+            result.misty_actor_index ||
+        rom[kCeruleanGymMistyActorOffset + 6U] <=
+            kTrainerOpponentOffset ||
+        rom[kCeruleanGymMistyActorOffset + 7U] == 0U) {
+        if (error.empty())
+            error =
+                "Cerulean Gym actor ownership does not match the verified ROM";
+        return false;
+    }
+    result.trainer_class =
+        static_cast<std::uint8_t>(
+            rom[kCeruleanGymMistyActorOffset + 6U] -
+            kTrainerOpponentOffset);
+    result.trainer_party =
+        static_cast<std::uint16_t>(
+            rom[kCeruleanGymMistyActorOffset + 7U] - 1U);
+
+    if (!decode_checked_event(
+            rom, kCeruleanGymMistyCheckOffset,
+            result.beat_misty_flag, error) ||
+        kCeruleanGymGotTmCheckOffset + 2U > rom.size() ||
+        rom[kCeruleanGymGotTmCheckOffset] != 0xCBU ||
+        rom[kCeruleanGymGotTmCheckOffset + 1U] < 0x47U ||
+        (rom[kCeruleanGymGotTmCheckOffset + 1U] - 0x47U) %
+                8U !=
+            0U) {
+        if (error.empty())
+            error =
+                "Cerulean Gym reward predicates do not match the verified ROM";
+        return false;
+    }
+    result.got_tm_flag =
+        result.beat_misty_flag -
+        (result.beat_misty_flag % 8U) +
+        (rom[kCeruleanGymGotTmCheckOffset + 1U] -
+         0x47U) /
+            8U;
+
+    std::uint32_t set_beat_misty = 0U;
+    std::uint32_t set_got_tm = 0U;
+    if (!decode_set_event(
+            rom, kCeruleanGymBeatMistySetOffset,
+            set_beat_misty, error) ||
+        !decode_set_event(
+            rom, kCeruleanGymGotTmSetOffset,
+            set_got_tm, error) ||
+        set_beat_misty != result.beat_misty_flag ||
+        set_got_tm != result.got_tm_flag ||
+        !decode_set_event(
+            rom, kCeruleanGymObtainedBadgeSetOffset,
+            result.obtained_badge_flag, error) ||
+        !decode_set_event(
+            rom, kCeruleanGymBeatGymSetOffset,
+            result.beat_gym_flag, error) ||
+        !decode_set_event(
+            rom, kCeruleanGymTrainer0SetOffset,
+            result.trainer_0_flag, error)) {
+        if (error.empty())
+            error =
+                "Cerulean Gym reward mutations do not match the verified ROM";
+        return false;
+    }
+    const std::uint16_t trainer_event_address =
+        static_cast<std::uint16_t>(
+            result.trainer_0_flag / 8U);
+    if (!decode_reused_event(
+            rom, kCeruleanGymTrainer1SetOffset,
+            trainer_event_address, true,
+            result.trainer_1_flag, error)) {
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 3> give_item_call{
+        0xCDU, 0x2EU, 0x3EU};
+    if (kCeruleanGymTmGrantOffset + 6U > rom.size() ||
+        rom[kCeruleanGymTmGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kCeruleanGymTmGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "Cerulean Gym TM grant does not match the verified ROM";
+        return false;
+    }
+    result.tm_quantity =
+        rom[kCeruleanGymTmGrantOffset + 1U];
+    result.tm_item_id =
+        rom[kCeruleanGymTmGrantOffset + 2U];
+    const auto item = std::ranges::find_if(
+        item_names,
+        [&](const ImportedItemName& candidate) {
+            return candidate.item_id == result.tm_item_id;
+        });
+    if (result.tm_quantity == 0U ||
+        item == item_names.end()) {
+        error =
+            "Cerulean Gym TM is missing from the imported item catalogue";
+        return false;
+    }
+    result.tm_name = item->name;
+
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 8>
+        text_programs{{
+            {kCeruleanGymPreBattleTextOffset,
+             &result.pre_battle},
+            {kCeruleanGymBadgeTextOffset,
+             &result.badge},
+            {kCeruleanGymBadgeInfoTextOffset,
+             &result.badge_info},
+            {kCeruleanGymReceivedTmTextOffset,
+             &result.received_tm},
+            {kCeruleanGymNoRoomTextOffset,
+             &result.no_room},
+            {kCeruleanGymTmExplanationTextOffset,
+             &result.tm_explanation},
+            {kCeruleanGymGuideBeforeTextOffset,
+             &result.guide_before},
+            {kCeruleanGymGuideAfterTextOffset,
+             &result.guide_after},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(
+                rom, 0x17U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Cerulean Gym dialogue could not be decoded from the pinned ROM";
+            return false;
         }
     return true;
 }
@@ -4089,6 +4280,72 @@ GeneratedFile readable_cerulean_rival_source(
     };
 }
 
+GeneratedFile readable_cerulean_gym_source(
+    const CeruleanGymProgram& gym) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Cerulean Gym program.\n"
+        << "; Actor/trainer owner, events, badge bits, TM tuple, and every dialogue branch are ROM-derived.\n\n"
+        << "campaign_program cerulean_gym_misty_battle\n"
+        << "    trigger map cerulean_gym actor_activation "
+        << static_cast<unsigned>(gym.misty_actor_index)
+        << "\n    absent_flag 0x" << std::hex
+        << gym.beat_misty_flag << std::dec
+        << "\n    say\n"
+        << page_source(gym.pre_battle.pages, "        ")
+        << "    start_trainer_battle class "
+        << static_cast<unsigned>(gym.trainer_class)
+        << " party " << gym.trainer_party << '\n'
+        << "    if_player_won say\n"
+        << page_source(gym.badge.pages, "        ")
+        << "    if_player_won reward\n"
+        << "        say\n"
+        << page_source(gym.badge_info.pages, "            ")
+        << "        set_flag 0x" << std::hex
+        << gym.beat_misty_flag << std::dec << '\n'
+        << "        try_give_item "
+        << source_quote(gym.tm_name) << " rom_id "
+        << gym.tm_item_id << " quantity "
+        << static_cast<unsigned>(gym.tm_quantity) << '\n'
+        << "        if_item_grant_failed say\n"
+        << page_source(gym.no_room.pages, "            ")
+        << "        else\n"
+        << "            say\n"
+        << page_source(gym.received_tm.pages, "                ")
+        << "            set_flag 0x" << std::hex
+        << gym.got_tm_flag << std::dec << '\n'
+        << "        set_flag 0x" << std::hex
+        << gym.obtained_badge_flag << '\n'
+        << "        set_flag 0x" << gym.beat_gym_flag << '\n'
+        << "        set_flag 0x" << gym.trainer_0_flag << '\n'
+        << "        set_flag 0x" << gym.trainer_1_flag
+        << std::dec << "\n\n"
+        << "campaign_program cerulean_gym_misty_tm_retry\n"
+        << "    required_flag 0x" << std::hex
+        << gym.beat_misty_flag << "\n    absent_flag 0x"
+        << gym.got_tm_flag << std::dec
+        << "\n    repeat reward\n\n"
+        << "interaction cerulean_gym_misty_after_tm\n"
+        << "    required_flag 0x" << std::hex
+        << gym.got_tm_flag << std::dec << "\n    say\n"
+        << page_source(gym.tm_explanation.pages, "        ")
+        << "\ninteraction cerulean_gym_guide_before\n"
+        << "    absent_flag 0x" << std::hex
+        << gym.beat_misty_flag << std::dec << "\n    say\n"
+        << page_source(gym.guide_before.pages, "        ")
+        << "\ninteraction cerulean_gym_guide_after\n"
+        << "    required_flag 0x" << std::hex
+        << gym.beat_misty_flag << std::dec << "\n    say\n"
+        << page_source(gym.guide_after.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/cerulean_gym.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -4362,6 +4619,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_cerulean_rival_program(
             rom, starter_choices, toggle_actors,
             cerulean_rival, error))
+        return false;
+    CeruleanGymProgram cerulean_gym;
+    if (!decode_cerulean_gym_program(
+            rom, item_names, cerulean_gym, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -5865,7 +6126,153 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(rival));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'H'};
+    const auto append_cerulean_gym_reward =
+        [&](std::vector<Instruction>& reward) {
+            reward.push_back(
+                dialogue(cerulean_gym.badge_info.pages));
+            reward.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                cerulean_gym.beat_misty_flag));
+            reward.push_back(operation(
+                Opcode::try_give_item,
+                cerulean_gym.tm_quantity, 0U,
+                cerulean_gym.tm_item_id));
+            const std::size_t no_room_jump =
+                reward.size();
+            reward.push_back(operation(
+                Opcode::jump_if_item_grant_failed));
+            reward.push_back(
+                dialogue(cerulean_gym.received_tm.pages));
+            reward.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                cerulean_gym.got_tm_flag));
+            const std::size_t reward_done_jump =
+                reward.size();
+            reward.push_back(
+                operation(Opcode::jump));
+            reward[no_room_jump].value =
+                static_cast<std::uint32_t>(
+                    reward.size());
+            reward.push_back(
+                dialogue(cerulean_gym.no_room.pages));
+            reward[reward_done_jump].value =
+                static_cast<std::uint32_t>(
+                    reward.size());
+            for (const std::uint32_t flag : {
+                     cerulean_gym.obtained_badge_flag,
+                     cerulean_gym.beat_gym_flag,
+                     cerulean_gym.trainer_0_flag,
+                     cerulean_gym.trainer_1_flag}) {
+                reward.push_back(operation(
+                    Opcode::set_flag, 0U, 0U, flag));
+            }
+            reward.push_back(
+                operation(Opcode::unlock_input));
+            reward.push_back(
+                operation(Opcode::end));
+        };
+
+    Program misty_battle;
+    misty_battle.key =
+        "cerulean_gym_misty_battle";
+    misty_battle.trigger_kind =
+        TriggerKind::actor_activation;
+    misty_battle.trigger_map = cerulean_gym.map_id;
+    misty_battle.trigger_x =
+        cerulean_gym.misty_actor_index;
+    misty_battle.absent_flag =
+        cerulean_gym.beat_misty_flag;
+    misty_battle.instructions.push_back(
+        operation(Opcode::lock_input));
+    misty_battle.instructions.push_back(
+        dialogue(cerulean_gym.pre_battle.pages));
+    misty_battle.instructions.push_back(operation(
+        Opcode::start_trainer_battle,
+        cerulean_gym.trainer_class, 0U,
+        cerulean_gym.trainer_party));
+    Instruction cascade_badge =
+        operation(Opcode::say_if_player_won);
+    cascade_badge.pages =
+        cerulean_gym.badge.pages;
+    misty_battle.instructions.push_back(
+        std::move(cascade_badge));
+    misty_battle.instructions.push_back(
+        operation(Opcode::end_if_player_lost));
+    append_cerulean_gym_reward(
+        misty_battle.instructions);
+    programs.push_back(std::move(misty_battle));
+
+    Program misty_tm_retry;
+    misty_tm_retry.key =
+        "cerulean_gym_misty_tm_retry";
+    misty_tm_retry.trigger_kind =
+        TriggerKind::actor_activation;
+    misty_tm_retry.trigger_map = cerulean_gym.map_id;
+    misty_tm_retry.trigger_x =
+        cerulean_gym.misty_actor_index;
+    misty_tm_retry.required_flag =
+        cerulean_gym.beat_misty_flag;
+    misty_tm_retry.absent_flag =
+        cerulean_gym.got_tm_flag;
+    misty_tm_retry.instructions.push_back(
+        operation(Opcode::lock_input));
+    append_cerulean_gym_reward(
+        misty_tm_retry.instructions);
+    programs.push_back(std::move(misty_tm_retry));
+
+    Program misty_after;
+    misty_after.key =
+        "cerulean_gym_misty_after_tm";
+    misty_after.trigger_kind =
+        TriggerKind::actor_activation;
+    misty_after.trigger_map = cerulean_gym.map_id;
+    misty_after.trigger_x =
+        cerulean_gym.misty_actor_index;
+    misty_after.required_flag =
+        cerulean_gym.got_tm_flag;
+    misty_after.instructions.push_back(
+        operation(Opcode::lock_input));
+    misty_after.instructions.push_back(
+        dialogue(cerulean_gym.tm_explanation.pages));
+    misty_after.instructions.push_back(
+        operation(Opcode::unlock_input));
+    misty_after.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(misty_after));
+
+    const auto cerulean_guide =
+        [&](std::string key, std::uint32_t required,
+            std::uint32_t absent,
+            const DecodedTextProgram& text) {
+            Program guide;
+            guide.key = std::move(key);
+            guide.trigger_kind =
+                TriggerKind::actor_activation;
+            guide.trigger_map = cerulean_gym.map_id;
+            guide.trigger_x =
+                cerulean_gym.guide_actor_index;
+            guide.required_flag = required;
+            guide.absent_flag = absent;
+            guide.instructions.push_back(
+                operation(Opcode::lock_input));
+            guide.instructions.push_back(
+                dialogue(text.pages));
+            guide.instructions.push_back(
+                operation(Opcode::unlock_input));
+            guide.instructions.push_back(
+                operation(Opcode::end));
+            return guide;
+        };
+    programs.push_back(cerulean_guide(
+        "cerulean_gym_guide_before_misty",
+        0xFFFFFFFFU, cerulean_gym.beat_misty_flag,
+        cerulean_gym.guide_before));
+    programs.push_back(cerulean_guide(
+        "cerulean_gym_guide_after_misty",
+        cerulean_gym.beat_misty_flag, 0xFFFFFFFFU,
+        cerulean_gym.guide_after));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'I'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -5943,6 +6350,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_cerulean_rival_source(
             cerulean_rival));
+    result.files.push_back(
+        readable_cerulean_gym_source(
+            cerulean_gym));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});

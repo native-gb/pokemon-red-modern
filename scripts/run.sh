@@ -37,7 +37,7 @@ if [[ "$world_magic" != "PMVA" || "$interaction_magic" != "PWI1" ||
       "$encounter_magic" != "PEC1" ||
       "$trainer_magic" != "PTC1" ||
       "$boot_magic" != "PBT1" ||
-      "$campaign_magic" != "PCPH" ]]; then
+      "$campaign_magic" != "PCPI" ]]; then
     rom="$repo_root/../native-gb-pokemon-red/roms/pokemon_red.gb"
     if [[ ! -f "$rom" ]]; then
         echo "Imported runtime data is stale and the canonical ROM is missing: $rom" >&2

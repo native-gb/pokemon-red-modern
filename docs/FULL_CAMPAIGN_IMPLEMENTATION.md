@@ -870,10 +870,24 @@ and Squirtle, returns a victory, and checks the event, hidden actor, and
 unlocked input. All three branches are readable at
 `source/scripts/campaign/cerulean_rival.sexpr`.
 
+Cerulean Gym is now owned by imported campaign programs as well. Misty's actor
+record supplies trainer class 35 and party 0; the reward code supplies the
+beat-Misty and got-TM events, Cascade Badge and gym-completion bits, both
+junior-trainer defeat bits, and the TM11 item tuple. Her pre-battle, badge,
+badge-effects, TM receipt/full-bag/retry, and BubbleBeam explanation text plus
+both gym-guide states are decoded from the ROM. The generic battle and
+inventory executors preserve the original ordering: a loss advances nothing,
+a victory always records the badge/gym state, a full bag leaves TM11
+retryable, and a successful grant records the TM event.
+
+The fixture starts Misty from imported map 65, verifies level-18 Staryu and
+level-21 Starmie, returns a victory, checks every reward bit and TM11, and
+confirms the guide's post-Misty branch. The readable program is generated at
+`source/scripts/campaign/cerulean_gym.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-Cerulean Gym/Misty, then the Nugget Bridge/Bill/Cerulean Rocket path. Every
-later map program still requires semantic lifting and the remaining acceptance
-gates above stay open.
+the Nugget Bridge/Bill/Cerulean Rocket path. Every later map program still
+requires semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance
 
