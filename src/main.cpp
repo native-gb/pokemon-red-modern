@@ -991,7 +991,9 @@ int main(int argc, char** argv) {
                                            game.mode == pokered::Mode::battle
                                                ? gameplay_battle
                                                : battle_lab,
-                                           world, world_resources) ||
+                                           world, campaign,
+                                           campaign_programs, rules,
+                                           world_resources) ||
             !pokered::draw_window(window)) {
             std::fprintf(stderr, "could not render frame: %s\n", SDL_GetError());
             render_failed = true;
@@ -1001,8 +1003,6 @@ int main(int argc, char** argv) {
         pokered::draw_tools(tools, window.runtime, game, catalog, boot, battle_lab,
                             world, rules, presentation, clocks,
                             renderer_name != nullptr ? renderer_name : "unknown");
-        pokered::render::draw_field_menu_overlay(
-            world, campaign, campaign_programs, rules);
         imgui_render_layer();
         pokered::apply_nearest_sampling(window);
         pokered::present_window(window);

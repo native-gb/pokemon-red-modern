@@ -212,6 +212,11 @@ bool draw_area_banner(SDL_Renderer* renderer, const WorldState& world,
         .height = 48.0F,
         .scale = 2.0F,
     };
+    const SDL_FRect background{
+        banner.x, banner.y, banner.width, banner.height};
+    (void)SDL_SetRenderDrawColor(renderer, 246, 238, 242, 255);
+    if (!SDL_RenderFillRect(renderer, &background))
+        return false;
     return draw_box(renderer, banner, resources, 0U, 0U,
                     columns, 3U) &&
            draw_text(renderer, banner, resources,

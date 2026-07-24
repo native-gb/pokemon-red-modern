@@ -1,5 +1,6 @@
 #include "render/frame.hpp"
 #include "render/dialogue.hpp"
+#include "render/field_menu.hpp"
 #include "render/naming.hpp"
 
 #include <SDL3/SDL.h>
@@ -561,6 +562,9 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
                   const BootContent& boot_content, const BootState& boot,
                   const BootRenderResources& boot_resources,
                   const BattleAnimationLab& lab, const WorldState& maps,
+                  const CampaignState& campaign,
+                  const CampaignProgramCatalog& programs,
+                  const RuleCatalog& rules,
                   WorldRenderResources& world_resources) {
     if (renderer == nullptr || target == nullptr) return false;
     if (!SDL_SetRenderTarget(renderer, target)) return false;
@@ -581,7 +585,10 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
                    renderer, view, maps, boot_resources) &&
                draw_dialogue_overlay(
                    renderer, output_width, output_height, maps,
-                   boot_resources);
+                   boot_resources) &&
+               draw_field_menu_overlay(
+                   renderer, output_width, output_height,
+                   boot_resources, maps, campaign, programs, rules);
     }
 
     const SDL_FRect shadow{view.x - 8.0F, view.y - 8.0F, view.width + 16.0F, view.height + 16.0F};

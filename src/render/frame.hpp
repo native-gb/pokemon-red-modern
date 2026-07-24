@@ -11,7 +11,12 @@
 struct SDL_Renderer;
 struct SDL_Texture;
 
-namespace pokered::render {
+namespace pokered {
+
+struct CampaignProgramCatalog;
+struct RuleCatalog;
+
+namespace render {
 
 struct ViewLayout {
     float x{};
@@ -27,6 +32,10 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
                   const BootContent& boot_content, const BootState& boot,
                   const BootRenderResources& boot_resources,
                   const BattleAnimationLab& lab, const WorldState& maps,
+                  const CampaignState& campaign,
+                  const CampaignProgramCatalog& programs,
+                  const RuleCatalog& rules,
                   WorldRenderResources& world_resources);
 
-} // namespace pokered::render
+} // namespace render
+} // namespace pokered

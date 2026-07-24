@@ -60,6 +60,11 @@ presentation is finished.
   consumed it.
 - The field menu includes a guarded QUIT action that returns to a freshly
   initialized title flow without changing the saved campaign.
+- Dialogue boxes derive a compact width and height from the active imported
+  page and remain anchored at the lower left in wide windows. Area banners
+  have an opaque imported-UI panel, and every field-menu page now renders
+  through Red's imported 8-by-8 font and border tiles rather than ImGui
+  window chrome.
 
 ## Player pass
 

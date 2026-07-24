@@ -150,6 +150,25 @@ bool draw_text(SDL_Renderer* renderer,
     return true;
 }
 
+std::size_t longest_line(std::string_view text) {
+    std::size_t longest = 0U;
+    std::size_t current = 0U;
+    for (char value : text) {
+        if (value == '\n') {
+            longest = std::max(longest, current);
+            current = 0U;
+        } else {
+            ++current;
+        }
+    }
+    return std::max(longest, current);
+}
+
+std::size_t line_count(std::string_view text) {
+    return 1U + static_cast<std::size_t>(
+                    std::ranges::count(text, '\n'));
+}
+
 } // namespace
 
 bool draw_dialogue_overlay(
@@ -160,8 +179,12 @@ bool draw_dialogue_overlay(
         world.dialogue.page >= world.dialogue.pages.size())
         return true;
 
-    constexpr int desired_columns = 38;
-    constexpr int rows = 7;
+    const std::string_view page =
+        world.dialogue.pages[world.dialogue.page];
+    const int desired_columns = std::clamp(
+        static_cast<int>(longest_line(page)) + 2, 20, 28);
+    const int rows = std::clamp(
+        static_cast<int>(line_count(page)) + 2, 4, 7);
     const int width_scale =
         std::max(1, (output_width - 32) /
                         (desired_columns * 8));
@@ -176,7 +199,8 @@ bool draw_dialogue_overlay(
     const int width = columns * scale * 8;
     const int height = rows * scale * 8;
     const PixelGrid dialogue{
-        .left = (output_width - width) / 2,
+        .left = std::min(
+            24, std::max(8, output_width - width - 8)),
         .top = output_height - height - 24,
         .scale = scale,
     };
@@ -184,7 +208,7 @@ bool draw_dialogue_overlay(
             renderer, resources, dialogue, columns, rows) ||
         !draw_text(
             renderer, resources, dialogue,
-            world.dialogue.pages[world.dialogue.page],
+            page,
             1, 1, columns - 2, rows - 2) ||
         !draw_tile(
             renderer, resources, dialogue, 0xEEU,
