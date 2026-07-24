@@ -412,6 +412,14 @@ bool draw_naming(SDL_Renderer* renderer, const ViewLayout& view,
         return false;
     for (std::uint8_t row = 0U; row < 5U; ++row) {
         for (std::uint8_t column = 0U; column < 9U; ++column) {
+            // Red's final naming cell is one dedicated END tile. Rendering
+            // three ordinary glyphs here extends through the right border.
+            if (row == 4U && column == 8U) {
+                if (!draw_tile(renderer, view, resources, 0x70,
+                               18.0F * 8.0F, 13.0F * 8.0F))
+                    return false;
+                continue;
+            }
             if (!draw_text(renderer, view, resources,
                            boot_naming_cell(state, row, column),
                            2U + static_cast<std::size_t>(column) * 2U,
