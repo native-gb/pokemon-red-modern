@@ -493,7 +493,6 @@ void draw_tools(ToolState& tools, GubsyRuntime& runtime, GameState& game,
         ImGui::EndMainMenuBar();
     }
 
-    sync_controls_navigation(tools.layout == ToolLayout::player, tools.controller_navigation);
     if (tools.layout == ToolLayout::player)
         draw_player_tools(tools, runtime, catalog, presentation);
     else if (tools.layout == ToolLayout::developer)

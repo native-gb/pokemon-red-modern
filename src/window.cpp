@@ -4,6 +4,7 @@
 #include "src/imgui_layer.hpp"
 
 #include <SDL3/SDL.h>
+#include <backends/imgui_impl_sdl3.h>
 #include <imgui.h>
 
 #include <cstdint>
@@ -114,6 +115,8 @@ bool initialize_window(HostWindow& window, const std::filesystem::path& data_roo
         return false;
     }
     ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+    ImGui_ImplSDL3_SetGamepadMode(
+        ImGui_ImplSDL3_GamepadMode_Manual, nullptr, 0);
     ImGui::GetIO().Fonts->Flags |= ImFontAtlasFlags_NoBakedLines;
     ImGui::GetIO().Fonts->TexGlyphPadding = 0;
     ImGui::GetStyle().AntiAliasedLines = false;

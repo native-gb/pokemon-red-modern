@@ -29,11 +29,13 @@ the player does not need keyboard access to open tools and request a rescan.
 The manual control-panel rescan remains available for unusual browser or device
 mapping failures.
 
-The player tools can be opened without a keyboard by pressing the bound Menu
-action or Start and Select together. ImGui controller navigation is active only
-while those tools are visible. An open player or developer tool layout owns
-gameplay input, so menu navigation cannot move the player, advance dialogue, or
-toggle fast-forward behind the interface.
+The player tools can be opened or closed without a keyboard by pressing the
+bound Menu action or Start and Select together. ImGui never opens, polls, or
+navigates with a gamepad; controllers belong exclusively to the semantic game
+input layer. An open player or developer tool layout owns the complete input
+frame, including its opening and closing frame, so an action cannot also move
+the player, advance dialogue, reset the camera, or toggle fast-forward behind
+the interface.
 
 ## Default bindings
 

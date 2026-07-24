@@ -248,7 +248,6 @@ int main(int argc, char** argv) {
         .layout =
             options.developer_tools ? pokered::ToolLayout::developer : pokered::ToolLayout::closed,
         .arrange = options.developer_tools,
-        .controller_navigation = false,
         .control_status = {},
     };
     const char* renderer_name = SDL_GetRendererName(window.frame.renderer);
@@ -309,6 +308,8 @@ int main(int argc, char** argv) {
         host_input.erase_text |= injected.erase_text;
         host_input.submit_text |= injected.submit_text;
         host_input.text += injected.text;
+        const bool tools_were_open =
+            tools.layout != pokered::ToolLayout::closed;
         pokered::apply_tool_shortcuts(tools, host_input);
 
         // Semantic controls are shared by keyboard and every assigned
@@ -364,8 +365,13 @@ int main(int argc, char** argv) {
             tools.arrange = tools.layout != pokered::ToolLayout::closed;
         }
         tools_chord_down = tools_chord;
-        if (controls.quit) break;
-        const bool tools_own_input = tools.layout != pokered::ToolLayout::closed;
+        const bool tools_own_input =
+            tools_were_open ||
+            tools.layout != pokered::ToolLayout::closed ||
+            menu_pressed || tools_chord_pressed;
+        const pokered::ControlButtons sampled_controls = controls;
+        if (!tools_own_input && controls.quit) break;
+        if (tools_own_input) controls = {};
         const bool confirm_pressed = controls.confirm && !previous_controls.confirm;
         if (!tools_own_input &&
             game.mode == pokered::Mode::overworld) {
@@ -419,26 +425,28 @@ int main(int argc, char** argv) {
             (presentation.fast_forward_toggle ? fast_forward_toggle_active : controls.fast_forward);
         clocks.fast_forward = fast_forward;
 
-        if (host_input.toggle_lab_view && world.loaded && animation_lab.loaded &&
+        if (!tools_own_input &&
+            host_input.toggle_lab_view && world.loaded && animation_lab.loaded &&
             (game.mode == pokered::Mode::overworld ||
              game.mode == pokered::Mode::battle_lab))
             game.mode =
                 game.mode == pokered::Mode::battle_lab
                     ? pokered::Mode::overworld
                     : pokered::Mode::battle_lab;
-        if (host_input.previous_animation) {
+        if (!tools_own_input && host_input.previous_animation) {
             if (game.mode == pokered::Mode::overworld)
                 pokered::select_previous_map(world);
             else
                 pokered::previous_battle_animation_lab(animation_lab);
         }
-        if (host_input.next_animation) {
+        if (!tools_own_input && host_input.next_animation) {
             if (game.mode == pokered::Mode::overworld)
                 pokered::select_next_map(world);
             else
                 pokered::next_battle_animation_lab(animation_lab);
         }
-        if (game.mode == pokered::Mode::overworld) {
+        if (!tools_own_input &&
+            game.mode == pokered::Mode::overworld) {
             if (host_input.toggle_world_view) pokered::toggle_world_view(world);
             if (host_input.toggle_world_annotations)
                 world.show_annotations = !world.show_annotations;
@@ -450,8 +458,7 @@ int main(int argc, char** argv) {
             if (input.zoom_world_steps != 0.0F)
                 pokered::zoom_world_view(
                     world, std::pow(1.18F, input.zoom_world_steps));
-            if (!tools_own_input &&
-                std::fabs(controls.camera_zoom) > 0.01F)
+            if (std::fabs(controls.camera_zoom) > 0.01F)
                 pokered::zoom_world_view(
                     world,
                     std::exp(
@@ -460,8 +467,7 @@ int main(int argc, char** argv) {
             const bool select_pressed =
                 controls.select && !previous_controls.select;
             if (input.reset_world_view ||
-                (!tools_own_input && !tools_chord &&
-                 select_pressed))
+                (!tools_chord && select_pressed))
                 pokered::reset_world_view(world);
             const float pan_speed = world.view == pokered::WorldView::world ? 3000.0F : 180.0F;
             const float pan_step = pan_speed * frame_seconds;
@@ -470,30 +476,38 @@ int main(int argc, char** argv) {
             if (input.pan_world_up) pokered::pan_world_view(world, 0.0F, -pan_step);
             if (input.pan_world_down) pokered::pan_world_view(world, 0.0F, pan_step);
         }
-        if (game.mode == pokered::Mode::battle_lab && input.previous_species)
+        if (!tools_own_input &&
+            game.mode == pokered::Mode::battle_lab && input.previous_species)
             pokered::previous_battle_species(animation_lab);
-        if (game.mode == pokered::Mode::battle_lab && input.next_species)
+        if (!tools_own_input &&
+            game.mode == pokered::Mode::battle_lab && input.next_species)
             pokered::next_battle_species(animation_lab);
-        if (game.mode == pokered::Mode::battle_lab &&
+        if (!tools_own_input &&
+            game.mode == pokered::Mode::battle_lab &&
             input.cycle_battle_ui)
             pokered::cycle_battle_ui_mode(animation_lab);
-        if (game.mode == pokered::Mode::battle_lab &&
+        if (!tools_own_input &&
+            game.mode == pokered::Mode::battle_lab &&
             input.previous_battle_ui_selection)
             pokered::previous_battle_ui_menu_selection(animation_lab);
-        if (game.mode == pokered::Mode::battle_lab &&
+        if (!tools_own_input &&
+            game.mode == pokered::Mode::battle_lab &&
             input.next_battle_ui_selection)
             pokered::next_battle_ui_menu_selection(animation_lab);
-        if (game.mode == pokered::Mode::battle_lab && input.cycle_battle_status)
+        if (!tools_own_input &&
+            game.mode == pokered::Mode::battle_lab && input.cycle_battle_status)
             pokered::cycle_battle_ui_status(animation_lab);
-        if (input.restart_animation) pokered::restart_battle_animation_lab(animation_lab);
-        if (input.reload_animation_sources) {
+        if (!tools_own_input && input.restart_animation)
+            pokered::restart_battle_animation_lab(animation_lab);
+        if (!tools_own_input && input.reload_animation_sources) {
             pokered::Diagnostics reload_diagnostics;
             if (!pokered::reload_battle_animation_lab(animation_lab, reload_diagnostics)) {
                 for (const pokered::Diagnostic& diagnostic : reload_diagnostics.entries)
                     std::fprintf(stderr, "%s\n", pokered::format_diagnostic(diagnostic).c_str());
             }
         }
-        if (input.toggle_animation_auto_advance)
+        if (!tools_own_input &&
+            input.toggle_animation_auto_advance)
             animation_lab.auto_advance = !animation_lab.auto_advance;
 
         // Real battle controls dispatch through the owned battle controller.
@@ -726,7 +740,7 @@ int main(int argc, char** argv) {
                 settings_writable = false;
             }
         }
-        previous_controls = controls;
+        previous_controls = sampled_controls;
     }
 
     pokered::render::destroy_boot_textures(boot_resources);

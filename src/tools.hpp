@@ -23,7 +23,6 @@ enum class ToolLayout {
 struct ToolState {
     ToolLayout layout{ToolLayout::closed};
     bool arrange{};
-    bool controller_navigation{};
     std::string control_status;
 };
 

@@ -4,7 +4,6 @@
 #include "window.hpp"
 
 #include <SDL3/SDL.h>
-#include <backends/imgui_impl_sdl3.h>
 #include <gubsy/input/binds_profile.hpp>
 #include <gubsy/runtime.hpp>
 #include <imgui.h>
@@ -367,17 +366,6 @@ void draw_controllers(GubsyRuntime& runtime, std::string& status) {
 }
 
 } // namespace
-
-void sync_controls_navigation(bool visible, bool& navigation_enabled) {
-    if (navigation_enabled == visible || ImGui::GetCurrentContext() == nullptr) return;
-    navigation_enabled = visible;
-    if (visible) {
-        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-        ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
-    } else {
-        ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-    }
-}
 
 void draw_controls_panel(GubsyRuntime& runtime, PresentationSettings& settings,
                          std::string& status) {
