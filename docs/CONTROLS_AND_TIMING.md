@@ -107,10 +107,10 @@ other player-facing modes must consume the same semantic actions. A script
 fiber that owns input may mask or redirect those actions at a deterministic
 step boundary; no campaign executor may query SDL or a controller directly.
 
-Fast-forward must never change music pitch or tempo. Future audio integration
-must schedule music against `music_time`, not `game_time`, while deterministic
-game events continue to publish their sound and music commands from simulation
-steps.
+Fast-forward never changes music pitch or tempo. The audio executor runs on
+unscaled wall-clock time at Red's 59.7275 Hz sequencer rate, while deterministic
+game events continue to publish ordered sound and music commands from
+simulation steps.
 
 ## Isolated developer input
 

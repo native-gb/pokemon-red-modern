@@ -1,3 +1,4 @@
+#include "audio.hpp"
 #include "battle_animation_lab.hpp"
 #include "battle_controller.hpp"
 #include "battle_rules.hpp"
@@ -28,11 +29,13 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -66,6 +69,55 @@ void print_usage(const char* executable) {
     std::printf(
         "Usage: %s [--render-smoke] [--tools] [--input-socket PATH]\n",
         executable);
+}
+
+std::optional<std::uint8_t> imported_sound_id(
+    const pokered::AnimationCue& cue) {
+    constexpr std::string_view prefix = "imported_sound_";
+    if (cue.kind != pokered::AnimationCueKind::signal ||
+        !std::string_view(cue.signal.text).starts_with(prefix))
+        return std::nullopt;
+    const std::string_view number =
+        std::string_view(cue.signal.text).substr(prefix.size());
+    unsigned value = 0U;
+    const auto parsed =
+        std::from_chars(number.data(), number.data() + number.size(), value);
+    if (parsed.ec != std::errc{} ||
+        parsed.ptr != number.data() + number.size() ||
+        value > 0xFFU)
+        return std::nullopt;
+    return static_cast<std::uint8_t>(value);
+}
+
+void play_battle_animation_cues(
+    pokered::AudioSystem& audio,
+    const pokered::AnimationState& animation) {
+    for (const pokered::AnimationCue& cue : animation.cues) {
+        const std::optional<std::uint8_t> sound =
+            imported_sound_id(cue);
+        if (!sound.has_value()) continue;
+        std::string ignored;
+        (void)audio.play_sound(
+            audio.preferred_audio_bank(), *sound, ignored);
+    }
+}
+
+void play_active_battle_cry(
+    pokered::AudioSystem& audio, const pokered::RuleCatalog& rules,
+    const pokered::CampaignState& campaign, bool enemy) {
+    if (!campaign.battle.active) return;
+    const pokered::PartyState& party =
+        enemy ? campaign.battle.enemy_party : campaign.party;
+    const std::size_t active_index =
+        enemy ? campaign.battle.enemy.active_index
+              : campaign.battle.player.active_index;
+    if (active_index >= party.members.size()) return;
+    const pokered::SpeciesRule* species =
+        pokered::find_species(
+            rules, party.members[active_index].species_dex);
+    if (species == nullptr) return;
+    std::string ignored;
+    (void)audio.play_cry(species->internal_id, ignored);
 }
 
 } // namespace
@@ -199,6 +251,14 @@ int main(int argc, char** argv) {
 
     pokered::HostWindow window;
     if (!pokered::initialize_window(window, data_root, presentation.control_profile)) return 1;
+    pokered::AudioSystem audio;
+    const std::filesystem::path audio_cache =
+        data_root / "imports" / "pokemon_red_us_rev_0" / "compiled" /
+        "audio_content.bin";
+    std::string audio_error;
+    if (!audio.initialize(audio_cache, audio_error))
+        std::fprintf(stderr, "audio unavailable: %s\n",
+                     audio_error.c_str());
     pokered::DevInputSocket dev_input;
     if (!options.input_socket.empty()) {
         std::string input_error;
@@ -255,7 +315,9 @@ int main(int argc, char** argv) {
     using Clock = std::chrono::steady_clock;
     auto previous = Clock::now();
     double accumulator = 0.0;
+    double audio_accumulator = 0.0;
     constexpr double step_seconds = 1.0 / 60.0;
+    constexpr double audio_step_seconds = 1.0 / 59.7275;
     int rendered_frames = 0;
     bool running = true;
     bool render_failed = false;
@@ -372,22 +434,49 @@ int main(int argc, char** argv) {
         if (!tools_own_input && controls.quit) break;
         if (tools_own_input) controls = {};
         const bool confirm_pressed = controls.confirm && !previous_controls.confirm;
+        const bool back_pressed =
+            controls.back && !previous_controls.back;
+        const bool direction_pressed =
+            (controls.left && !previous_controls.left) ||
+            (controls.right && !previous_controls.right) ||
+            (controls.up && !previous_controls.up) ||
+            (controls.down && !previous_controls.down);
+        const bool start_pressed =
+            controls.start && !previous_controls.start;
+        const bool world_ui_active =
+            world.dialogue.open || world.choice.open ||
+            world.naming.open || world.menu.open ||
+            world.service.active;
+        const bool button_ui_active =
+            game.mode == pokered::Mode::title ||
+            game.mode == pokered::Mode::battle ||
+            (game.mode == pokered::Mode::overworld &&
+             world_ui_active);
+        if (!tools_own_input && audio.available()) {
+            if (game.mode == pokered::Mode::overworld &&
+                start_pressed && !world_ui_active)
+                audio.play_menu_open();
+            else if (button_ui_active &&
+                     (confirm_pressed || back_pressed ||
+                      direction_pressed || start_pressed))
+                audio.play_menu_press();
+        }
         if (!tools_own_input &&
             game.mode == pokered::Mode::overworld) {
             pending_world_activation |= confirm_pressed;
             pending_world_erase |=
                 host_input.erase_text ||
-                (controls.back && !previous_controls.back);
+                back_pressed;
             pending_world_submit |=
                 (!naming_input_active && host_input.submit_text) ||
-                (controls.start && !previous_controls.start);
+                start_pressed;
             pending_world_toggle_case |=
                 !naming_input_active &&
                 controls.select && !previous_controls.select;
             pending_world_start |=
-                controls.start && !previous_controls.start;
+                start_pressed;
             pending_world_back |=
-                controls.back && !previous_controls.back;
+                back_pressed;
             if (!naming_input_active)
                 pending_world_text += host_input.text;
         }
@@ -398,9 +487,9 @@ int main(int argc, char** argv) {
             pending_boot_input.right_pressed |= controls.right && !previous_controls.right;
             pending_boot_input.confirm_pressed |= confirm_pressed;
             pending_boot_input.cancel_pressed |=
-                controls.back && !previous_controls.back;
+                back_pressed;
             pending_boot_input.start_pressed |=
-                controls.start && !previous_controls.start;
+                start_pressed;
             pending_boot_input.select_pressed |=
                 controls.select && !previous_controls.select;
             pending_boot_input.erase_pressed |= host_input.erase_text;
@@ -684,11 +773,60 @@ int main(int argc, char** argv) {
                 pokered::step_battle_animation_lab(animation_lab);
             if (!game.paused && game.mode == pokered::Mode::battle)
                 pokered::step_gameplay_battle_animations(animation_lab);
+            if (!game.paused && game.mode == pokered::Mode::battle) {
+                play_battle_animation_cues(
+                    audio, animation_lab.animation);
+                if (animation_lab.presentation.phase ==
+                        pokered::BattlePresentationPhase::
+                            opponent_arrival &&
+                    animation_lab.presentation.tick == 0U)
+                    play_active_battle_cry(
+                        audio, rules, campaign, true);
+                else if (animation_lab.presentation.phase ==
+                             pokered::BattlePresentationPhase::
+                                 player_deployment &&
+                         animation_lab.presentation.tick == 0U)
+                    play_active_battle_cry(
+                        audio, rules, campaign, false);
+            }
             if (game.mode == pokered::Mode::battle &&
                 pokered::consume_battle_return_to_world(
                     animation_lab))
                 game.mode = pokered::Mode::overworld;
             accumulator -= step_seconds;
+        }
+
+        // Music and effects use an unscaled wall-clock cadence. Fast-forward
+        // accelerates simulation, never pitch or playback speed.
+        if (audio.available()) {
+            std::string dispatch_error;
+            if (game.mode == pokered::Mode::title) {
+                const bool oak_intro =
+                    boot.screen == pokered::BootScreen::oak_text ||
+                    boot.screen == pokered::BootScreen::name_menu ||
+                    boot.screen == pokered::BootScreen::naming ||
+                    boot.screen == pokered::BootScreen::ending;
+                (void)audio.request_scene_music(
+                    oak_intro ? pokered::AudioScene::oak_intro
+                              : pokered::AudioScene::title,
+                    dispatch_error);
+            } else if (game.mode == pokered::Mode::overworld &&
+                world.player.initialized &&
+                world.player.map_index < world.maps.size()) {
+                (void)audio.request_map_music(
+                    world.maps[world.player.map_index].id,
+                    dispatch_error);
+            } else if (game.mode == pokered::Mode::battle) {
+                (void)audio.request_battle_music(
+                    animation_lab.presentation.trainer_battle,
+                    dispatch_error);
+            }
+            audio_accumulator =
+                std::min(audio_accumulator + bounded_elapsed, 0.25);
+            while (audio_accumulator >= audio_step_seconds) {
+                audio.step();
+                audio_accumulator -= audio_step_seconds;
+            }
         }
 
         if (world.automatic_camera_framing !=
@@ -749,6 +887,7 @@ int main(int argc, char** argv) {
 
     pokered::render::destroy_boot_textures(boot_resources);
     pokered::render::destroy_world_textures(world_resources);
+    audio.shutdown();
     pokered::shutdown_window(window);
     if (!options.render_smoke && settings_writable && presentation != saved_presentation &&
         !pokered::save_settings(settings_path, presentation, settings_error))

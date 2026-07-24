@@ -1,5 +1,6 @@
 #include "import_battle_animations.hpp"
 #include "import_battle_animations_io.hpp"
+#include "import_audio.hpp"
 #include "import_battle_rules.hpp"
 #include "import_boot.hpp"
 #include "import_campaign_programs.hpp"
@@ -48,6 +49,7 @@ int main(int argc, char** argv) {
     }
 
     pokered::import::BattleAnimationImport imported;
+    pokered::import::AudioImport audio;
     pokered::import::BattleRuleImport battle_rules;
     pokered::import::BootImport boot;
     pokered::import::CampaignProgramImport campaign_programs;
@@ -59,6 +61,7 @@ int main(int argc, char** argv) {
     pokered::import::TrainerImport trainers;
     std::string error;
     if (!pokered::import::decode_battle_animation_import(rom, imported, error) ||
+        !pokered::import::decode_audio_import(rom, audio, error) ||
         !pokered::import::decode_battle_rule_import(rom, battle_rules, error) ||
         !pokered::import::decode_boot_import(rom, boot, error) ||
         !pokered::import::decode_campaign_program_import(
@@ -72,6 +75,9 @@ int main(int argc, char** argv) {
         std::cerr << error << '\n';
         return 1;
     }
+    imported.files.insert(imported.files.end(),
+                          std::make_move_iterator(audio.files.begin()),
+                          std::make_move_iterator(audio.files.end()));
     imported.files.insert(imported.files.end(), std::make_move_iterator(boot.files.begin()),
                           std::make_move_iterator(boot.files.end()));
     imported.files.insert(
@@ -106,6 +112,17 @@ int main(int argc, char** argv) {
     }
     std::ostringstream domain_manifest;
     domain_manifest << "picture_importer_version 1\n"
+                    << "audio_importer_version 1\n"
+                    << "audio_banks " << audio.banks << '\n'
+                    << "audio_headers " << audio.headers << '\n'
+                    << "audio_programs " << audio.programs << '\n'
+                    << "audio_commands " << audio.commands << '\n'
+                    << "audio_waves " << audio.waves << '\n'
+                    << "audio_pitches " << audio.pitches << '\n'
+                    << "pokemon_cries " << audio.cries << '\n'
+                    << "map_music_dispatches " << audio.map_music << '\n'
+                    << "scene_music_dispatches "
+                    << audio.scene_music << '\n'
                     << "battle_rule_importer_version 1\n"
                     << "damage_formula_programs "
                     << battle_rules.damage_formulas << '\n'
@@ -179,6 +196,13 @@ int main(int argc, char** argv) {
     }
     std::cout << "Imported " << imported.animation_programs << " battle animations from "
               << rom_path << '\n';
+    std::cout << "Imported " << audio.headers << " audio headers, "
+              << audio.programs << " channel programs, "
+              << audio.commands << " commands, and "
+              << audio.map_music << " map music dispatches\n";
+    std::cout << "Audio cache: "
+              << output_root / "compiled" / "audio_content.bin"
+              << '\n';
     std::cout << "Imported normal boot with " << boot.images << " images, "
               << boot.title_species << " title species, and " << boot.text_programs
               << " Oak text programs\n";

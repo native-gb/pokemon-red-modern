@@ -72,4 +72,6 @@ map name, actor, last dialogue, and exact action are most useful for logic.
 - Blackout relocation can now use a stored healing checkpoint, but the
   transition/presentation owner is not connected.
 - Move-learning replacement, evolution presentation, field moves, exact
-  battle messages/animations, and full audio remain later slices.
+  battle messages/animations, and the remaining scripted jingles/effects
+  remain later slices. Map, title, Oak-introduction, and battle music, cries,
+  battle-animation sounds, and common menu sounds are active.

@@ -43,6 +43,12 @@ set(POKERED_MODERN_GUBSY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../Splonks/gubsy"
     CACHE PATH "Gubsy source tree")
 set(POKERED_MODERN_RUNTIME_PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}"
     CACHE STRING "Project path exposed to the runtime")
+set(POKERED_MODERN_REFERENCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../native-gb-pokemon-red"
+    CACHE PATH "Pokemon Red reference implementation source tree")
+set(POKERED_MODERN_GB_AUDIO_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../gb-audio"
+    CACHE PATH "Shared native-gb Game Boy audio synthesizer")
 
 set(GUB_MODE consumer CACHE STRING "" FORCE)
 set(GUB_BUILD_SAMPLE OFF CACHE BOOL "" FORCE)
@@ -61,8 +67,19 @@ else()
     set(POKERED_MODERN_GUBSY_DIR "${gubsy_SOURCE_DIR}")
 endif()
 
+if(NOT TARGET native-gb::audio)
+    if(EXISTS "${POKERED_MODERN_GB_AUDIO_DIR}/CMakeLists.txt")
+        add_subdirectory("${POKERED_MODERN_GB_AUDIO_DIR}" gb-audio
+            EXCLUDE_FROM_ALL)
+    else()
+        message(FATAL_ERROR
+            "gb-audio was not found at ${POKERED_MODERN_GB_AUDIO_DIR}")
+    endif()
+endif()
+
 if(POKERED_MODERN_BUILD_IMPORTER)
     add_executable(native-gb-pokemon-red-modern-import
+        src/import_audio.cpp
         src/gen1_picture_codec.cpp
         src/import_battle_animations.cpp
         src/import_battle_animations_io.cpp
@@ -79,14 +96,21 @@ if(POKERED_MODERN_BUILD_IMPORTER)
         src/import_scripts.cpp
         src/import_text.cpp
         src/naming.cpp
+        "${POKERED_MODERN_REFERENCE_DIR}/src/audio_program_decoder.cpp"
+        "${POKERED_MODERN_REFERENCE_DIR}/src/catalogue_audio.cpp"
+        "${POKERED_MODERN_REFERENCE_DIR}/src/catalogue_audio_dispatch.cpp"
+        "${POKERED_MODERN_REFERENCE_DIR}/src/catalogue_audio_hardware.cpp"
+        "${POKERED_MODERN_REFERENCE_DIR}/src/sha1.cpp"
     )
     target_include_directories(native-gb-pokemon-red-modern-import PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${POKERED_MODERN_REFERENCE_DIR}/src")
     pokered_modern_target_defaults(native-gb-pokemon-red-modern-import)
 endif()
 
 add_executable(native-gb-pokemon-red-modern
     src/accuracy_rules.cpp
+    src/audio.cpp
     src/animations.cpp
     src/battle.cpp
     src/battle_animation_lab.cpp
@@ -131,9 +155,13 @@ add_executable(native-gb-pokemon-red-modern
     src/tools.cpp
     src/trainers.cpp
     src/window.cpp
+    "${POKERED_MODERN_REFERENCE_DIR}/src/pokemon_red_audio_commands.cpp"
+    "${POKERED_MODERN_REFERENCE_DIR}/src/pokemon_red_audio_driver.cpp"
+    "${POKERED_MODERN_REFERENCE_DIR}/src/pokemon_red_audio_output.cpp"
 )
 target_include_directories(native-gb-pokemon-red-modern PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${POKERED_MODERN_REFERENCE_DIR}/src"
     "${POKERED_MODERN_GUBSY_DIR}/include"
     "${POKERED_MODERN_GUBSY_DIR}"
     "${POKERED_MODERN_GUBSY_DIR}/imgui"
@@ -142,7 +170,7 @@ target_compile_definitions(native-gb-pokemon-red-modern PRIVATE
     POKERED_MODERN_SOURCE_DIR="${POKERED_MODERN_RUNTIME_PROJECT_ROOT}"
     POKERED_MODERN_GUBSY_ASSETS_DIR="${POKERED_MODERN_GUBSY_DIR}/src/assets")
 target_link_libraries(native-gb-pokemon-red-modern PRIVATE
-    gubsy::engine SDL3::SDL3)
+    gubsy::engine native-gb::audio SDL3::SDL3)
 pokered_modern_target_defaults(native-gb-pokemon-red-modern)
 
 if(BUILD_TESTING)
