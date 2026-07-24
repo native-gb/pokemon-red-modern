@@ -900,10 +900,42 @@ materializes level-15 Ekans and Zubat, returns a victory, and checks the final
 event and unlocked state. Readable content is generated at
 `source/scripts/campaign/route_24_nugget_bridge.sexpr`.
 
+Bill's House is now a seven-program imported progression slice. The importer
+derives all three map actors, the hidden PC target cell and required facing,
+both alternative Pokémon-form movement streams, the transformed spawn and
+exit stream, six related event bits, the S.S. Ticket tuple and item name,
+Cerulean's two guard toggles, the Nugget Bridge recruiter toggle, and every
+dialogue page from the verified ROM. No Bill coordinate, event, item, or actor
+identity lives in the runtime engine.
+
+Two reusable executor capabilities support the slice. `cell_activation`
+records the map cell in front of the player plus the player's facing, allowing
+ROM hidden events to remain ordinary indexed content.
+`actor_path_by_player_facing` selects between imported paths, while
+`place_actor_scripted` permits source-authored machine spawns on intentionally
+impassable scenery without weakening collision for normal actor placement.
+The Route 25 load behavior is preserved: leaving before using the separator
+clears the pending event, restores Pokémon-form Bill to his imported spawn,
+and permits a retry. Leaving after receiving the ticket records the completed
+visit, removes the bridge recruiter and transformed Bill, and exposes Bill's
+later rare-Pokémon interaction.
+
+The focused fixture exercises both the interrupted and completed branches. It
+accepts Bill's request, verifies his path and hidden actor, leaves to Route 25
+and confirms the reset, repeats the request, activates the imported PC target
+from the required direction, verifies the transformation and exit events,
+receives item 63, checks both Cerulean guard states, leaves again, and verifies
+all three final actor toggles and Bill's later dialogue. Readable content is
+generated at `source/scripts/campaign/bills_house.sexpr`.
+
+This checkpoint owns the progression logic, not all Bill presentation. The
+teleporter's exact timed sound/visual sequence and the later four-entry
+rare-Pokémon PC viewer remain explicit presentation/UI work; they must be
+imported before the Bill slice is considered presentation-complete.
+
 This is not full-campaign completion. The next campaign blocker begins with
-Bill's transformation/SS Ticket sequence, then the Cerulean Rocket thief and
-TM28 path. Every later map program still requires semantic lifting and the
-remaining acceptance gates above stay open.
+the Cerulean Rocket thief and TM28 path. Every later map program still requires
+semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance
 

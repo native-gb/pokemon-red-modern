@@ -112,6 +112,10 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::actor_path_by_player_y:
         return owns_actor() && !instruction.actor_path.empty() &&
                !instruction.player_path.empty();
+    case CampaignOpcode::actor_path_by_player_facing:
+        return owns_actor() && instruction.b <= 3U &&
+               !instruction.actor_path.empty() &&
+               !instruction.player_path.empty();
     case CampaignOpcode::lock_input:
     case CampaignOpcode::set_flag:
     case CampaignOpcode::clear_flag:
@@ -149,6 +153,7 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
     case CampaignOpcode::place_actor:
+    case CampaignOpcode::place_actor_scripted:
         return instruction.a != 0U &&
                instruction.pages.empty() &&
                instruction.actor_path.empty() &&
@@ -246,6 +251,18 @@ bool trigger_ready(const CampaignProgram& program, const WorldState& world,
         return world.player.map_index < world.maps.size() &&
                world.maps[world.player.map_index].id ==
                    program.trigger_map_id;
+    if (program.trigger_kind ==
+        CampaignTriggerKind::cell_activation)
+        return world.last_cell_activation.occurred &&
+               world.last_cell_activation.map_id ==
+                   program.trigger_map_id &&
+               world.last_cell_activation.x ==
+                   program.trigger_x &&
+               world.last_cell_activation.y ==
+                   program.trigger_y &&
+               static_cast<std::uint8_t>(
+                   world.last_cell_activation.facing) ==
+                   program.trigger_width;
     return world.player.map_index < world.maps.size() &&
            world.maps[world.player.map_index].id ==
                program.trigger_map_id &&
@@ -405,7 +422,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'J'}) {
+        magic != std::array{'P', 'C', 'P', 'L'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -507,7 +524,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
             !read_u8(input, trigger_kind) ||
             trigger_kind >
                 static_cast<std::uint8_t>(
-                    CampaignTriggerKind::map_presence) ||
+                    CampaignTriggerKind::cell_activation) ||
             !read_u8(input, program.trigger_map_id) ||
             !read_u8(input, program.trigger_x) ||
             !read_u8(input, program.trigger_y) ||
@@ -541,6 +558,15 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
              program.trigger_height == 0U)) {
             error =
                 "campaign rectangle trigger has an empty extent";
+            return false;
+        }
+        if (program.trigger_kind ==
+                CampaignTriggerKind::cell_activation &&
+            program.trigger_width >
+                static_cast<std::uint8_t>(
+                    WorldDirection::right)) {
+            error =
+                "campaign cell-activation trigger has an invalid facing";
             return false;
         }
         program.initially_hidden.reserve(hidden_count);
@@ -963,13 +989,17 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 return false;
             }
             break;
-        case CampaignOpcode::place_actor: {
+        case CampaignOpcode::place_actor:
+        case CampaignOpcode::place_actor_scripted: {
             const std::int32_t x = static_cast<std::int16_t>(
                 instruction.value & 0xFFFFU);
             const std::int32_t y = static_cast<std::int16_t>(
                 instruction.value >> 16U);
-            if (!place_world_actor(world, instruction.b,
-                                   instruction.a, x, y, error))
+            if (!place_world_actor(
+                    world, instruction.b, instruction.a, x, y,
+                    error,
+                    instruction.opcode ==
+                        CampaignOpcode::place_actor_scripted))
                 return false;
             break;
         }
@@ -1042,6 +1072,24 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                     static_cast<std::uint8_t>(instruction.value),
                     instruction.a, selected, player_waits, false, error,
                     true, true))
+                return false;
+            fiber.waiting_motion = true;
+            error.clear();
+            return true;
+        }
+        case CampaignOpcode::actor_path_by_player_facing: {
+            const std::vector<WorldPathCommand>& selected =
+                static_cast<std::uint8_t>(world.player.facing) ==
+                        instruction.b
+                    ? instruction.actor_path
+                    : instruction.player_path;
+            const std::vector<WorldPathCommand> player_waits(
+                selected.size(), WorldPathCommand::wait);
+            if (!start_world_parallel_motion(
+                    world,
+                    static_cast<std::uint8_t>(instruction.value),
+                    instruction.a, selected, player_waits, false,
+                    error, true, true))
                 return false;
             fiber.waiting_motion = true;
             error.clear();

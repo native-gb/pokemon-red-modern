@@ -20,6 +20,7 @@ enum class CampaignTriggerKind : std::uint8_t {
     map_entry,
     player_rectangle,
     map_presence,
+    cell_activation,
 };
 
 enum class CampaignOpcode : std::uint8_t {
@@ -49,6 +50,7 @@ enum class CampaignOpcode : std::uint8_t {
     try_give_item,
     take_item,
     place_actor,
+    place_actor_scripted,
     place_actor_at_player_x,
     actor_path,
     jump_if_player_y,
@@ -57,6 +59,7 @@ enum class CampaignOpcode : std::uint8_t {
     wait_ticks,
     actor_path_by_player_x,
     actor_path_by_player_y,
+    actor_path_by_player_facing,
     start_trainer_battle,
     jump_if_choice_no,
     say_if_player_won,

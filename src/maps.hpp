@@ -177,6 +177,14 @@ struct WorldActorActivation {
     bool occurred{};
 };
 
+struct WorldCellActivation {
+    std::uint8_t map_id{};
+    std::uint8_t x{};
+    std::uint8_t y{};
+    WorldDirection facing{WorldDirection::down};
+    bool occurred{};
+};
+
 struct WorldOpponentRequest {
     std::uint8_t map_id{};
     std::uint8_t actor_index{};
@@ -231,6 +239,7 @@ struct WorldState {
     NamingState naming;
     WorldWarpState last_warp;
     WorldActorActivation last_actor_activation;
+    WorldCellActivation last_cell_activation;
     WorldOpponentRequest opponent_request;
     WorldTrainerApproach trainer_approach;
     WorldScriptMotion script_motion;
@@ -277,7 +286,8 @@ bool set_world_actor_visible(WorldState& world, std::uint8_t map_id,
                              std::string& error);
 bool place_world_actor(WorldState& world, std::uint8_t map_id,
                        std::uint8_t actor_index, std::int32_t x,
-                       std::int32_t y, std::string& error);
+                       std::int32_t y, std::string& error,
+                       bool ignores_terrain = false);
 bool face_world_actor(WorldState& world, std::uint8_t map_id,
                       std::uint8_t actor_index, WorldDirection direction,
                       std::string& error);

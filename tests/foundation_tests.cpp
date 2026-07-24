@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 55U &&
+              programs.programs.size() == 62U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 22> source_names{
+    constexpr std::array<std::string_view, 23> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1818,6 +1818,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "cerulean_rival.sexpr",
         "cerulean_gym.sexpr",
         "route_24_nugget_bridge.sexpr",
+        "bills_house.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -3360,6 +3361,200 @@ void test_local_pallet_campaign_program(TestState& state) {
                   campaign, 0x6BF79U) &&
               !campaign.input_locked,
           "Nugget Bridge victory records the imported Rocket event");
+
+    check(state,
+          pokered::enter_world_at(
+              world, 88U, 6, 6, error),
+          "campaign fixture reaches Bill in Pokemon form");
+    world.last_actor_activation = {
+        .map_id = 88U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Bill's imported actor trigger services");
+    check(state,
+          world.choice.open &&
+              world.dialogue.pages.front().find(
+                  "Hiya!") != std::string::npos,
+          "Bill's imported actor starts the separator request");
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate =
+                 world.dialogue.open || world.choice.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Bill's request and machine path advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6BF96U) &&
+              !actor_visible(88U, 1U),
+          "Bill walks into the machine and records the imported pending event");
+
+    check(state,
+          pokered::enter_world_at(
+              world, 36U, 45, 4, error) &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+          "Route 25 services Bill's interrupted transformation");
+    check(state,
+          !pokered::campaign_flag(
+              campaign, 0x6BF96U) &&
+              actor_visible(88U, 1U),
+          "leaving before using the PC restores Pokemon-form Bill");
+
+    check(state,
+          pokered::enter_world_at(
+              world, 88U, 6, 6, error),
+          "campaign fixture returns to Bill's House");
+    world.last_actor_activation = {
+        .map_id = 88U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error),
+          "Bill's separator request restarts");
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate =
+                 world.dialogue.open || world.choice.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Bill's repeated request advances");
+        if (!error.empty()) break;
+    }
+
+    check(state,
+          pokered::enter_world_at(
+              world, 88U, 1, 5, error),
+          "campaign fixture reaches Bill's hidden PC cell");
+    world.player.facing = pokered::WorldDirection::up;
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          world.last_cell_activation.occurred &&
+              world.last_cell_activation.map_id == 88U &&
+              world.last_cell_activation.x == 1U &&
+              world.last_cell_activation.y == 4U &&
+              world.last_cell_activation.facing ==
+                  pokered::WorldDirection::up,
+          "world input records the imported cell and facing activation");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "initiated") != std::string::npos,
+          "Bill's PC starts the imported separator sequence");
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Bill's transformation and exit path advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6BF93U) &&
+              pokered::campaign_flag(
+                  campaign, 0x6BF95U) &&
+              pokered::campaign_flag(
+                  campaign, 0x6BF88U) &&
+              actor_visible(88U, 2U),
+          "Bill transforms, exits the machine, and records both imported met events");
+
+    world.last_actor_activation = {
+        .map_id = 88U,
+        .actor_index = 2U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "Yeehah") != std::string::npos,
+          "transformed Bill starts the imported S.S. Ticket reward");
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Bill's S.S. Ticket reward advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6BF94U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 63U) == 1U &&
+              actor_visible(3U, 6U) &&
+              !actor_visible(3U, 11U),
+          "Bill grants the imported S.S. Ticket and swaps Cerulean guards");
+
+    check(state,
+          pokered::enter_world_at(
+              world, 36U, 45, 4, error) &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+          "Route 25 services the completed Bill visit");
+    check(state,
+          pokered::campaign_flag(
+              campaign, 0x6BF97U) &&
+              !actor_visible(35U, 1U) &&
+              !actor_visible(88U, 2U) &&
+              actor_visible(88U, 3U),
+          "leaving after the ticket hides the bridge recruiter and swaps Bill actors");
+
+    check(state,
+          pokered::enter_world_at(
+              world, 88U, 6, 6, error),
+          "campaign fixture revisits Bill after helping");
+    world.last_actor_activation = {
+        .map_id = 88U,
+        .actor_index = 3U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "rare") != std::string::npos,
+          "post-help Bill uses his imported rare-Pokemon dialogue");
 }
 
 } // namespace

@@ -736,6 +736,7 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                 const WorldStepInput& input) {
     world.player_completed_step = false;
     world.last_actor_activation = {};
+    world.last_cell_activation = {};
     if (!campaign.initialized || !world.player.initialized ||
         world.spatial.size() != world.maps.size())
         return;
@@ -862,6 +863,13 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
             const WorldMap& target = world.maps[target_map];
             const std::int32_t local_x = global_x - target.global_x_tiles / 2;
             const std::int32_t local_y = global_y - target.global_y_tiles / 2;
+            world.last_cell_activation = {
+                .map_id = target.id,
+                .x = static_cast<std::uint8_t>(local_x),
+                .y = static_cast<std::uint8_t>(local_y),
+                .facing = world.player.facing,
+                .occurred = true,
+            };
             WorldMapCellIndex& cells = world.spatial[target_map];
             const std::size_t cell = cell_offset(cells, local_x, local_y);
             const std::int32_t actor_index = cells.actor_by_cell[cell];
@@ -1288,7 +1296,8 @@ bool apply_player_path_command(WorldState& world, WorldPathCommand command,
 
 bool place_world_actor(WorldState& world, std::uint8_t map_id,
                        std::uint8_t actor_index, std::int32_t x,
-                       std::int32_t y, std::string& error) {
+                       std::int32_t y, std::string& error,
+                       bool ignores_terrain) {
     std::size_t runtime_index = 0U;
     if (!find_runtime_actor(world, map_id, actor_index, runtime_index)) {
         error = "campaign actor placement has an unavailable owner";
@@ -1300,7 +1309,8 @@ bool place_world_actor(WorldState& world, std::uint8_t map_id,
     const std::int32_t global_x = map.global_x_tiles / 2 + x;
     const std::int32_t global_y = map.global_y_tiles / 2 + y;
     if (!inside(cells, x, y) ||
-        !is_passable(world, actor.map_index, global_x, global_y)) {
+        (!ignores_terrain &&
+         !is_passable(world, actor.map_index, global_x, global_y))) {
         error = "campaign actor placement is outside passable terrain";
         return false;
     }

@@ -233,6 +233,38 @@ constexpr std::size_t kRoute24NoRoomTextOffset = 0x051521U;
 constexpr std::size_t kRoute24JoinRocketTextOffset = 0x051526U;
 constexpr std::size_t kRoute24DefeatedTextOffset = 0x05152BU;
 constexpr std::size_t kRoute24TopLeaderTextOffset = 0x051530U;
+constexpr std::size_t kBillsHouseObjectOffset = 0x01E8DFU;
+constexpr std::size_t kBillsHouseHiddenEventOffset = 0x046F86U;
+constexpr std::size_t kBillsHouseDirectMachinePathOffset = 0x01E79CU;
+constexpr std::size_t kBillsHouseAroundPlayerPathOffset = 0x01E7A0U;
+constexpr std::size_t kBillsHouseExitMachinePathOffset = 0x01E807U;
+constexpr std::size_t kBillsHouseSpawnPositionOffset = 0x01E7DDU;
+constexpr std::size_t kBillsHouseSaidUseSetOffset = 0x01E7B6U;
+constexpr std::size_t kBillsHouseUsedSeparatorCheckOffset = 0x01E7C5U;
+constexpr std::size_t kBillsHouseMetSecondSetOffset = 0x01E817U;
+constexpr std::size_t kBillsHouseMetSetOffset = 0x01E81CU;
+constexpr std::size_t kBillsHouseGotTicketCheckOffset = 0x01E875U;
+constexpr std::size_t kBillsHouseTicketGrantOffset = 0x01E882U;
+constexpr std::size_t kBillsHouseGotTicketSetOffset = 0x01E890U;
+constexpr std::size_t kBillsHouseHidePokemonOffset = 0x01E7ACU;
+constexpr std::size_t kBillsHouseShowBillOffset = 0x01E7E8U;
+constexpr std::size_t kBillsHouseShowCeruleanGuardOffset = 0x01E895U;
+constexpr std::size_t kBillsHouseHideCeruleanGuardOffset = 0x01E89FU;
+constexpr std::size_t kBillsHouseImNotPokemonTextOffset = 0x01E865U;
+constexpr std::size_t kBillsHouseUseSystemTextOffset = 0x01E86AU;
+constexpr std::size_t kBillsHouseNoHelpTextOffset = 0x01E86FU;
+constexpr std::size_t kBillsHouseThankYouTextOffset = 0x01E8BAU;
+constexpr std::size_t kBillsHouseReceivedTicketTextOffset = 0x01E8BFU;
+constexpr std::size_t kBillsHouseNoRoomTextOffset = 0x01E8C6U;
+constexpr std::size_t kBillsHouseWhyGoTextOffset = 0x01E8CBU;
+constexpr std::size_t kBillsHouseRarePokemonTextOffset = 0x01E8DAU;
+constexpr std::size_t kBillsHouseInitiatedTextOffset = 0x01EBE2U;
+constexpr std::size_t kRoute25MetSecondCheckOffset = 0x0515EFU;
+constexpr std::size_t kRoute25GotTicketCheckOffset = 0x0515FFU;
+constexpr std::size_t kRoute25LeftBillSetOffset = 0x051602U;
+constexpr std::size_t kRoute25HideNuggetGuyOffset = 0x051604U;
+constexpr std::size_t kRoute25HideBillOffset = 0x05160EU;
+constexpr std::size_t kRoute25ShowRareBillOffset = 0x051618U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -257,6 +289,7 @@ enum class TriggerKind : std::uint8_t {
     map_entry,
     player_rectangle,
     map_presence,
+    cell_activation,
 };
 
 enum class Opcode : std::uint8_t {
@@ -286,6 +319,7 @@ enum class Opcode : std::uint8_t {
     try_give_item,
     take_item,
     place_actor,
+    place_actor_scripted,
     place_actor_at_player_x,
     actor_path,
     jump_if_player_y,
@@ -294,6 +328,7 @@ enum class Opcode : std::uint8_t {
     wait_ticks,
     actor_path_by_player_x,
     actor_path_by_player_y,
+    actor_path_by_player_facing,
     start_trainer_battle,
     jump_if_choice_no,
     say_if_player_won,
@@ -639,6 +674,48 @@ struct Route24NuggetProgram {
     DecodedTextProgram top_leader;
 };
 
+struct BillsHouseProgram {
+    std::uint8_t map_id{};
+    std::uint8_t route_25_map_id{};
+    std::uint8_t pokemon_actor_index{};
+    std::uint8_t bill_actor_index{};
+    std::uint8_t rare_bill_actor_index{};
+    std::uint8_t pc_x{};
+    std::uint8_t pc_y{};
+    std::uint8_t pc_facing{};
+    std::uint8_t transformed_bill_x{};
+    std::uint8_t transformed_bill_y{};
+    std::uint8_t pokemon_actor_x{};
+    std::uint8_t pokemon_actor_y{};
+    std::uint32_t said_use_flag{};
+    std::uint32_t used_separator_flag{};
+    std::uint32_t met_second_flag{};
+    std::uint32_t met_flag{};
+    std::uint32_t got_ticket_flag{};
+    std::uint32_t left_house_flag{};
+    std::uint16_t ticket_item_id{};
+    std::uint8_t ticket_quantity{};
+    std::string ticket_name;
+    ToggleActor pokemon_actor;
+    ToggleActor bill_actor;
+    ToggleActor rare_bill_actor;
+    ToggleActor cerulean_guard_before;
+    ToggleActor cerulean_guard_after;
+    ToggleActor nugget_bridge_actor;
+    std::vector<PathCommand> direct_machine_path;
+    std::vector<PathCommand> around_player_path;
+    std::vector<PathCommand> exit_machine_path;
+    DecodedTextProgram im_not_pokemon;
+    DecodedTextProgram use_system;
+    DecodedTextProgram no_help;
+    DecodedTextProgram initiated;
+    DecodedTextProgram thank_you;
+    DecodedTextProgram received_ticket;
+    DecodedTextProgram no_room;
+    DecodedTextProgram why_go;
+    DecodedTextProgram rare_pokemon;
+};
+
 struct CampaignInitialState {
     std::uint32_t money{};
     std::uint8_t party_capacity{};
@@ -745,6 +822,30 @@ bool decode_reused_event(std::span<const std::uint8_t> rom,
         static_cast<std::uint8_t>((rom[offset + 1U] - base) / 8U);
     if (bit > 7U) {
         error = "campaign reused event mutation has an invalid bit";
+        return false;
+    }
+    flag = static_cast<std::uint32_t>(address) * 8U + bit;
+    return true;
+}
+
+bool decode_reused_checked_event(
+    std::span<const std::uint8_t> rom, std::size_t offset,
+    std::uint16_t address, std::uint32_t& flag,
+    std::string& error) {
+    if (offset > rom.size() || 2U > rom.size() - offset ||
+        rom[offset] != 0xCBU ||
+        rom[offset + 1U] < 0x46U ||
+        (rom[offset + 1U] - 0x46U) % 8U != 0U) {
+        error =
+            "campaign reused event check does not match the verified ROM";
+        return false;
+    }
+    const std::uint8_t bit =
+        static_cast<std::uint8_t>(
+            (rom[offset + 1U] - 0x46U) / 8U);
+    if (bit > 7U) {
+        error =
+            "campaign reused event check has an invalid bit";
         return false;
     }
     flag = static_cast<std::uint32_t>(address) * 8U + bit;
@@ -1006,6 +1107,72 @@ bool decode_map_actor_owner(
         return false;
     }
     return true;
+}
+
+bool decode_map_actor_position(
+    std::span<const std::uint8_t> rom,
+    std::size_t object_offset, std::uint8_t actor_index,
+    std::uint8_t& x, std::uint8_t& y,
+    std::string& error) {
+    if (actor_index == 0U ||
+        object_offset + 2U > rom.size()) {
+        error = "map actor position owner is invalid";
+        return false;
+    }
+    std::size_t cursor = object_offset + 1U;
+    const std::uint8_t warp_count = rom[cursor++];
+    if (static_cast<std::size_t>(warp_count) >
+        (rom.size() - cursor) / 4U) {
+        error = "map actor position warp table is truncated";
+        return false;
+    }
+    cursor += static_cast<std::size_t>(warp_count) * 4U;
+    if (cursor >= rom.size()) {
+        error = "map actor position background header is truncated";
+        return false;
+    }
+    const std::uint8_t background_count = rom[cursor++];
+    if (static_cast<std::size_t>(background_count) >
+        (rom.size() - cursor) / 3U) {
+        error =
+            "map actor position background table is truncated";
+        return false;
+    }
+    cursor +=
+        static_cast<std::size_t>(background_count) * 3U;
+    if (cursor >= rom.size()) {
+        error = "map actor position table is truncated";
+        return false;
+    }
+    const std::uint8_t actor_count = rom[cursor++];
+    if (actor_index > actor_count) {
+        error = "map actor position owner is missing";
+        return false;
+    }
+    for (std::uint8_t actor = 1U;
+         actor <= actor_count; ++actor) {
+        if (cursor + 6U > rom.size()) {
+            error = "map actor position record is truncated";
+            return false;
+        }
+        const std::uint8_t stored_y = rom[cursor + 1U];
+        const std::uint8_t stored_x = rom[cursor + 2U];
+        const std::uint8_t text_flags = rom[cursor + 5U];
+        if (actor == actor_index) {
+            if (stored_x < 4U || stored_y < 4U) {
+                error =
+                    "map actor position lacks the sprite buffer";
+                return false;
+            }
+            x = static_cast<std::uint8_t>(stored_x - 4U);
+            y = static_cast<std::uint8_t>(stored_y - 4U);
+            return true;
+        }
+        cursor +=
+            (text_flags & 0xC0U) == 0U ? 6U : 8U;
+    }
+    error = "map actor position owner is unavailable";
+    return false;
 }
 
 bool decode_loose_item_presentation(
@@ -3307,6 +3474,236 @@ bool decode_route_24_nugget_program(
     return true;
 }
 
+bool decode_bills_house_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ToggleActor>& toggle_actors,
+    const std::vector<ImportedItemName>& item_names,
+    BillsHouseProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 88U;
+    result.route_25_map_id = 36U;
+
+    if (!decode_map_actor_owner(
+            rom, kBillsHouseObjectOffset, 1U,
+            result.pokemon_actor_index, error) ||
+        !decode_map_actor_owner(
+            rom, kBillsHouseObjectOffset, 2U,
+            result.bill_actor_index, error) ||
+        !decode_map_actor_owner(
+            rom, kBillsHouseObjectOffset, 3U,
+            result.rare_bill_actor_index, error) ||
+        !decode_map_actor_position(
+            rom, kBillsHouseObjectOffset,
+            result.pokemon_actor_index,
+            result.pokemon_actor_x,
+            result.pokemon_actor_y, error))
+        return false;
+
+    constexpr std::array<std::uint8_t, 3>
+        bills_pc_address{0x07U, 0x6EU, 0x6BU};
+    if (kBillsHouseHiddenEventOffset + 7U > rom.size() ||
+        !has_bytes(
+            rom, kBillsHouseHiddenEventOffset + 3U,
+            bills_pc_address) ||
+        rom[kBillsHouseHiddenEventOffset + 6U] != 0xFFU) {
+        error =
+            "Bill's House hidden PC event does not match the verified ROM";
+        return false;
+    }
+    result.pc_y = rom[kBillsHouseHiddenEventOffset];
+    result.pc_x = rom[kBillsHouseHiddenEventOffset + 1U];
+    switch (rom[kBillsHouseHiddenEventOffset + 2U]) {
+    case 0x00U: result.pc_facing = 0U; break;
+    case 0x04U: result.pc_facing = 1U; break;
+    case 0x08U: result.pc_facing = 2U; break;
+    case 0x0CU: result.pc_facing = 3U; break;
+    default:
+        error =
+            "Bill's House hidden PC event has an unknown facing";
+        return false;
+    }
+
+    if (kBillsHouseSpawnPositionOffset + 8U > rom.size() ||
+        rom[kBillsHouseSpawnPositionOffset] != 0x3EU ||
+        rom[kBillsHouseSpawnPositionOffset + 2U] != 0xE0U ||
+        rom[kBillsHouseSpawnPositionOffset + 3U] != 0xEDU ||
+        rom[kBillsHouseSpawnPositionOffset + 4U] != 0x3EU ||
+        rom[kBillsHouseSpawnPositionOffset + 6U] != 0xE0U ||
+        rom[kBillsHouseSpawnPositionOffset + 7U] != 0xEEU ||
+        rom[kBillsHouseSpawnPositionOffset + 1U] < 4U ||
+        rom[kBillsHouseSpawnPositionOffset + 5U] < 4U) {
+        error =
+            "Bill's transformed spawn position does not match the verified ROM";
+        return false;
+    }
+    result.transformed_bill_y = static_cast<std::uint8_t>(
+        rom[kBillsHouseSpawnPositionOffset + 1U] - 4U);
+    result.transformed_bill_x = static_cast<std::uint8_t>(
+        rom[kBillsHouseSpawnPositionOffset + 5U] - 4U);
+
+    if (!decode_direct_npc_path(
+            rom, kBillsHouseDirectMachinePathOffset,
+            result.direct_machine_path, error) ||
+        !decode_direct_npc_path(
+            rom, kBillsHouseAroundPlayerPathOffset,
+            result.around_player_path, error) ||
+        !decode_direct_npc_path(
+            rom, kBillsHouseExitMachinePathOffset,
+            result.exit_machine_path, error))
+        return false;
+
+    std::uint32_t route_met_second = 0U;
+    std::uint32_t route_got_ticket = 0U;
+    if (!decode_set_event(
+            rom, kBillsHouseSaidUseSetOffset,
+            result.said_use_flag, error) ||
+        !decode_checked_event(
+            rom, kBillsHouseUsedSeparatorCheckOffset,
+            result.used_separator_flag, error) ||
+        !decode_set_event(
+            rom, kBillsHouseMetSecondSetOffset,
+            result.met_second_flag, error) ||
+        !decode_set_event(
+            rom, kBillsHouseMetSetOffset,
+            result.met_flag, error) ||
+        !decode_checked_event(
+            rom, kBillsHouseGotTicketCheckOffset,
+            result.got_ticket_flag, error) ||
+        !decode_reused_checked_event(
+            rom, kRoute25MetSecondCheckOffset, 0xD7F2U,
+            route_met_second, error) ||
+        !decode_reused_checked_event(
+            rom, kRoute25GotTicketCheckOffset, 0xD7F2U,
+            route_got_ticket, error) ||
+        !decode_reused_event(
+            rom, kRoute25LeftBillSetOffset, 0xD7F2U,
+            true, result.left_house_flag, error) ||
+        route_met_second != result.met_second_flag ||
+        route_got_ticket != result.got_ticket_flag) {
+        if (error.empty())
+            error =
+                "Bill's House and Route 25 event flow disagree";
+        return false;
+    }
+    std::uint32_t set_got_ticket = 0U;
+    if (!decode_set_event(
+            rom, kBillsHouseGotTicketSetOffset,
+            set_got_ticket, error) ||
+        set_got_ticket != result.got_ticket_flag) {
+        if (error.empty())
+            error =
+                "Bill's S.S. Ticket event mutation disagrees with its check";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 3>
+        give_item_call{0xCDU, 0x2EU, 0x3EU};
+    if (kBillsHouseTicketGrantOffset + 6U > rom.size() ||
+        rom[kBillsHouseTicketGrantOffset] != 0x01U ||
+        !has_bytes(
+            rom, kBillsHouseTicketGrantOffset + 3U,
+            give_item_call)) {
+        error =
+            "Bill's S.S. Ticket grant does not match the verified ROM";
+        return false;
+    }
+    result.ticket_quantity =
+        rom[kBillsHouseTicketGrantOffset + 1U];
+    result.ticket_item_id =
+        rom[kBillsHouseTicketGrantOffset + 2U];
+    const auto ticket = std::ranges::find_if(
+        item_names,
+        [&](const ImportedItemName& candidate) {
+            return candidate.item_id ==
+                   result.ticket_item_id;
+        });
+    if (result.ticket_quantity == 0U ||
+        ticket == item_names.end()) {
+        error =
+            "Bill's S.S. Ticket is missing from the imported item catalogue";
+        return false;
+    }
+    result.ticket_name = ticket->name;
+
+    ToggleActor hidden_bill;
+    if (!decode_toggle_operation(
+            rom, kBillsHouseHidePokemonOffset, 0x11U,
+            toggle_actors, result.pokemon_actor, error) ||
+        !decode_toggle_operation(
+            rom, kBillsHouseShowBillOffset, 0x15U,
+            toggle_actors, result.bill_actor, error) ||
+        !decode_toggle_operation(
+            rom, kBillsHouseShowCeruleanGuardOffset, 0x15U,
+            toggle_actors, result.cerulean_guard_before,
+            error) ||
+        !decode_toggle_operation(
+            rom, kBillsHouseHideCeruleanGuardOffset, 0x11U,
+            toggle_actors, result.cerulean_guard_after,
+            error) ||
+        !decode_toggle_operation(
+            rom, kRoute25HideNuggetGuyOffset, 0x11U,
+            toggle_actors, result.nugget_bridge_actor,
+            error) ||
+        !decode_toggle_operation(
+            rom, kRoute25HideBillOffset, 0x11U,
+            toggle_actors, hidden_bill, error) ||
+        !decode_toggle_operation(
+            rom, kRoute25ShowRareBillOffset, 0x15U,
+            toggle_actors, result.rare_bill_actor,
+            error, true))
+        return false;
+    if (result.pokemon_actor.map_id != result.map_id ||
+        result.pokemon_actor.actor_index !=
+            result.pokemon_actor_index ||
+        result.bill_actor.map_id != result.map_id ||
+        result.bill_actor.actor_index !=
+            result.bill_actor_index ||
+        hidden_bill.map_id != result.bill_actor.map_id ||
+        hidden_bill.actor_index !=
+            result.bill_actor.actor_index ||
+        result.rare_bill_actor.map_id != result.map_id ||
+        result.rare_bill_actor.actor_index !=
+            result.rare_bill_actor_index ||
+        result.nugget_bridge_actor.map_id != 35U ||
+        result.cerulean_guard_before.map_id != 3U ||
+        result.cerulean_guard_after.map_id != 3U) {
+        error =
+            "Bill's actor toggles do not own the decoded map actors";
+        return false;
+    }
+
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 9>
+        text_programs{{
+            {kBillsHouseImNotPokemonTextOffset,
+             &result.im_not_pokemon},
+            {kBillsHouseUseSystemTextOffset,
+             &result.use_system},
+            {kBillsHouseNoHelpTextOffset, &result.no_help},
+            {kBillsHouseInitiatedTextOffset,
+             &result.initiated},
+            {kBillsHouseThankYouTextOffset,
+             &result.thank_you},
+            {kBillsHouseReceivedTicketTextOffset,
+             &result.received_ticket},
+            {kBillsHouseNoRoomTextOffset, &result.no_room},
+            {kBillsHouseWhyGoTextOffset, &result.why_go},
+            {kBillsHouseRarePokemonTextOffset,
+             &result.rare_pokemon},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(
+                rom, 0x07U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Bill's House dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    resolve_item_name_buffer(
+        result.received_ticket, result.ticket_name);
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -4572,6 +4969,150 @@ GeneratedFile readable_route_24_nugget_source(
     };
 }
 
+GeneratedFile readable_bills_house_source(
+    const BillsHouseProgram& bill) {
+    const auto path_name = [](PathCommand command) {
+        switch (command) {
+        case PathCommand::down: return "down";
+        case PathCommand::up: return "up";
+        case PathCommand::left: return "left";
+        case PathCommand::right: return "right";
+        case PathCommand::wait: return "wait";
+        case PathCommand::face_down: return "face_down";
+        }
+        return "unknown";
+    };
+    constexpr std::array<std::string_view, 4> facing_names{
+        "down", "up", "left", "right"};
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Bill's House and Route 25 programs.\n"
+        << "; Hidden PC cell, facing, actors, paths, events, ticket tuple, toggles, and dialogue are ROM-derived.\n\n"
+        << "campaign_program bills_house_help_bill\n"
+        << "    trigger map bills_house actor_activation "
+        << static_cast<unsigned>(bill.pokemon_actor_index)
+        << "\n    absent_flag 0x" << std::hex
+        << bill.said_use_flag << std::dec
+        << "\n    ask_yes_no\n"
+        << page_source(bill.im_not_pokemon.pages, "        ")
+        << "    if_no say\n"
+        << page_source(bill.no_help.pages, "        ")
+        << "    say\n"
+        << page_source(bill.use_system.pages, "        ")
+        << "    move_actor_by_player_facing bill_pokemon equals down\n"
+        << "        if_equal";
+    for (const PathCommand command : bill.around_player_path)
+        source << ' ' << path_name(command);
+    source << "\n        otherwise";
+    for (const PathCommand command : bill.direct_machine_path)
+        source << ' ' << path_name(command);
+    source
+        << "\n    hide_actor bill_pokemon\n"
+        << "    set_flag 0x" << std::hex
+        << bill.said_use_flag << std::dec
+        << "\n\ncampaign_program bills_house_cell_separator\n"
+        << "    trigger map bills_house cell_activation "
+        << static_cast<unsigned>(bill.pc_x) << ' '
+        << static_cast<unsigned>(bill.pc_y) << " facing "
+        << facing_names[bill.pc_facing]
+        << "\n    required_flag 0x" << std::hex
+        << bill.said_use_flag
+        << "\n    absent_flag 0x"
+        << bill.used_separator_flag << std::dec
+        << "\n    say\n"
+        << page_source(bill.initiated.pages, "        ")
+        << "    set_flag 0x" << std::hex
+        << bill.used_separator_flag << std::dec
+        << "\n    place_actor transformed_bill "
+        << static_cast<unsigned>(bill.transformed_bill_x)
+        << ' '
+        << static_cast<unsigned>(bill.transformed_bill_y)
+        << " scripted"
+        << "\n    show_actor transformed_bill\n"
+        << "    wait 8\n"
+        << "    move_actor transformed_bill";
+    for (const PathCommand command : bill.exit_machine_path)
+        source << ' ' << path_name(command);
+    source
+        << " scripted\n    set_flag 0x" << std::hex
+        << bill.met_second_flag
+        << "\n    set_flag 0x" << bill.met_flag << std::dec
+        << "\n\ncampaign_program bills_house_ss_ticket\n"
+        << "    trigger map bills_house actor_activation "
+        << static_cast<unsigned>(bill.bill_actor_index)
+        << "\n    required_flag 0x" << std::hex
+        << bill.met_flag
+        << "\n    absent_flag 0x" << bill.got_ticket_flag
+        << std::dec << "\n    say\n"
+        << page_source(bill.thank_you.pages, "        ")
+        << "    try_give_item "
+        << source_quote(bill.ticket_name) << " rom_id "
+        << bill.ticket_item_id << " quantity "
+        << static_cast<unsigned>(bill.ticket_quantity)
+        << "\n    if_item_grant_failed say\n"
+        << page_source(bill.no_room.pages, "        ")
+        << "    else\n"
+        << "        say\n"
+        << page_source(bill.received_ticket.pages, "            ")
+        << "        set_flag 0x" << std::hex
+        << bill.got_ticket_flag << std::dec
+        << "\n        show_actor map_"
+        << static_cast<unsigned>(
+               bill.cerulean_guard_before.map_id)
+        << " actor "
+        << static_cast<unsigned>(
+               bill.cerulean_guard_before.actor_index)
+        << "\n        hide_actor map_"
+        << static_cast<unsigned>(
+               bill.cerulean_guard_after.map_id)
+        << " actor "
+        << static_cast<unsigned>(
+               bill.cerulean_guard_after.actor_index)
+        << "\n        say\n"
+        << page_source(bill.why_go.pages, "            ")
+        << "\ninteraction bills_house_after_ticket\n"
+        << "    required_flag 0x" << std::hex
+        << bill.got_ticket_flag << std::dec << "\n    say\n"
+        << page_source(bill.why_go.pages, "        ")
+        << "\ncampaign_program route_25_reset_unfinished_bill\n"
+        << "    required_flag 0x" << std::hex
+        << bill.said_use_flag
+        << "\n    absent_flag 0x" << bill.met_second_flag
+        << std::dec
+        << "\n    clear_flag 0x" << std::hex
+        << bill.said_use_flag << std::dec
+        << "\n    place_actor bill_pokemon "
+        << static_cast<unsigned>(bill.pokemon_actor_x)
+        << ' '
+        << static_cast<unsigned>(bill.pokemon_actor_y)
+        << "\n    show_actor bill_pokemon\n"
+        << "\ncampaign_program route_25_leave_after_helping_bill\n"
+        << "    required_flag 0x" << std::hex
+        << bill.got_ticket_flag
+        << "\n    absent_flag 0x" << bill.left_house_flag
+        << "\n    set_flag 0x" << bill.left_house_flag
+        << std::dec
+        << "\n    hide_actor map_"
+        << static_cast<unsigned>(
+               bill.nugget_bridge_actor.map_id)
+        << " actor "
+        << static_cast<unsigned>(
+               bill.nugget_bridge_actor.actor_index)
+        << "\n    hide_actor transformed_bill\n"
+        << "    show_actor rare_bill\n"
+        << "\ninteraction bills_house_rare_pokemon\n"
+        << "    required_flag 0x" << std::hex
+        << bill.left_house_flag << std::dec << "\n    say\n"
+        << page_source(bill.rare_pokemon.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/bills_house.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -4853,6 +5394,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     Route24NuggetProgram route_24_nugget;
     if (!decode_route_24_nugget_program(
             rom, item_names, route_24_nugget, error))
+        return false;
+    BillsHouseProgram bills_house;
+    if (!decode_bills_house_program(
+            rom, toggle_actors, item_names,
+            bills_house, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -6609,7 +7155,280 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(nugget_bridge_after));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'J'};
+    Program help_bill;
+    help_bill.key = "bills_house_help_bill";
+    help_bill.trigger_kind =
+        TriggerKind::actor_activation;
+    help_bill.trigger_map = bills_house.map_id;
+    help_bill.trigger_x =
+        bills_house.pokemon_actor_index;
+    help_bill.absent_flag =
+        bills_house.said_use_flag;
+    help_bill.instructions.push_back(
+        operation(Opcode::lock_input));
+    help_bill.instructions.push_back(
+        ask_yes_no(
+            bills_house.im_not_pokemon.pages, 0U));
+    const std::size_t bill_no_jump =
+        help_bill.instructions.size();
+    help_bill.instructions.push_back(
+        operation(Opcode::jump_if_choice_no));
+    help_bill.instructions.push_back(
+        dialogue(bills_house.use_system.pages));
+    const std::size_t bill_path_jump =
+        help_bill.instructions.size();
+    help_bill.instructions.push_back(
+        operation(Opcode::jump));
+    help_bill.instructions[bill_no_jump].value =
+        static_cast<std::uint32_t>(
+            help_bill.instructions.size());
+    help_bill.instructions.push_back(
+        dialogue(bills_house.no_help.pages));
+    help_bill.instructions.push_back(
+        dialogue(bills_house.use_system.pages));
+    help_bill.instructions[bill_path_jump].value =
+        static_cast<std::uint32_t>(
+            help_bill.instructions.size());
+    Instruction enter_machine = operation(
+        Opcode::actor_path_by_player_facing,
+        bills_house.pokemon_actor_index,
+        0U,
+        bills_house.map_id);
+    enter_machine.actor_path =
+        bills_house.around_player_path;
+    enter_machine.player_path =
+        bills_house.direct_machine_path;
+    help_bill.instructions.push_back(
+        std::move(enter_machine));
+    help_bill.instructions.push_back(operation(
+        Opcode::hide_actor,
+        bills_house.pokemon_actor_index, 0U,
+        bills_house.map_id));
+    help_bill.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        bills_house.said_use_flag));
+    help_bill.instructions.push_back(
+        operation(Opcode::unlock_input));
+    help_bill.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(help_bill));
+
+    Program cell_separator;
+    cell_separator.key =
+        "bills_house_cell_separator";
+    cell_separator.trigger_kind =
+        TriggerKind::cell_activation;
+    cell_separator.trigger_map =
+        bills_house.map_id;
+    cell_separator.trigger_x = bills_house.pc_x;
+    cell_separator.trigger_y = bills_house.pc_y;
+    cell_separator.trigger_width =
+        bills_house.pc_facing;
+    cell_separator.required_flag =
+        bills_house.said_use_flag;
+    cell_separator.absent_flag =
+        bills_house.used_separator_flag;
+    cell_separator.instructions.push_back(
+        operation(Opcode::lock_input));
+    cell_separator.instructions.push_back(
+        dialogue(bills_house.initiated.pages));
+    cell_separator.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        bills_house.used_separator_flag));
+    cell_separator.instructions.push_back(operation(
+        Opcode::place_actor_scripted,
+        bills_house.bill_actor_index,
+        bills_house.map_id,
+        packed_position(
+            bills_house.transformed_bill_x,
+            bills_house.transformed_bill_y)));
+    cell_separator.instructions.push_back(operation(
+        Opcode::show_actor,
+        bills_house.bill_actor_index, 0U,
+        bills_house.map_id));
+    cell_separator.instructions.push_back(
+        operation(Opcode::wait_ticks, 0U, 0U, 8U));
+    Instruction exit_machine = operation(
+        Opcode::actor_path,
+        bills_house.bill_actor_index,
+        bills_house.map_id, 2U);
+    exit_machine.actor_path =
+        bills_house.exit_machine_path;
+    cell_separator.instructions.push_back(
+        std::move(exit_machine));
+    cell_separator.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        bills_house.met_second_flag));
+    cell_separator.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        bills_house.met_flag));
+    cell_separator.instructions.push_back(
+        operation(Opcode::unlock_input));
+    cell_separator.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(cell_separator));
+
+    Program ss_ticket;
+    ss_ticket.key = "bills_house_ss_ticket";
+    ss_ticket.trigger_kind =
+        TriggerKind::actor_activation;
+    ss_ticket.trigger_map = bills_house.map_id;
+    ss_ticket.trigger_x =
+        bills_house.bill_actor_index;
+    ss_ticket.required_flag =
+        bills_house.met_flag;
+    ss_ticket.absent_flag =
+        bills_house.got_ticket_flag;
+    ss_ticket.instructions.push_back(
+        operation(Opcode::lock_input));
+    ss_ticket.instructions.push_back(
+        dialogue(bills_house.thank_you.pages));
+    ss_ticket.instructions.push_back(operation(
+        Opcode::try_give_item,
+        bills_house.ticket_quantity, 0U,
+        bills_house.ticket_item_id));
+    const std::size_t ticket_full_jump =
+        ss_ticket.instructions.size();
+    ss_ticket.instructions.push_back(operation(
+        Opcode::jump_if_item_grant_failed));
+    ss_ticket.instructions.push_back(
+        dialogue(
+            bills_house.received_ticket.pages));
+    ss_ticket.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        bills_house.got_ticket_flag));
+    ss_ticket.instructions.push_back(operation(
+        Opcode::show_actor,
+        bills_house.cerulean_guard_before.actor_index,
+        0U,
+        bills_house.cerulean_guard_before.map_id));
+    ss_ticket.instructions.push_back(operation(
+        Opcode::hide_actor,
+        bills_house.cerulean_guard_after.actor_index,
+        0U,
+        bills_house.cerulean_guard_after.map_id));
+    ss_ticket.instructions.push_back(
+        dialogue(bills_house.why_go.pages));
+    ss_ticket.instructions.push_back(
+        operation(Opcode::unlock_input));
+    ss_ticket.instructions.push_back(
+        operation(Opcode::end));
+    ss_ticket.instructions[ticket_full_jump].value =
+        static_cast<std::uint32_t>(
+            ss_ticket.instructions.size());
+    ss_ticket.instructions.push_back(
+        dialogue(bills_house.no_room.pages));
+    ss_ticket.instructions.push_back(
+        operation(Opcode::unlock_input));
+    ss_ticket.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(ss_ticket));
+
+    Program after_ticket;
+    after_ticket.key =
+        "bills_house_after_ticket";
+    after_ticket.trigger_kind =
+        TriggerKind::actor_activation;
+    after_ticket.trigger_map = bills_house.map_id;
+    after_ticket.trigger_x =
+        bills_house.bill_actor_index;
+    after_ticket.required_flag =
+        bills_house.got_ticket_flag;
+    after_ticket.instructions.push_back(
+        operation(Opcode::lock_input));
+    after_ticket.instructions.push_back(
+        dialogue(bills_house.why_go.pages));
+    after_ticket.instructions.push_back(
+        operation(Opcode::unlock_input));
+    after_ticket.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(after_ticket));
+
+    Program reset_unfinished_bill;
+    reset_unfinished_bill.key =
+        "route_25_reset_unfinished_bill";
+    reset_unfinished_bill.trigger_kind =
+        TriggerKind::map_presence;
+    reset_unfinished_bill.trigger_map =
+        bills_house.route_25_map_id;
+    reset_unfinished_bill.required_flag =
+        bills_house.said_use_flag;
+    reset_unfinished_bill.absent_flag =
+        bills_house.met_second_flag;
+    reset_unfinished_bill.instructions.push_back(
+        operation(Opcode::clear_flag, 0U, 0U,
+                  bills_house.said_use_flag));
+    reset_unfinished_bill.instructions.push_back(operation(
+        Opcode::place_actor,
+        bills_house.pokemon_actor.actor_index,
+        bills_house.pokemon_actor.map_id,
+        packed_position(
+            bills_house.pokemon_actor_x,
+            bills_house.pokemon_actor_y)));
+    reset_unfinished_bill.instructions.push_back(operation(
+        Opcode::show_actor,
+        bills_house.pokemon_actor.actor_index,
+        0U, bills_house.pokemon_actor.map_id));
+    reset_unfinished_bill.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(
+        std::move(reset_unfinished_bill));
+
+    Program leave_after_helping;
+    leave_after_helping.key =
+        "route_25_leave_after_helping_bill";
+    leave_after_helping.trigger_kind =
+        TriggerKind::map_presence;
+    leave_after_helping.trigger_map =
+        bills_house.route_25_map_id;
+    leave_after_helping.required_flag =
+        bills_house.got_ticket_flag;
+    leave_after_helping.absent_flag =
+        bills_house.left_house_flag;
+    leave_after_helping.instructions.push_back(operation(
+        Opcode::set_flag, 0U, 0U,
+        bills_house.left_house_flag));
+    leave_after_helping.instructions.push_back(operation(
+        Opcode::hide_actor,
+        bills_house.nugget_bridge_actor.actor_index,
+        0U,
+        bills_house.nugget_bridge_actor.map_id));
+    leave_after_helping.instructions.push_back(operation(
+        Opcode::hide_actor,
+        bills_house.bill_actor.actor_index, 0U,
+        bills_house.bill_actor.map_id));
+    leave_after_helping.instructions.push_back(operation(
+        Opcode::show_actor,
+        bills_house.rare_bill_actor.actor_index,
+        0U,
+        bills_house.rare_bill_actor.map_id));
+    leave_after_helping.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(
+        std::move(leave_after_helping));
+
+    Program rare_pokemon;
+    rare_pokemon.key =
+        "bills_house_rare_pokemon";
+    rare_pokemon.trigger_kind =
+        TriggerKind::actor_activation;
+    rare_pokemon.trigger_map =
+        bills_house.map_id;
+    rare_pokemon.trigger_x =
+        bills_house.rare_bill_actor_index;
+    rare_pokemon.required_flag =
+        bills_house.left_house_flag;
+    rare_pokemon.instructions.push_back(
+        operation(Opcode::lock_input));
+    rare_pokemon.instructions.push_back(
+        dialogue(bills_house.rare_pokemon.pages));
+    rare_pokemon.instructions.push_back(
+        operation(Opcode::unlock_input));
+    rare_pokemon.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(rare_pokemon));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'L'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -6693,6 +7512,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_route_24_nugget_source(
             route_24_nugget));
+    result.files.push_back(
+        readable_bills_house_source(
+            bills_house));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
