@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 44U &&
+              programs.programs.size() == 47U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 19> source_names{
+    constexpr std::array<std::string_view, 20> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1815,6 +1815,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "pewter_city.sexpr",
         "mt_moon_fossils.sexpr",
         "mt_moon_magikarp_sale.sexpr",
+        "cerulean_rival.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -3068,6 +3069,108 @@ void test_local_pallet_campaign_program(TestState& state) {
               world.dialogue.pages.front().find(
                   "kinds of trainers") != std::string::npos,
           "Brock switches to imported post-reward advice");
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Brock post-reward advice completes");
+        if (!error.empty()) break;
+    }
+
+    // Enter the exact bridge pair from the ROM. Blue is placed on the
+    // player's column, walks down from his hidden spawn, selects the party
+    // associated with the imported rival starter, then exits on the
+    // side-specific stream only after a victory.
+    check(state,
+          pokered::enter_world_at(
+              world, 3U, 20, 6, error),
+          "campaign fixture reaches Cerulean bridge");
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              campaign.input_locked &&
+              campaign.fiber.active,
+          "Cerulean bridge starts the imported rival approach");
+    for (std::size_t guard = 0U;
+         guard < 1000U && !world.dialogue.open; ++guard) {
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Cerulean rival approach advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() && world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "BLUE: Yo!") != std::string::npos,
+          "Cerulean rival reaches the player with imported pre-battle text");
+    for (std::size_t guard = 0U;
+         guard < 2000U &&
+         !campaign.trainer_battle_request.pending; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Cerulean rival challenge advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          campaign.trainer_battle_request.pending &&
+              campaign.trainer_battle_request.trainer_class_id ==
+                  25U &&
+              campaign.trainer_battle_request.trainer_party_index ==
+                  6U,
+          "Cerulean rival selects imported RIVAL1 party 7 for Squirtle");
+    bool cerulean_rival_began = false;
+    check(state,
+          pokered::begin_campaign_trainer_battle(
+              trainers, world, rules, battle_rules, campaign,
+              battle_view, cerulean_rival_began, error),
+          "Cerulean rival request begins its battle");
+    check(state,
+          cerulean_rival_began &&
+              campaign.battle.enemy_party.members.size() ==
+                  4U &&
+              campaign.battle.enemy_party.members[0].species_dex ==
+                  17U &&
+              campaign.battle.enemy_party.members[1].species_dex ==
+                  63U &&
+              campaign.battle.enemy_party.members[2].species_dex ==
+                  19U &&
+              campaign.battle.enemy_party.members[3].species_dex ==
+                  7U,
+          "Cerulean rival materializes imported Pidgeotto Abra Rattata Squirtle party");
+    campaign.battle.active = false;
+    campaign.battle.outcome =
+        pokered::BattleOutcome::player_victory;
+    for (std::size_t guard = 0U;
+         guard < 3000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Cerulean rival victory and exit advance");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6BAD0U) &&
+              !actor_visible(3U, 1U) &&
+              !campaign.input_locked,
+          "Cerulean rival victory records the event and hides Blue after his imported exit");
 }
 
 } // namespace

@@ -153,6 +153,12 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.pages.empty() &&
                instruction.actor_path.empty() &&
                instruction.player_path.empty();
+    case CampaignOpcode::place_actor_at_player_x:
+        return instruction.a != 0U &&
+               instruction.value <= 0xFFFFU &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
     case CampaignOpcode::actor_path:
         return instruction.a != 0U && instruction.value <= 3U &&
                instruction.pages.empty() &&
@@ -167,6 +173,7 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::jump_if_player_y:
     case CampaignOpcode::jump_if_item_grant_failed:
     case CampaignOpcode::jump_if_pokemon_grant_failed:
+    case CampaignOpcode::jump_if_player_won:
     case CampaignOpcode::jump_if_choice_no:
         return instruction.b == 0U && instruction.pages.empty() &&
                instruction.actor_path.empty() &&
@@ -398,7 +405,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'G'}) {
+        magic != std::array{'P', 'C', 'P', 'H'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -578,6 +585,8 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
                      CampaignOpcode::jump_if_pokemon_grant_failed ||
                  instruction.opcode ==
                      CampaignOpcode::jump_if_money_below ||
+                 instruction.opcode ==
+                     CampaignOpcode::jump_if_player_won ||
                  instruction.opcode ==
                      CampaignOpcode::jump_if_choice_no) &&
                 instruction.value >= program.instructions.size()) {
@@ -964,6 +973,15 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 return false;
             break;
         }
+        case CampaignOpcode::place_actor_at_player_x:
+            if (!place_world_actor(
+                    world, instruction.b, instruction.a,
+                    world.player.x,
+                    static_cast<std::int16_t>(
+                        instruction.value & 0xFFFFU),
+                    error))
+                return false;
+            break;
         case CampaignOpcode::actor_path: {
             const std::vector<WorldPathCommand> player_waits(
                 instruction.actor_path.size(),
@@ -1065,6 +1083,11 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             fiber.waiting_dialogue = world.dialogue.open;
             error.clear();
             return true;
+        case CampaignOpcode::jump_if_player_won:
+            if (campaign.battle.outcome ==
+                BattleOutcome::player_victory)
+                fiber.instruction_index = instruction.value;
+            break;
         case CampaignOpcode::end_if_player_lost:
             if (campaign.battle.outcome ==
                 BattleOutcome::player_defeat) {

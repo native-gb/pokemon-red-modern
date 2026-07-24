@@ -854,9 +854,26 @@ and the 3000-to-2500 money transition, and confirms the permanent no-refunds
 branch. The readable source is generated at
 `source/scripts/campaign/mt_moon_magikarp_sale.sexpr`.
 
+Cerulean's bridge rival is also a compiled campaign gate. The importer derives
+both adjacent trigger cells, the initially hidden Blue actor, approach and two
+exit streams, battle/event state, four dialogue phases, RIVAL1 class, and all
+three starter-dependent party indexes from the ROM. A generic
+`place_actor_at_player_x` operation preserves the cartridge's two-column
+entrance without Red-specific engine code; the existing smooth scripted-motion
+owner runs the approach and side-dependent exit. Losing hides Blue without
+setting the event so the encounter remains retryable. Winning sets the event,
+shows Bill's invitation, runs the correct exit, and hides Blue.
+
+The fixture enters the exact bridge cell after choosing Charmander, watches
+Blue walk down, verifies imported class 25 party 6 as Pidgeotto, Abra, Rattata,
+and Squirtle, returns a victory, and checks the event, hidden actor, and
+unlocked input. All three branches are readable at
+`source/scripts/campaign/cerulean_rival.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-the Route 4/Cerulean campaign slice. Every later map program still requires
-semantic lifting and the remaining acceptance gates above stay open.
+Cerulean Gym/Misty, then the Nugget Bridge/Bill/Cerulean Rocket path. Every
+later map program still requires semantic lifting and the remaining acceptance
+gates above stay open.
 
 ## Playable acceptance
 

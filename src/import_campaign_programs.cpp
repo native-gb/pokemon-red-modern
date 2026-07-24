@@ -190,6 +190,18 @@ constexpr std::size_t kMtMoonMagikarpNoRefundsTextOffset = 0x04936BU;
 constexpr std::size_t kGotPokemonTextOffset = 0x04FE39U;
 constexpr std::size_t kSentPokemonToBoxTextOffset = 0x04FE3FU;
 constexpr std::size_t kPokemonBoxFullTextOffset = 0x04FE44U;
+constexpr std::size_t kCeruleanCityObjectOffset = 0x018786U;
+constexpr std::size_t kCeruleanRivalEventCheckOffset = 0x0194F7U;
+constexpr std::size_t kCeruleanRivalTriggerCoordsOffset = 0x019554U;
+constexpr std::size_t kCeruleanRivalApproachPathOffset = 0x019559U;
+constexpr std::size_t kCeruleanRivalSelectorOffset = 0x019588U;
+constexpr std::size_t kCeruleanRivalEventSetOffset = 0x0195C1U;
+constexpr std::size_t kCeruleanRivalExitLeftOffset = 0x019600U;
+constexpr std::size_t kCeruleanRivalExitRightOffset = 0x019608U;
+constexpr std::size_t kCeruleanRivalPreBattleTextOffset = 0x019668U;
+constexpr std::size_t kCeruleanRivalDefeatedTextOffset = 0x01966DU;
+constexpr std::size_t kCeruleanRivalVictoryTextOffset = 0x019672U;
+constexpr std::size_t kCeruleanRivalAfterBattleTextOffset = 0x019677U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -243,6 +255,7 @@ enum class Opcode : std::uint8_t {
     try_give_item,
     take_item,
     place_actor,
+    place_actor_at_player_x,
     actor_path,
     jump_if_player_y,
     jump_if_item_grant_failed,
@@ -254,6 +267,7 @@ enum class Opcode : std::uint8_t {
     jump_if_choice_no,
     say_if_player_won,
     say_if_player_lost,
+    jump_if_player_won,
     end_if_player_lost,
     heal_party,
     escort_player_to,
@@ -529,6 +543,24 @@ struct MtMoonMagikarpProgram {
     DecodedTextProgram got_pokemon;
     DecodedTextProgram sent_to_box;
     DecodedTextProgram box_full;
+};
+
+struct CeruleanRivalProgram {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::uint8_t trigger_x{};
+    std::uint8_t trigger_y{};
+    std::uint8_t trigger_width{};
+    std::uint8_t approach_start_y{};
+    std::uint32_t beat_flag{};
+    std::array<RivalBattleChoice, 3> battles;
+    std::vector<PathCommand> approach;
+    std::vector<PathCommand> exit_left;
+    std::vector<PathCommand> exit_right;
+    DecodedTextProgram pre_battle;
+    DecodedTextProgram defeated;
+    DecodedTextProgram victory;
+    DecodedTextProgram after_battle;
 };
 
 struct CampaignInitialState {
@@ -840,6 +872,64 @@ void replace_all(std::string& text, std::string_view token,
         text.replace(position, token.size(), value);
         position += value.size();
     }
+}
+
+bool decode_map_actor_owner(
+    std::span<const std::uint8_t> rom,
+    std::size_t object_offset, std::uint8_t text_id,
+    std::uint8_t& actor_index, std::string& error) {
+    actor_index = 0U;
+    if (object_offset + 2U > rom.size()) {
+        error = "map object header is truncated";
+        return false;
+    }
+    std::size_t cursor = object_offset + 1U;
+    const std::uint8_t warp_count = rom[cursor++];
+    if (static_cast<std::size_t>(warp_count) >
+        (rom.size() - cursor) / 4U) {
+        error = "map warp table is truncated";
+        return false;
+    }
+    cursor += static_cast<std::size_t>(warp_count) * 4U;
+    if (cursor >= rom.size()) {
+        error = "map background-event header is truncated";
+        return false;
+    }
+    const std::uint8_t background_count = rom[cursor++];
+    if (static_cast<std::size_t>(background_count) >
+        (rom.size() - cursor) / 3U) {
+        error = "map background-event table is truncated";
+        return false;
+    }
+    cursor +=
+        static_cast<std::size_t>(background_count) * 3U;
+    if (cursor >= rom.size()) {
+        error = "map actor header is truncated";
+        return false;
+    }
+    const std::uint8_t actor_count = rom[cursor++];
+    for (std::uint8_t actor = 1U;
+         actor <= actor_count; ++actor) {
+        if (cursor + 6U > rom.size()) {
+            error = "map actor table is truncated";
+            return false;
+        }
+        const std::uint8_t text_flags = rom[cursor + 5U];
+        if ((text_flags & 0x3FU) == text_id) {
+            if (actor_index != 0U) {
+                error = "map actor owner is ambiguous";
+                return false;
+            }
+            actor_index = actor;
+        }
+        cursor +=
+            (text_flags & 0xC0U) == 0U ? 6U : 8U;
+    }
+    if (actor_index == 0U) {
+        error = "map actor owner is missing";
+        return false;
+    }
+    return true;
 }
 
 bool decode_loose_item_presentation(
@@ -2675,6 +2765,188 @@ bool decode_mt_moon_magikarp_program(
     return true;
 }
 
+bool decode_cerulean_rival_program(
+    std::span<const std::uint8_t> rom,
+    const std::array<StarterChoice, 3>& starters,
+    const std::vector<ToggleActor>& toggle_actors,
+    CeruleanRivalProgram& result, std::string& error) {
+    result = {};
+    constexpr std::uint8_t map_id = 3U;
+    constexpr std::uint8_t rival_text_id = 1U;
+    if (!decode_map_actor_owner(
+            rom, kCeruleanCityObjectOffset,
+            rival_text_id, result.actor_index, error) ||
+        !decode_checked_event(
+            rom, kCeruleanRivalEventCheckOffset,
+            result.beat_flag, error) ||
+        kCeruleanRivalTriggerCoordsOffset + 5U > rom.size() ||
+        rom[kCeruleanRivalTriggerCoordsOffset + 4U] != 0xFFU) {
+        if (error.empty())
+            error =
+                "Cerulean rival owner or trigger does not match the verified ROM";
+        return false;
+    }
+    result.map_id = map_id;
+    result.trigger_y =
+        rom[kCeruleanRivalTriggerCoordsOffset];
+    result.trigger_x =
+        rom[kCeruleanRivalTriggerCoordsOffset + 1U];
+    const std::uint8_t second_y =
+        rom[kCeruleanRivalTriggerCoordsOffset + 2U];
+    const std::uint8_t second_x =
+        rom[kCeruleanRivalTriggerCoordsOffset + 3U];
+    if (second_y != result.trigger_y ||
+        second_x != result.trigger_x + 1U) {
+        error =
+            "Cerulean rival trigger is not the imported horizontal pair";
+        return false;
+    }
+    result.trigger_width = 2U;
+
+    if (!decode_direct_npc_path(
+            rom, kCeruleanRivalApproachPathOffset,
+            result.approach, error) ||
+        result.approach.empty() ||
+        !std::ranges::all_of(
+            result.approach,
+            [](PathCommand command) {
+                return command == PathCommand::down;
+            }) ||
+        result.trigger_y <= result.approach.size() ||
+        !decode_direct_npc_path(
+            rom, kCeruleanRivalExitLeftOffset,
+            result.exit_left, error) ||
+        !decode_direct_npc_path(
+            rom, kCeruleanRivalExitRightOffset,
+            result.exit_right, error)) {
+        if (error.empty())
+            error =
+                "Cerulean rival movement streams do not match the verified ROM";
+        return false;
+    }
+    result.approach_start_y =
+        static_cast<std::uint8_t>(
+            result.trigger_y - result.approach.size() - 1U);
+
+    std::uint32_t set_flag = 0U;
+    if (!decode_set_event(
+            rom, kCeruleanRivalEventSetOffset,
+            set_flag, error) ||
+        set_flag != result.beat_flag) {
+        if (error.empty())
+            error =
+                "Cerulean rival event branches disagree";
+        return false;
+    }
+    const auto toggle = std::ranges::find_if(
+        toggle_actors,
+        [&](const ToggleActor& actor) {
+            return actor.map_id == result.map_id &&
+                   actor.actor_index == result.actor_index;
+        });
+    if (toggle == toggle_actors.end() ||
+        toggle->initially_visible) {
+        error =
+            "Cerulean rival is not initially hidden by the imported toggle table";
+        return false;
+    }
+
+    constexpr std::array<std::pair<std::size_t, std::uint8_t>, 18>
+        selector_signature{{
+            {0U, 0x3EU},  {2U, 0xEAU},  {3U, 0x59U},
+            {4U, 0xD0U},  {5U, 0xFAU},  {6U, 0x15U},
+            {7U, 0xD7U},  {8U, 0xFEU},  {10U, 0x20U},
+            {12U, 0x3EU}, {14U, 0x18U}, {16U, 0xFEU},
+            {18U, 0x20U}, {20U, 0x3EU}, {22U, 0x18U},
+            {24U, 0x3EU}, {26U, 0xEAU}, {27U, 0x5DU},
+        }};
+    if (kCeruleanRivalSelectorOffset + 29U > rom.size()) {
+        error =
+            "Cerulean rival trainer selector is truncated";
+        return false;
+    }
+    for (const auto& [relative, expected] :
+         selector_signature)
+        if (rom[kCeruleanRivalSelectorOffset + relative] !=
+            expected) {
+            error =
+                "Cerulean rival trainer selector does not match the verified ROM";
+            return false;
+        }
+    const std::uint8_t opponent =
+        rom[kCeruleanRivalSelectorOffset + 1U];
+    if (opponent <= kTrainerOpponentOffset) {
+        error =
+            "Cerulean rival trainer class is invalid";
+        return false;
+    }
+    const std::uint8_t trainer_class =
+        static_cast<std::uint8_t>(
+            opponent - kTrainerOpponentOffset);
+    const std::uint8_t first_species =
+        dex_for_internal_species(
+            rom, rom[kCeruleanRivalSelectorOffset + 9U]);
+    const std::uint8_t second_species =
+        dex_for_internal_species(
+            rom, rom[kCeruleanRivalSelectorOffset + 17U]);
+    const std::array<std::uint8_t, 3> one_based_parties{
+        rom[kCeruleanRivalSelectorOffset + 13U],
+        rom[kCeruleanRivalSelectorOffset + 21U],
+        rom[kCeruleanRivalSelectorOffset + 25U],
+    };
+    std::array<bool, 3> assigned{};
+    for (std::size_t index = 0U;
+         index < starters.size(); ++index) {
+        const std::uint8_t species =
+            starters[index].rival_species;
+        const std::size_t party =
+            species == first_species
+                ? 0U
+                : species == second_species ? 1U : 2U;
+        if (one_based_parties[party] == 0U) {
+            error =
+                "Cerulean rival trainer party is invalid";
+            return false;
+        }
+        result.battles[index] = {
+            .rival_species = species,
+            .trainer_class = trainer_class,
+            .trainer_party =
+                static_cast<std::uint16_t>(
+                    one_based_parties[party] - 1U),
+        };
+        assigned[party] = true;
+    }
+    if (!std::ranges::all_of(
+            assigned, [](bool value) { return value; })) {
+        error =
+            "Cerulean rival selector does not cover all starter branches";
+        return false;
+    }
+
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 4>
+        text_programs{{
+            {kCeruleanRivalPreBattleTextOffset,
+             &result.pre_battle},
+            {kCeruleanRivalDefeatedTextOffset,
+             &result.defeated},
+            {kCeruleanRivalVictoryTextOffset,
+             &result.victory},
+            {kCeruleanRivalAfterBattleTextOffset,
+             &result.after_battle},
+        }};
+    for (const auto& [offset, text] : text_programs)
+        if (!decode_text_program(
+                rom, 0x06U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Cerulean rival dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -3746,6 +4018,77 @@ GeneratedFile readable_mt_moon_magikarp_source(
     };
 }
 
+GeneratedFile readable_cerulean_rival_source(
+    const CeruleanRivalProgram& rival) {
+    const auto path_name = [](PathCommand command) {
+        switch (command) {
+        case PathCommand::down: return "down";
+        case PathCommand::up: return "up";
+        case PathCommand::left: return "left";
+        case PathCommand::right: return "right";
+        case PathCommand::wait: return "wait";
+        case PathCommand::face_down: return "face_down";
+        }
+        return "unknown";
+    };
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Cerulean City rival program.\n"
+        << "; Trigger cells, hidden actor, movement, event, starter branches, parties, and text are ROM-derived.\n\n";
+    for (const RivalBattleChoice& battle :
+         rival.battles) {
+        source
+            << "campaign_program cerulean_rival_for_starter_"
+            << static_cast<unsigned>(battle.rival_species)
+            << "\n    trigger map cerulean_city rectangle "
+            << static_cast<unsigned>(rival.trigger_x) << ' '
+            << static_cast<unsigned>(rival.trigger_y) << ' '
+            << static_cast<unsigned>(rival.trigger_width)
+            << " 1\n    absent_flag 0x" << std::hex
+            << rival.beat_flag << std::dec
+            << "\n    required_variable rival_starter "
+            << static_cast<unsigned>(battle.rival_species)
+            << "\n    place_actor rival player_x "
+            << static_cast<unsigned>(rival.approach_start_y)
+            << "\n    show_actor rival\n"
+            << "    move_actor rival";
+        for (const PathCommand command : rival.approach)
+            source << ' ' << path_name(command);
+        source
+            << " scripted\n    face_player rival\n"
+            << "    say\n"
+            << page_source(rival.pre_battle.pages, "        ")
+            << "    start_trainer_battle class "
+            << static_cast<unsigned>(battle.trainer_class)
+            << " party " << battle.trainer_party << '\n'
+            << "    if_player_won say\n"
+            << page_source(rival.defeated.pages, "        ")
+            << "    if_player_lost say\n"
+            << page_source(rival.victory.pages, "        ")
+            << "    if_player_lost hide_actor rival and_end\n"
+            << "    set_flag 0x" << std::hex
+            << rival.beat_flag << std::dec
+            << "\n    say\n"
+            << page_source(rival.after_battle.pages, "        ")
+            << "    move_actor_by_player_x rival equals "
+            << static_cast<unsigned>(rival.trigger_x)
+            << "\n        if_equal";
+        for (const PathCommand command : rival.exit_right)
+            source << ' ' << path_name(command);
+        source << "\n        otherwise";
+        for (const PathCommand command : rival.exit_left)
+            source << ' ' << path_name(command);
+        source << "\n    hide_actor rival\n\n";
+    }
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/cerulean_rival.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -4014,6 +4357,11 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     MtMoonMagikarpProgram mt_moon_magikarp;
     if (!decode_mt_moon_magikarp_program(
             rom, mt_moon_magikarp, error))
+        return false;
+    CeruleanRivalProgram cerulean_rival;
+    if (!decode_cerulean_rival_program(
+            rom, starter_choices, toggle_actors,
+            cerulean_rival, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -5415,7 +5763,109 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(magikarp_no_refunds));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'G'};
+    for (const RivalBattleChoice& battle :
+         cerulean_rival.battles) {
+        Program rival;
+        rival.key =
+            "cerulean_rival_for_starter_" +
+            std::to_string(battle.rival_species);
+        rival.trigger_kind =
+            TriggerKind::player_rectangle;
+        rival.trigger_map = cerulean_rival.map_id;
+        rival.trigger_x = cerulean_rival.trigger_x;
+        rival.trigger_y = cerulean_rival.trigger_y;
+        rival.trigger_width =
+            cerulean_rival.trigger_width;
+        rival.trigger_height = 1U;
+        rival.absent_flag = cerulean_rival.beat_flag;
+        rival.required_variable =
+            kRivalStarterVariable;
+        rival.required_variable_value =
+            battle.rival_species;
+        rival.instructions.push_back(
+            operation(Opcode::lock_input));
+        rival.instructions.push_back(operation(
+            Opcode::place_actor_at_player_x,
+            cerulean_rival.actor_index,
+            cerulean_rival.map_id,
+            cerulean_rival.approach_start_y));
+        rival.instructions.push_back(operation(
+            Opcode::show_actor,
+            cerulean_rival.actor_index, 0U,
+            cerulean_rival.map_id));
+        Instruction approach = operation(
+            Opcode::actor_path,
+            cerulean_rival.actor_index,
+            cerulean_rival.map_id, 2U);
+        approach.actor_path =
+            cerulean_rival.approach;
+        rival.instructions.push_back(
+            std::move(approach));
+        rival.instructions.push_back(operation(
+            Opcode::face_player,
+            cerulean_rival.actor_index));
+        rival.instructions.push_back(
+            dialogue(
+                cerulean_rival.pre_battle.pages));
+        rival.instructions.push_back(operation(
+            Opcode::start_trainer_battle,
+            battle.trainer_class, 0U,
+            battle.trainer_party));
+        Instruction defeated =
+            operation(Opcode::say_if_player_won);
+        defeated.pages =
+            cerulean_rival.defeated.pages;
+        rival.instructions.push_back(
+            std::move(defeated));
+        Instruction victory =
+            operation(Opcode::say_if_player_lost);
+        victory.pages =
+            cerulean_rival.victory.pages;
+        rival.instructions.push_back(
+            std::move(victory));
+        const std::size_t won_jump =
+            rival.instructions.size();
+        rival.instructions.push_back(
+            operation(Opcode::jump_if_player_won));
+        rival.instructions.push_back(operation(
+            Opcode::hide_actor,
+            cerulean_rival.actor_index, 0U,
+            cerulean_rival.map_id));
+        rival.instructions.push_back(
+            operation(Opcode::unlock_input));
+        rival.instructions.push_back(
+            operation(Opcode::end));
+        rival.instructions[won_jump].value =
+            static_cast<std::uint32_t>(
+                rival.instructions.size());
+        rival.instructions.push_back(operation(
+            Opcode::set_flag, 0U, 0U,
+            cerulean_rival.beat_flag));
+        rival.instructions.push_back(
+            dialogue(
+                cerulean_rival.after_battle.pages));
+        Instruction exit = operation(
+            Opcode::actor_path_by_player_x,
+            cerulean_rival.actor_index,
+            cerulean_rival.trigger_x,
+            cerulean_rival.map_id);
+        exit.actor_path =
+            cerulean_rival.exit_right;
+        exit.player_path =
+            cerulean_rival.exit_left;
+        rival.instructions.push_back(std::move(exit));
+        rival.instructions.push_back(operation(
+            Opcode::hide_actor,
+            cerulean_rival.actor_index, 0U,
+            cerulean_rival.map_id));
+        rival.instructions.push_back(
+            operation(Opcode::unlock_input));
+        rival.instructions.push_back(
+            operation(Opcode::end));
+        programs.push_back(std::move(rival));
+    }
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'H'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -5490,6 +5940,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_mt_moon_magikarp_source(
             mt_moon_magikarp));
+    result.files.push_back(
+        readable_cerulean_rival_source(
+            cerulean_rival));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
