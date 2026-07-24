@@ -24,6 +24,15 @@ struct GameplayBattleAnimation {
     bool enemy_turn{};
 };
 
+struct BattleEventPresentation {
+    std::string first;
+    std::string second;
+    std::uint8_t animation_id{};
+    bool enemy_turn{};
+    bool hide_battler{};
+    bool reveal_battler{};
+};
+
 struct ImportedAnimationPiece {
     std::int16_t x{};
     std::int16_t y{};
@@ -99,10 +108,14 @@ struct BattleAnimationLab {
     content::AnimationProgram gameplay_program;
     std::vector<GameplayBattleAnimation> gameplay_queue;
     std::size_t gameplay_queue_cursor{};
+    std::vector<BattleEventPresentation> event_queue;
+    std::size_t event_queue_cursor{};
     std::size_t current{};
     std::size_t current_species{};
     std::size_t player_species{};
     std::size_t enemy_species{};
+    std::size_t pending_player_species{};
+    std::size_t pending_enemy_species{};
     std::uint32_t finished_ticks{};
     bool auto_advance{true};
     bool distinct_battlers{};
@@ -110,6 +123,12 @@ struct BattleAnimationLab {
     bool return_to_command_after_message{};
     bool gameplay_animation_active{};
     bool gameplay_enemy_turn{};
+    bool event_animation_pending{};
+    bool finish_after_event_queue{};
+    bool player_battler_hidden{};
+    bool enemy_battler_hidden{};
+    bool has_pending_player_species{};
+    bool has_pending_enemy_species{};
     bool loaded{};
 };
 

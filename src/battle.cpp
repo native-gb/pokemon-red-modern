@@ -348,7 +348,6 @@ bool settle_faint(const RuleCatalog& rules,
         if (!next.has_value()) {
             battle.outcome = BattleOutcome::player_defeat;
             battle.phase = BattlePhase::finished;
-            battle.active = false;
             error.clear();
             return true;
         }
@@ -392,7 +391,6 @@ bool settle_faint(const RuleCatalog& rules,
     if (!next.has_value()) {
         battle.outcome = BattleOutcome::player_victory;
         battle.phase = BattlePhase::finished;
-        battle.active = false;
         error.clear();
         return true;
     }
@@ -636,7 +634,9 @@ bool execute_battle_turn(const RuleCatalog& rules,
             break;
         }
     }
-    if (battle_work.active) battle_work.phase = BattlePhase::choose_action;
+    if (battle_work.active &&
+        battle_work.outcome == BattleOutcome::ongoing)
+        battle_work.phase = BattlePhase::choose_action;
     ++battle_work.turn;
     player_party = std::move(player_work);
     battle = std::move(battle_work);
@@ -704,7 +704,8 @@ bool execute_enemy_battle_action(
             player_trainer_id, true, player_work, battle_work,
             error))
         return false;
-    if (battle_work.active)
+    if (battle_work.active &&
+        battle_work.outcome == BattleOutcome::ongoing)
         battle_work.phase = BattlePhase::choose_action;
     ++battle_work.turn;
     player_party = std::move(player_work);

@@ -29,6 +29,34 @@ struct SemanticSound {
     std::string_view name;
 };
 
+struct MoveSound {
+    std::uint8_t sound{};
+    std::uint8_t frequency_modifier{};
+    std::uint8_t tempo_modifier{};
+};
+
+constexpr std::size_t kMoveSoundTableOffset = 0x798BCU;
+constexpr std::size_t kMoveSoundCount = 166U;
+
+std::vector<MoveSound> move_sounds(
+    std::span<const std::uint8_t> rom) {
+    std::vector<MoveSound> result;
+    const std::size_t bytes = kMoveSoundCount * 3U;
+    if (kMoveSoundTableOffset + bytes > rom.size())
+        return result;
+    result.reserve(kMoveSoundCount);
+    for (std::size_t index = 0U; index < kMoveSoundCount; ++index) {
+        const std::size_t offset =
+            kMoveSoundTableOffset + index * 3U;
+        result.push_back({
+            .sound = rom[offset],
+            .frequency_modifier = rom[offset + 1U],
+            .tempo_modifier = rom[offset + 2U],
+        });
+    }
+    return result;
+}
+
 void write_u16(std::vector<std::uint8_t>& bytes, std::size_t value) {
     bytes.push_back(static_cast<std::uint8_t>(value & 0xFFU));
     bytes.push_back(
@@ -118,8 +146,9 @@ std::vector<SemanticSound> semantic_sounds(
 void emit_cache(const ContentCatalogue& catalog,
                 const std::vector<SceneMusic>& scenes,
                 const std::vector<SemanticSound>& sounds,
+                const std::vector<MoveSound>& moves,
                 AudioImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'R', 'A', '4'};
+    std::vector<std::uint8_t> bytes{'P', 'R', 'A', '5'};
 
     write_u16(bytes, catalog.audio_banks.size());
     for (const AudioBankDefinition& bank : catalog.audio_banks) {
@@ -252,6 +281,13 @@ void emit_cache(const ContentCatalogue& catalog,
         bytes.push_back(sound.sound);
     }
 
+    write_u16(bytes, moves.size());
+    for (const MoveSound& move : moves) {
+        bytes.push_back(move.sound);
+        bytes.push_back(move.frequency_modifier);
+        bytes.push_back(move.tempo_modifier);
+    }
+
     result.files.push_back(
         {"compiled/audio_content.bin", std::move(bytes)});
 }
@@ -259,6 +295,7 @@ void emit_cache(const ContentCatalogue& catalog,
 void emit_source(const ContentCatalogue& catalog,
                  const std::vector<SceneMusic>& scenes,
                  const std::vector<SemanticSound>& sounds,
+                 const std::vector<MoveSound>& moves,
                  AudioImport& result) {
     std::ostringstream index;
     index << "; ROM-decoded Gen 1 audio ownership and dispatch.\n";
@@ -337,6 +374,30 @@ void emit_source(const ContentCatalogue& catalog,
         std::vector<std::uint8_t>(
             sound_text.begin(), sound_text.end()),
     });
+
+    std::ostringstream move_source;
+    move_source
+        << "; ROM-decoded move-to-sound dispatch. IDs are one-based.\n";
+    for (std::size_t move_index = 0U;
+         move_index < moves.size(); ++move_index) {
+        const MoveSound& move = moves[move_index];
+        move_source << "move_sound " << move_index + 1U << '\n'
+                    << "    sound_id "
+                    << static_cast<unsigned>(move.sound) << '\n'
+                    << "    frequency_modifier "
+                    << static_cast<unsigned>(
+                           move.frequency_modifier)
+                    << '\n'
+                    << "    tempo_modifier "
+                    << static_cast<unsigned>(move.tempo_modifier)
+                    << '\n';
+    }
+    const std::string move_text = move_source.str();
+    result.files.push_back({
+        "source/audio/move_sounds.sexpr",
+        std::vector<std::uint8_t>(
+            move_text.begin(), move_text.end()),
+    });
 }
 
 } // namespace
@@ -358,6 +419,7 @@ bool decode_audio_import(std::span<const std::uint8_t> rom,
     const std::vector<SceneMusic> scenes = scene_music(catalog);
     const std::vector<SemanticSound> sounds =
         semantic_sounds(catalog);
+    const std::vector<MoveSound> moves = move_sounds(rom);
     if (scenes.size() != 2U) {
         error = "audio import did not resolve every semantic scene";
         return false;
@@ -366,8 +428,12 @@ bool decode_audio_import(std::span<const std::uint8_t> rom,
         error = "audio import did not resolve every semantic sound";
         return false;
     }
-    emit_cache(catalog, scenes, sounds, result);
-    emit_source(catalog, scenes, sounds, result);
+    if (moves.size() != kMoveSoundCount) {
+        error = "audio import did not resolve every move sound";
+        return false;
+    }
+    emit_cache(catalog, scenes, sounds, moves, result);
+    emit_source(catalog, scenes, sounds, moves, result);
     result.banks = catalog.audio_banks.size();
     result.headers = catalog.audio_headers.size();
     result.programs = catalog.audio_programs.size();

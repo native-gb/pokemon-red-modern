@@ -78,15 +78,22 @@ struct SceneMusicDispatch {
 using SemanticSoundDispatch =
     std::array<std::array<SceneMusicDispatch, 4>, 5>;
 
+struct MoveSoundDispatch {
+    std::uint8_t sound{};
+    std::uint8_t frequency_modifier{};
+    std::uint8_t tempo_modifier{};
+};
+
 bool load_audio_catalog(const std::filesystem::path& path,
                         ContentCatalogue& catalog,
                         std::array<SceneMusicDispatch, 2>& scenes,
                         SemanticSoundDispatch& semantic_sounds,
+                        std::array<MoveSoundDispatch, 166>& move_sounds,
                         std::string& error) {
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), 4) ||
-        magic != std::array{'P', 'R', 'A', '4'}) {
+        magic != std::array{'P', 'R', 'A', '5'}) {
         error = "audio cache has an invalid header";
         return false;
     }
@@ -361,6 +368,18 @@ bool load_audio_catalog(const std::filesystem::path& path,
         dispatch.present = true;
         semantic_sounds[cue][bank] = dispatch;
     }
+    if (!read_u16(input, count) || count != move_sounds.size()) {
+        error = "audio cache has an invalid move-sound census";
+        return false;
+    }
+    for (MoveSoundDispatch& move : move_sounds) {
+        if (!read_u8(input, move.sound) ||
+            !read_u8(input, move.frequency_modifier) ||
+            !read_u8(input, move.tempo_modifier)) {
+            error = "audio cache has a truncated move sound";
+            return false;
+        }
+    }
     if (input.peek() != std::char_traits<char>::eof()) {
         error = "audio cache contains trailing data";
         return false;
@@ -400,6 +419,7 @@ struct AudioSystem::Impl {
     ContentCatalogue catalog;
     std::array<SceneMusicDispatch, 2> scenes;
     SemanticSoundDispatch semantic_sounds;
+    std::array<MoveSoundDispatch, 166> move_sounds;
     std::array<MusicVoice, 2> music;
     std::vector<std::unique_ptr<EffectVoice>> effects;
     SDL_AudioStream* stream{};
@@ -485,20 +505,8 @@ struct AudioSystem::Impl {
                    std::string& error) {
         auto voice = std::make_unique<EffectVoice>();
         if (!voice->driver.attach(catalog, error)) return false;
-        // Cry headers live in the active audio bank.
-        const auto bank_music = std::ranges::find_if(
-            catalog.audio_headers,
-            [&](const AudioHeaderDefinition& header) {
-                return header.audio_bank == preferred_bank &&
-                       header.kind == AudioHeaderKind::Music;
-            });
-        if (bank_music != catalog.audio_headers.end()) {
-            std::string ignored;
-            (void)voice->driver.play_music(
-                preferred_bank, bank_music->sound_id, ignored);
-            voice->driver.stop_all();
-        }
-        if (!voice->driver.play_cry(internal_species, error))
+        if (!voice->driver.play_cry(
+                preferred_bank, internal_species, error))
             return false;
         effects.push_back(std::move(voice));
         error.clear();
@@ -582,7 +590,7 @@ bool AudioSystem::initialize(const std::filesystem::path& cache,
     impl_ = std::make_unique<Impl>();
     if (!load_audio_catalog(
             cache, impl_->catalog, impl_->scenes,
-            impl_->semantic_sounds, error))
+            impl_->semantic_sounds, impl_->move_sounds, error))
         return false;
     if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0U) {
         if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
@@ -676,6 +684,26 @@ bool AudioSystem::play_sound(std::uint8_t audio_bank,
                              std::string& error) {
     return impl_ &&
            impl_->spawn_effect(audio_bank, sound_id, error);
+}
+
+bool AudioSystem::play_move_sound(std::uint8_t move_id,
+                                  std::string& error) {
+    if (!impl_ || move_id == 0U ||
+        move_id > impl_->move_sounds.size()) {
+        error = "requested move sound has an invalid move ID";
+        return false;
+    }
+    const MoveSoundDispatch& move =
+        impl_->move_sounds[move_id - 1U];
+    auto voice = std::make_unique<Impl::EffectVoice>();
+    if (!voice->driver.attach(impl_->catalog, error) ||
+        !voice->driver.play_modified_sound(
+            2U, move.sound, move.frequency_modifier,
+            move.tempo_modifier, error))
+        return false;
+    impl_->effects.push_back(std::move(voice));
+    error.clear();
+    return true;
 }
 
 bool AudioSystem::play_cry(std::uint8_t internal_species_id,

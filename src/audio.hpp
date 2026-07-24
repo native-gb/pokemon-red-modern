@@ -34,6 +34,8 @@ class AudioSystem {
     bool play_sound(std::uint8_t audio_bank,
                     std::uint8_t sound_id,
                     std::string& error);
+    bool play_move_sound(std::uint8_t move_id,
+                         std::string& error);
     bool play_cry(std::uint8_t internal_species_id,
                   std::string& error);
     void play_menu_open();

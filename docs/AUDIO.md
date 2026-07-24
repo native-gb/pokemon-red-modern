@@ -7,7 +7,9 @@ pitch tables, 190 cries, and map/battle music dispatches. It writes:
 - `compiled/audio_content.bin`, the runtime cache;
 - `source/audio/audio_index.sexpr`, the readable music/effect index;
 - `source/audio/map_music.sexpr`, all 248 map music bindings;
-- `source/audio/scene_music.sexpr`, semantic boot-scene bindings.
+- `source/audio/scene_music.sexpr`, semantic boot-scene bindings;
+- `source/audio/move_sounds.sexpr`, all 166 move-to-effect records with
+  their frequency and tempo modifiers.
 
 The engine does not switch on Red map names. It asks the imported dispatch
 table for the current map, battle kind, or semantic scene.
@@ -33,10 +35,15 @@ Current cue sources are:
 - imported per-map music;
 - imported wild/trainer battle music;
 - imported Pokémon cries during battle deployment;
-- imported sound IDs emitted by battle animation programs;
+- imported move IDs emitted by battle animation programs, resolved through
+  Red's separately imported `MoveSoundTable` before playback;
 - menu-open and menu-confirm/navigation sounds;
 - bank-correct go-inside, go-outside/stair, and ledge-hop sounds.
 
 Additional campaign-specific music changes, victory themes, healing jingles,
 and scripted overworld effects should be emitted as ordinary semantic audio
 cues by their content programs rather than added as engine map cases.
+
+Cry executors select their audio bank directly. They do not start and stop a
+dummy music header; that older workaround cleared the stereo mask immediately
+before the cry and could make every wild deployment silent.

@@ -96,9 +96,12 @@ void play_battle_animation_cues(
         const std::optional<std::uint8_t> sound =
             imported_sound_id(cue);
         if (!sound.has_value()) continue;
-        std::string ignored;
-        (void)audio.play_sound(
-            audio.preferred_audio_bank(), *sound, ignored);
+        std::string sound_error;
+        if (!audio.play_move_sound(*sound, sound_error))
+            std::fprintf(
+                stderr, "could not play move sound %u: %s\n",
+                static_cast<unsigned>(*sound),
+                sound_error.c_str());
     }
 }
 
@@ -116,8 +119,11 @@ void play_active_battle_cry(
         pokered::find_species(
             rules, party.members[active_index].species_dex);
     if (species == nullptr) return;
-    std::string ignored;
-    (void)audio.play_cry(species->internal_id, ignored);
+    std::string cry_error;
+    if (!audio.play_cry(species->internal_id, cry_error))
+        std::fprintf(
+            stderr, "could not play %s cry: %s\n",
+            species->name.c_str(), cry_error.c_str());
 }
 
 } // namespace
@@ -327,6 +333,7 @@ int main(int argc, char** argv) {
     bool pending_world_toggle_case = false;
     bool pending_world_start = false;
     bool pending_world_back = false;
+    bool pending_blackout = false;
     std::string pending_world_text;
     std::string pending_boot_text;
     pokered::ControlButtons previous_controls;
@@ -626,6 +633,9 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "%s\n", control_error.c_str());
             }
             if (battle_result.finished) {
+                pending_blackout =
+                    campaign.battle.outcome ==
+                    pokered::BattleOutcome::player_defeat;
                 pokered::finish_world_actor_battle(
                     interactions, world, campaign);
                 pokered::begin_battle_exit_presentation(
@@ -795,8 +805,50 @@ int main(int argc, char** argv) {
             }
             if (game.mode == pokered::Mode::battle &&
                 pokered::consume_battle_return_to_world(
-                    animation_lab))
+                    animation_lab)) {
+                if (pending_blackout) {
+                    pokered::heal_party(campaign.party);
+                    campaign.money /= 2U;
+                    const std::uint8_t map_id =
+                        campaign.has_healing_checkpoint
+                            ? campaign.last_healing_map_id
+                            : boot_content.new_game_map_id;
+                    const std::int32_t x =
+                        campaign.has_healing_checkpoint
+                            ? campaign.last_healing_x
+                            : boot_content.new_game_x;
+                    const std::int32_t y =
+                        campaign.has_healing_checkpoint
+                            ? campaign.last_healing_y
+                            : boot_content.new_game_y;
+                    std::string blackout_error;
+                    const auto previous_map =
+                        campaign.has_healing_checkpoint
+                            ? std::optional<std::uint8_t>{}
+                            : boot_content.new_game_previous_map_id;
+                    if (!pokered::enter_world_at(
+                            world, map_id, x, y, blackout_error,
+                            previous_map))
+                        std::fprintf(
+                            stderr,
+                            "could not return from blackout: %s\n",
+                            blackout_error.c_str());
+                    pokered::open_world_dialogue(
+                        world, campaign,
+                        {
+                            campaign.player_name +
+                                " blacked out!",
+                            campaign.has_healing_checkpoint
+                                ? campaign.player_name +
+                                      " hurried to the last POKéMON CENTER."
+                                : campaign.player_name +
+                                      " hurried home.",
+                        });
+                    pending_blackout = false;
+                }
+                campaign.battle = {};
                 game.mode = pokered::Mode::overworld;
+            }
             accumulator -= step_seconds;
         }
 

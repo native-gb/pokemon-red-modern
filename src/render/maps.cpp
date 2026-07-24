@@ -643,6 +643,77 @@ bool draw_world_actors(SDL_Renderer* renderer, int output_width, int output_heig
             world.player.visual_global_y +
                 world.player.visual_offset_y_pixels / 16.0F))
         return false;
+
+    // Red identifies grass from the lower-right tile of the occupied 16x16
+    // cell. Repaint the opaque pixels from that lower tile row after the
+    // player so the blades correctly pass in front of their feet.
+    if (player_visible && world.player.map_index < world.maps.size()) {
+        const WorldMap& map = world.maps[world.player.map_index];
+        const MapTileset* tileset =
+            find_tileset(world, map.tileset_id);
+        const std::int32_t tile_x = world.player.x * 2;
+        const std::int32_t tile_y = world.player.y * 2 + 1;
+        const bool valid_cell =
+            tileset != nullptr && tile_x >= 0 && tile_y >= 0 &&
+            tile_x + 1 < map.width_tiles &&
+            tile_y < map.height_tiles;
+        const std::size_t right =
+            valid_cell
+                ? static_cast<std::size_t>(tile_y) *
+                          map.width_tiles +
+                      static_cast<std::size_t>(tile_x + 1)
+                : map.tiles.size();
+        if (right < map.tiles.size() &&
+            map.tiles[right] == tileset->grass_tile) {
+            for (std::int32_t half = 0; half < 2; ++half) {
+                const std::size_t map_tile =
+                    static_cast<std::size_t>(tile_y) *
+                        map.width_tiles +
+                    static_cast<std::size_t>(tile_x + half);
+                const std::uint8_t tile = map.tiles[map_tile];
+                const std::size_t pixel_begin =
+                    static_cast<std::size_t>(tile) * 64U;
+                if (pixel_begin + 64U > tileset->pixels.size())
+                    continue;
+                for (std::size_t y = 0U; y < 8U; ++y) {
+                    for (std::size_t x = 0U; x < 8U; ++x) {
+                        const std::uint8_t shade =
+                            tileset->pixels[
+                                pixel_begin + y * 8U + x];
+                        if (shade == 0U) continue;
+                        const auto color = map_color(shade);
+                        (void)SDL_SetRenderDrawColor(
+                            renderer, color[0], color[1],
+                            color[2], color[3]);
+                        const float world_pixel_x =
+                            static_cast<float>(
+                                (map.global_x_tiles +
+                                 tile_x + half) *
+                                    kTileSize) +
+                            static_cast<float>(x);
+                        const float world_pixel_y =
+                            static_cast<float>(
+                                (map.global_y_tiles + tile_y) *
+                                    kTileSize) +
+                            static_cast<float>(y);
+                        const SDL_FRect destination{
+                            .x = projection.center_x +
+                                 (world_pixel_x - world.camera_x) *
+                                     projection.scale,
+                            .y = projection.center_y +
+                                 (world_pixel_y - world.camera_y) *
+                                     projection.scale,
+                            .w = projection.scale,
+                            .h = projection.scale,
+                        };
+                        if (!SDL_RenderFillRect(
+                                renderer, &destination))
+                            return false;
+                    }
+                }
+            }
+        }
+    }
     return true;
 }
 

@@ -270,7 +270,10 @@ bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
                     static_cast<float>(output_y);
                 if (enemy_turn) {
                     x = 159.0F - x;
-                    y = 95.0F - y;
+                    // Gen I OAM Y includes a 16-pixel hardware bias. Mirroring
+                    // normalized canvas pixels therefore pivots around 111,
+                    // not the visible 0..95 viewport used by our first pass.
+                    y = 111.0F - y;
                 }
                 fill_native_rect(renderer, view, x, y, 1.0F, 1.0F);
             }
@@ -291,7 +294,7 @@ void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const Animation
     const float effect_x =
         enemy_turn ? 160.0F - effect.x : effect.x;
     const float effect_y =
-        enemy_turn ? 96.0F - effect.y : effect.y;
+        enemy_turn ? 112.0F - effect.y : effect.y;
     const float x = view.x + effect_x * view.scale;
     const float y = view.y + effect_y * view.scale;
     const float unit = view.scale;
@@ -426,10 +429,11 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
     const bool show_player = lab.ui.mode == BattleUiMode::safari
                                  ? lab.ui.definition.safari_commands.show_player
                                  : lab.ui.definition.standard_commands.show_player;
-    if (attacker != nullptr && show_player)
+    if (attacker != nullptr && show_player &&
+        !lab.player_battler_hidden)
         draw_battler(renderer, scene_view, *attacker, true, screen_palette, lab.imported_assets,
                      player_pokemon);
-    if (defender != nullptr)
+    if (defender != nullptr && !lab.enemy_battler_hidden)
         draw_battler(renderer, scene_view, *defender, false, screen_palette, lab.imported_assets,
                      enemy_pokemon);
 

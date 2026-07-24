@@ -33,22 +33,166 @@ bool recompose(BattleAnimationLab& view, std::string& error) {
     return compose_battle_ui(view.ui, view.ui_tile_map, error);
 }
 
-bool begin_event_animations(const RuleCatalog& rules,
-                            const BattleState& battle,
-                            BattleAnimationLab& view,
-                            std::string& error) {
-    std::vector<GameplayBattleAnimation> animations;
-    for (const BattleEvent& event : battle.events) {
-        if (event.kind != BattleEventKind::used_move) continue;
+bool show_battle_message(
+    BattleAnimationLab& view, std::string first, std::string second,
+    bool finish_after, bool return_to_command,
+    std::string& error);
+
+BattleEventPresentation event_message(const RuleCatalog& rules,
+                                      const BattleEvent& event) {
+    BattleEventPresentation result;
+    result.enemy_turn = !event.player_actor;
+    if (event.kind == BattleEventKind::used_move) {
         const MoveRule* move = find_move(rules, event.move_id);
-        if (move == nullptr || move->animation_id == 0U) continue;
-        animations.push_back({
-            .animation_id = move->animation_id,
-            .enemy_turn = !event.player_actor,
-        });
+        const std::size_t separator = event.text.find(" used ");
+        std::string actor =
+            separator == std::string::npos
+                ? (event.player_actor ? "POKéMON" : "Enemy POKéMON")
+                : event.text.substr(0U, separator);
+        if (!event.player_actor) actor = "Enemy " + actor;
+        result.first = actor + " used";
+        result.second =
+            (move == nullptr ? "a move" : move->name) + "!";
+        result.animation_id =
+            move == nullptr ? 0U : move->animation_id;
+    } else if (event.kind == BattleEventKind::fainted) {
+        result.first = event.text + "!";
+        result.animation_id = 192U;
+        result.hide_battler = true;
+    } else if (event.kind == BattleEventKind::gained_experience) {
+        result.first = event.text + " gained";
+        result.second =
+            std::to_string(event.value) + " EXP. Points!";
+    } else if (event.kind == BattleEventKind::missed ||
+               event.kind == BattleEventKind::critical_hit ||
+               event.kind == BattleEventKind::failed) {
+        result.first = event.text + "!";
+    } else if (event.kind == BattleEventKind::sent_out) {
+        result.first =
+            event.player_actor ? "Go!" : "Enemy sent out";
+        result.second = event.text + "!";
+        result.reveal_battler = true;
     }
-    return begin_gameplay_battle_animations(
-        view, std::move(animations), error);
+    return result;
+}
+
+bool show_current_event(BattleAnimationLab& view,
+                        std::string& error) {
+    if (view.event_queue_cursor >= view.event_queue.size()) {
+        error = "battle event presentation cursor escaped its queue";
+        return false;
+    }
+    const BattleEventPresentation& event =
+        view.event_queue[view.event_queue_cursor];
+    if (event.reveal_battler) {
+        if (event.enemy_turn) {
+            if (view.has_pending_enemy_species) {
+                view.enemy_species =
+                    view.pending_enemy_species;
+                view.has_pending_enemy_species = false;
+            }
+            view.enemy_battler_hidden = false;
+        } else {
+            if (view.has_pending_player_species) {
+                view.player_species =
+                    view.pending_player_species;
+                view.has_pending_player_species = false;
+            }
+            view.player_battler_hidden = false;
+        }
+    }
+    return show_battle_message(
+        view, event.first, event.second, false, false, error);
+}
+
+void retain_fainted_species_until_send_out(
+    const BattleState& battle, std::size_t previous_player,
+    std::size_t previous_enemy, BattleAnimationLab& view) {
+    const auto has_event = [&](BattleEventKind kind, bool player) {
+        return std::ranges::any_of(
+            battle.events,
+            [&](const BattleEvent& event) {
+                return event.kind == kind &&
+                       event.player_actor == player;
+            });
+    };
+    if (has_event(BattleEventKind::fainted, true) &&
+        has_event(BattleEventKind::sent_out, true)) {
+        view.pending_player_species = view.player_species;
+        view.has_pending_player_species = true;
+        view.player_species = previous_player;
+    }
+    if (has_event(BattleEventKind::fainted, false) &&
+        has_event(BattleEventKind::sent_out, false)) {
+        view.pending_enemy_species = view.enemy_species;
+        view.has_pending_enemy_species = true;
+        view.enemy_species = previous_enemy;
+    }
+}
+
+bool begin_event_presentation(const RuleCatalog& rules,
+                              const BattleState& battle,
+                              BattleAnimationLab& view,
+                              std::string& error,
+                              std::optional<BattleEventPresentation>
+                                  preface = std::nullopt) {
+    view.event_queue.clear();
+    view.event_queue_cursor = 0U;
+    view.event_animation_pending = false;
+    view.finish_after_event_queue =
+        battle.phase == BattlePhase::finished;
+    if (preface.has_value())
+        view.event_queue.push_back(std::move(*preface));
+    for (const BattleEvent& event : battle.events) {
+        BattleEventPresentation presentation =
+            event_message(rules, event);
+        if (!presentation.first.empty())
+            view.event_queue.push_back(std::move(presentation));
+    }
+    if (view.finish_after_event_queue &&
+        battle.outcome == BattleOutcome::player_defeat)
+        view.event_queue.push_back({
+            .first = "You are out of",
+            .second = "usable POKéMON!",
+        });
+    if (view.event_queue.empty()) {
+        error = "battle turn produced no presentable events";
+        return false;
+    }
+    return show_current_event(view, error);
+}
+
+bool advance_event_presentation(
+    const RuleCatalog& rules,
+    const BattleRuleCatalog& battle_rules,
+    CampaignState& campaign, BattleAnimationLab& view,
+    BattleControlResult& result, std::string& error) {
+    view.event_animation_pending = false;
+    const BattleEventPresentation& completed =
+        view.event_queue[view.event_queue_cursor];
+    if (completed.hide_battler) {
+        if (completed.enemy_turn)
+            view.enemy_battler_hidden = true;
+        else
+            view.player_battler_hidden = true;
+    }
+    ++view.event_queue_cursor;
+    if (view.event_queue_cursor < view.event_queue.size())
+        return show_current_event(view, error);
+
+    view.event_queue.clear();
+    view.event_queue_cursor = 0U;
+    if (view.finish_after_event_queue) {
+        view.finish_after_event_queue = false;
+        campaign.battle.active = false;
+        result.finished = true;
+        error.clear();
+        return true;
+    }
+    view.ui.mode = BattleUiMode::command;
+    return sync_battle_view(
+        rules, battle_rules, campaign.party,
+        campaign.battle, view, error);
 }
 
 bool show_battle_message(
@@ -361,14 +505,32 @@ bool control_battle(const RuleCatalog& rules,
         error.clear();
         return true;
     }
+    if (view.event_animation_pending)
+        return advance_event_presentation(
+            rules, battle_rules, campaign, view, result, error);
     if (view.ui.mode == BattleUiMode::message) {
         if (!input.confirm) {
             error.clear();
             return true;
         }
+        if (!view.event_queue.empty()) {
+            const BattleEventPresentation& event =
+                view.event_queue[view.event_queue_cursor];
+            if (event.animation_id != 0U) {
+                view.event_animation_pending = true;
+                return begin_gameplay_battle_animations(
+                    view,
+                    {{
+                        .animation_id = event.animation_id,
+                        .enemy_turn = event.enemy_turn,
+                    }},
+                    error);
+            }
+            return advance_event_presentation(
+                rules, battle_rules, campaign, view, result, error);
+        }
         if (view.finish_after_message) {
             campaign.battle.active = false;
-            view.distinct_battlers = false;
             view.finish_after_message = false;
             view.return_to_command_after_message = false;
             result.finished = true;
@@ -502,13 +664,6 @@ bool control_battle(const RuleCatalog& rules,
                     campaign.party, campaign.battle, *enemy_move,
                     error))
                 return false;
-            if (!campaign.battle.active) {
-                view.distinct_battlers = false;
-                result.finished = true;
-                error.clear();
-                return true;
-            }
-            view.ui.mode = BattleUiMode::command;
             if (!sync_battle_view(
                     rules, battle_rules, campaign.party,
                     campaign.battle, view, error))
@@ -521,8 +676,12 @@ bool control_battle(const RuleCatalog& rules,
                 attempt.shakes == 0U
                     ? "broke free!"
                     : "to be caught!";
-            return show_battle_message(
-                view, first, second, false, true, error);
+            return begin_event_presentation(
+                rules, campaign.battle, view, error,
+                BattleEventPresentation{
+                    .first = first,
+                    .second = second,
+                });
         }
         if (action == "battle_choose_party") {
             std::optional<std::size_t> next;
@@ -556,13 +715,6 @@ bool control_battle(const RuleCatalog& rules,
                     campaign.party, campaign.battle, *enemy_move,
                     error))
                 return false;
-            if (!campaign.battle.active) {
-                view.distinct_battlers = false;
-                result.finished = true;
-                error.clear();
-                return true;
-            }
-            view.ui.mode = BattleUiMode::command;
             if (!sync_battle_view(
                     rules, battle_rules, campaign.party,
                     campaign.battle, view, error))
@@ -575,8 +727,12 @@ bool control_battle(const RuleCatalog& rules,
                 selected.nickname.empty() && species != nullptr
                     ? species->name
                     : selected.nickname;
-            return show_battle_message(
-                view, "Go!", name + "!", false, true, error);
+            return begin_event_presentation(
+                rules, campaign.battle, view, error,
+                BattleEventPresentation{
+                    .first = "Go!",
+                    .second = name + "!",
+                });
         }
         error.clear();
         return true;
@@ -598,6 +754,10 @@ bool control_battle(const RuleCatalog& rules,
         error.clear();
         return true;
     }
+    const std::size_t previous_player_species =
+        view.player_species;
+    const std::size_t previous_enemy_species =
+        view.enemy_species;
     if (!execute_battle_turn(
             rules, battle_rules, campaign.trainer_id, campaign.party,
             campaign.battle,
@@ -608,19 +768,14 @@ bool control_battle(const RuleCatalog& rules,
             error)) {
         return false;
     }
-    if (!campaign.battle.active) {
-        view.distinct_battlers = false;
-        result.finished = true;
-        error.clear();
-        return true;
-    }
-
-    view.ui.mode = BattleUiMode::command;
     if (!sync_battle_view(
             rules, battle_rules, campaign.party,
             campaign.battle, view, error))
         return false;
-    return begin_event_animations(
+    retain_fainted_species_until_send_out(
+        campaign.battle, previous_player_species,
+        previous_enemy_species, view);
+    return begin_event_presentation(
         rules, campaign.battle, view, error);
 }
 

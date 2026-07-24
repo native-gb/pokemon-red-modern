@@ -488,8 +488,16 @@ void prepare_battle_view(BattleAnimationLab& lab) {
     lab.gameplay_program = {};
     lab.gameplay_queue.clear();
     lab.gameplay_queue_cursor = 0U;
+    lab.event_queue.clear();
+    lab.event_queue_cursor = 0U;
     lab.gameplay_animation_active = false;
     lab.gameplay_enemy_turn = false;
+    lab.event_animation_pending = false;
+    lab.finish_after_event_queue = false;
+    lab.player_battler_hidden = false;
+    lab.enemy_battler_hidden = false;
+    lab.has_pending_player_species = false;
+    lab.has_pending_enemy_species = false;
 }
 
 void begin_battle_presentation(BattleAnimationLab& lab,

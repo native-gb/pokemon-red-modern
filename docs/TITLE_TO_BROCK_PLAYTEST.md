@@ -34,7 +34,15 @@ presentation is finished.
   when automatic camera adjustment is disabled.
 - Real battle turns now queue their imported move animations, including
   opponent-side mirroring, instead of leaving the animation executor isolated
-  in the developer lab. The two-column command menu navigates spatially.
+  in the developer lab. Move-name, faint, EXP, and terminal result pages own
+  the sequence, and terminal state returns to the world only after those pages
+  are acknowledged. The two-column command menu navigates spatially.
+- Fainted battlers retain their actual species identity through the faint
+  sequence, then slide out rather than falling back to the animation-lab
+  preview species.
+- Grass cells repaint their imported foreground pixels over the player's
+  feet. A total party defeat now heals and relocates to the last Center, or
+  home before the first Center, halves money, and opens a blackout message.
 
 ## Player pass
 
@@ -69,9 +77,7 @@ map name, actor, last dialogue, and exact action are most useful for logic.
 - PKMN currently rotates to the next usable party member rather than opening
   the final party-selection layout.
 - Mart purchase UI is decoded as a shop interaction but is not yet executable.
-- Blackout relocation can now use a stored healing checkpoint, but the
-  transition/presentation owner is not connected.
-- Move-learning replacement, evolution presentation, field moves, exact
-  battle messages/animations, and the remaining scripted jingles/effects
+- Move-learning replacement, evolution presentation, field moves, the full
+  set of battle result/effectiveness pages, and remaining scripted jingles/effects
   remain later slices. Map, title, Oak-introduction, and battle music, cries,
   battle-animation sounds, and common menu sounds are active.
