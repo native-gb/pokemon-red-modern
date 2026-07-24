@@ -25,9 +25,11 @@ presentation is finished.
   item, first Route 22 rival, Viridian Forest loose items and trainers,
   Pewter escorts, and Brock's battle/badge/TM retry.
 - Oak's original off-camera lab object swap is lowered into continuous
-  movement for the modern whole-room camera. Starter inspection presents the
-  imported front picture and cry before confirmation, and receipt emits the
-  imported Get Key Item fanfare.
+  movement for the modern whole-room camera. “Hey! Wait!” starts the imported
+  Meet Professor Oak scene music, which persists through the escort and is
+  restored to lab map music after the entry movement finishes. Starter
+  inspection presents Red's imported two-page Pokédex data screen and cry
+  before confirmation, and receipt emits the imported Get Key Item fanfare.
 - Naming grids use directional navigation plus confirm/back only; presentation
   labels and choice cursors no longer overlap or point backward.
 - Overworld sheets import four-phase directional walk clips, and presentation
@@ -60,8 +62,9 @@ presentation is finished.
   consumed it.
 - The field menu includes a guarded QUIT action that returns to a freshly
   initialized title flow without changing the saved campaign.
-- Dialogue boxes derive a compact width and height from the active imported
-  page and remain anchored at the lower left in wide windows. Area banners
+- Dialogue boxes derive their width and height from the active imported page,
+  center horizontally, use word-boundary wrapping, and keep choices attached
+  above their right edge. Area banners
   have an opaque imported-UI panel, and every field-menu page now renders
   through Red's imported 8-by-8 font and border tiles rather than ImGui
   window chrome.

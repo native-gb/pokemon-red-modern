@@ -44,9 +44,15 @@ Current cue sources are:
 - Pokémon presentation cries and Get Key Item fanfares emitted by campaign
   instructions.
 
+Campaign programs can retain a semantic music scene across movement and warps,
+then explicitly restore ordinary imported map music. Oak's Pallet interception
+uses this path from “Hey! Wait!” through the completed lab-entry movement.
+
 Additional campaign-specific music changes, victory themes, healing jingles,
-and scripted overworld effects should be emitted as ordinary semantic audio
-cues by their content programs rather than added as engine map cases.
+and scripted overworld effects must be emitted as ordinary semantic audio
+cues by their content programs rather than added as engine map cases. The
+verified source census and remaining owners are tracked in
+[PRESENTATION_ISA_AUDIT.md](PRESENTATION_ISA_AUDIT.md).
 
 Cry executors select their audio bank directly. They do not start and stop a
 dummy music header; that older workaround cleared the stereo mask immediately

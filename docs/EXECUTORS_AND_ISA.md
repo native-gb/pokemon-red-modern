@@ -281,10 +281,18 @@ start_battle wild_pidgey
 start_trainer_battle rival_lab
 play_animation heal_party
 play_sound item_received
-start_music oaks_lab_theme
+set_music_scene meet_prof_oak
+restore_map_music
 play_camera pallet_town_reveal
 save_game
 ```
+
+The currently compiled campaign subset uses `set_music_scene` and
+`restore_map_music` for persistent scripted music ownership. A scene override
+survives map transitions until content restores ordinary imported map music.
+The full designed vocabulary in this document is not itself a coverage claim;
+current lowering status is tracked in
+[PRESENTATION_ISA_AUDIT.md](PRESENTATION_ISA_AUDIT.md).
 
 Example:
 
