@@ -10,6 +10,7 @@ enum class FieldMenuPage : std::uint8_t {
     party,
     bag,
     trainer,
+    confirm_quit,
 };
 
 struct FieldMenuState {
@@ -17,6 +18,7 @@ struct FieldMenuState {
     std::size_t selected{};
     std::uint8_t input_cooldown{};
     bool save_requested{};
+    bool quit_to_title_requested{};
     bool open{};
 };
 

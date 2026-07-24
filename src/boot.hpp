@@ -169,6 +169,8 @@ struct BootState {
 struct BootStepResult {
     bool new_game_requested{};
     bool continue_requested{};
+    bool intro_crash_sound{};
+    bool intro_whoosh_sound{};
 };
 
 bool load_boot_content(const std::filesystem::path& path, BootContent& result,

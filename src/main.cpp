@@ -343,12 +343,13 @@ int main(int argc, char** argv) {
     pokered::ControlButtons previous_controls;
     pokered::GameClocks clocks;
     bool fast_forward_toggle_active = false;
-    bool tools_chord_down = false;
     pokered::BootInput pending_boot_input;
     std::uint64_t last_audio_warp_tick =
         std::numeric_limits<std::uint64_t>::max();
     std::uint64_t last_audio_ledge_hop =
         world.ledge_hop_count;
+    std::uint32_t last_pokemon_presentation_serial = 0U;
+    std::uint32_t last_world_audio_serial = 0U;
 
     while (running) {
         const std::uint64_t frame_started = SDL_GetTicksNS();
@@ -432,19 +433,9 @@ int main(int argc, char** argv) {
             host_input.text.clear();
         }
         const bool menu_pressed = controls.menu && !previous_controls.menu;
-        const bool tools_chord = controls.start && controls.select;
-        const bool tools_chord_pressed = tools_chord && !tools_chord_down;
-        if (menu_pressed || tools_chord_pressed) {
-            tools.layout = tools.layout == pokered::ToolLayout::player
-                               ? pokered::ToolLayout::closed
-                               : pokered::ToolLayout::player;
-            tools.arrange = tools.layout != pokered::ToolLayout::closed;
-        }
-        tools_chord_down = tools_chord;
         const bool tools_own_input =
             tools_were_open ||
-            tools.layout != pokered::ToolLayout::closed ||
-            menu_pressed || tools_chord_pressed;
+            tools.layout != pokered::ToolLayout::closed;
         const pokered::ControlButtons sampled_controls = controls;
         if (!tools_own_input && controls.quit) break;
         if (tools_own_input) controls = {};
@@ -457,11 +448,13 @@ int main(int argc, char** argv) {
             (controls.up && !previous_controls.up) ||
             (controls.down && !previous_controls.down);
         const bool start_pressed =
-            controls.start && !previous_controls.start;
+            (controls.start && !previous_controls.start) ||
+            menu_pressed;
         const bool world_ui_active =
             world.dialogue.open || world.choice.open ||
             world.naming.open || world.menu.open ||
-            world.service.active;
+            world.service.active ||
+            world.pokemon_presentation.active;
         const bool button_ui_active =
             game.mode == pokered::Mode::title ||
             game.mode == pokered::Mode::battle ||
@@ -570,7 +563,7 @@ int main(int argc, char** argv) {
             const bool select_pressed =
                 controls.select && !previous_controls.select;
             if (input.reset_world_view ||
-                (!tools_chord && select_pressed))
+                select_pressed)
                 pokered::reset_world_view(world);
             const float pan_speed = world.view == pokered::WorldView::world ? 3000.0F : 180.0F;
             const float pan_step = pan_speed * frame_seconds;
@@ -644,7 +637,9 @@ int main(int argc, char** argv) {
             if (battle_result.finished) {
                 pending_blackout =
                     campaign.battle.outcome ==
-                    pokered::BattleOutcome::player_defeat;
+                        pokered::BattleOutcome::player_defeat &&
+                    campaign.active_battle_defeat_policy ==
+                        pokered::BattleDefeatPolicy::blackout;
                 pokered::finish_world_actor_battle(
                     interactions, world, campaign);
                 pokered::begin_battle_exit_presentation(
@@ -677,6 +672,10 @@ int main(int argc, char** argv) {
                     running = false;
                     break;
                 }
+                if (boot_result.intro_crash_sound)
+                    audio.play_intro_crash();
+                if (boot_result.intro_whoosh_sound)
+                    audio.play_intro_whoosh();
                 pending_boot_input = {};
                 pending_boot_text.clear();
                 if (boot_result.new_game_requested) {
@@ -742,6 +741,29 @@ int main(int argc, char** argv) {
                             save_error.c_str());
                         pokered::open_world_dialogue(
                             world, campaign, {"Save failed."});
+                    }
+                }
+                if (world.menu.quit_to_title_requested) {
+                    campaign = {};
+                    std::string reset_error;
+                    if (!pokered::initialize_world_runtime(
+                            world, interactions, reset_error) ||
+                        !pokered::initialize_campaign_program_runtime(
+                            campaign_programs, world, reset_error) ||
+                        !pokered::begin_boot(
+                            boot_content, boot, reset_error)) {
+                        std::fprintf(
+                            stderr,
+                            "could not return to title: %s\n",
+                            reset_error.c_str());
+                    } else {
+                        boot.continue_available =
+                            pokered::save_game_exists(save_path);
+                        gameplay_battle = battle_lab;
+                        pokered::initialize_gameplay_battle_mode(
+                            gameplay_battle);
+                        pending_blackout = false;
+                        game.mode = pokered::Mode::title;
                     }
                 }
                 pending_world_activation = false;
@@ -855,7 +877,6 @@ int main(int argc, char** argv) {
                         });
                     pending_blackout = false;
                 }
-                campaign.battle = {};
                 game.mode = pokered::Mode::overworld;
             }
             accumulator -= step_seconds;
@@ -865,6 +886,32 @@ int main(int argc, char** argv) {
         // accelerates simulation, never pitch or playback speed.
         if (audio.available()) {
             std::string dispatch_error;
+            if (world.pokemon_presentation.active &&
+                world.pokemon_presentation.serial !=
+                    last_pokemon_presentation_serial) {
+                last_pokemon_presentation_serial =
+                    world.pokemon_presentation.serial;
+                const pokered::SpeciesRule* species =
+                    pokered::find_species(
+                        rules,
+                        static_cast<std::uint8_t>(
+                            world.pokemon_presentation.species_dex));
+                if (species != nullptr &&
+                    !audio.play_cry(
+                        species->internal_id, dispatch_error))
+                    std::fprintf(
+                        stderr,
+                        "could not play presented Pokemon cry: %s\n",
+                        dispatch_error.c_str());
+            }
+            if (world.audio_event.serial !=
+                last_world_audio_serial) {
+                last_world_audio_serial =
+                    world.audio_event.serial;
+                if (world.audio_event.cue ==
+                    pokered::WorldAudioCue::get_key_item)
+                    audio.play_get_key_item();
+            }
             if (world.last_warp.occurred &&
                 world.last_warp.simulation_tick !=
                     last_audio_warp_tick) {
@@ -896,8 +943,14 @@ int main(int argc, char** argv) {
                     boot.screen == pokered::BootScreen::name_menu ||
                     boot.screen == pokered::BootScreen::naming ||
                     boot.screen == pokered::BootScreen::ending;
+                const bool title_startup =
+                    boot.screen == pokered::BootScreen::title &&
+                    boot.title_startup_frames != 0U;
                 (void)audio.request_scene_music(
-                    oak_intro ? pokered::AudioScene::oak_intro
+                    oak_intro
+                        ? pokered::AudioScene::oak_intro
+                        : title_startup
+                              ? pokered::AudioScene::intro_battle
                               : pokered::AudioScene::title,
                     dispatch_error);
             } else if (game.mode == pokered::Mode::overworld &&

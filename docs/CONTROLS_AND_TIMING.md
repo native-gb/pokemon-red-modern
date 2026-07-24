@@ -29,21 +29,21 @@ the player does not need keyboard access to open tools and request a rescan.
 The manual control-panel rescan remains available for unusual browser or device
 mapping failures.
 
-The player tools can be opened or closed without a keyboard by pressing the
-bound Menu action or Start and Select together. ImGui never opens, polls, or
-navigates with a gamepad; controllers belong exclusively to the semantic game
-input layer. An open player or developer tool layout owns the complete input
-frame, including its opening and closing frame, so an action cannot also move
-the player, advance dialogue, reset the camera, or toggle fast-forward behind
-the interface.
+Player and developer tools open only through the host F1/F2 shortcuts. ImGui
+never opens, polls, or navigates with a gamepad; controllers belong exclusively
+to the semantic game input layer. An open player or developer tool layout owns
+the complete input frame, including its opening and closing frame, so an
+action cannot also move the player, advance dialogue, reset the camera, or
+toggle fast-forward behind the interface.
 
 ## Default bindings
 
 Primary provides arrows and WASD, Z/E/Space for A, X for B, Enter for Start,
 Backspace for Select, Escape for the player menu, and left Shift for
 fast-forward. The controller defaults use the D-pad, south face for confirm,
-east face for back, Start, Back/Select, Y for the player menu, Guide for
-application quit, and left trigger for fast-forward. Left shoulder is a
+east face for back, Start, Back/Select, Guide for application quit, and left
+trigger for fast-forward. The north face button is deliberately unbound.
+Left shoulder is a
 digital fast-forward alternative. Right-stick up/down zooms the world camera;
 Select resets its authored zoom. No controller camera-pan binding is present.
 
@@ -51,10 +51,12 @@ Alternate begins with IJKL movement, U/O for A/B, P/Y for Start/Select, Escape
 for the player menu, and right Shift for fast-forward. Both profile slots are
 fully editable, so these are installation defaults rather than engine rules.
 
-In the overworld, Start opens the modern campaign overlay. Its first playable
+In the overworld, Start (or a legacy profile's Menu action) opens the modern
+campaign overlay. Its first playable
 slice exposes party HP/status/levels, the imported bag item names and
-quantities, and trainer ID/money/play time. B returns from a detail page and
-then closes the root; Start closes it from any page. The overlay owns input
+quantities, trainer ID/money/play time, and a guarded return-to-title action.
+B returns from a detail page and then closes the root; Start closes it from
+any page. The overlay owns input
 while open, so navigation cannot move the player or advance a script behind
 it.
 

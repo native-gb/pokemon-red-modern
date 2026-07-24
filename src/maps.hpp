@@ -225,6 +225,22 @@ struct WorldChoiceState {
     bool decided{};
 };
 
+struct WorldPokemonPresentation {
+    std::uint32_t serial{};
+    std::uint16_t species_dex{};
+    bool active{};
+};
+
+enum class WorldAudioCue : std::uint8_t {
+    none,
+    get_key_item,
+};
+
+struct WorldAudioEvent {
+    std::uint32_t serial{};
+    WorldAudioCue cue{WorldAudioCue::none};
+};
+
 struct WorldActorActivation {
     std::uint8_t map_id{};
     std::uint8_t actor_index{};
@@ -304,6 +320,8 @@ struct WorldState {
     WorldPlayerState player;
     DialogueState dialogue;
     WorldChoiceState choice;
+    WorldPokemonPresentation pokemon_presentation;
+    WorldAudioEvent audio_event;
     NamingState naming;
     FieldMenuState menu;
     WorldWarpState last_warp;

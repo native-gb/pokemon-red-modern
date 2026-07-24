@@ -66,8 +66,8 @@ std::string item_name(const CampaignProgramCatalog& programs,
 void draw_root(ImDrawList* draw, const FieldMenuState& menu,
                ImVec2 minimum, ImVec2 maximum) {
     panel(draw, minimum, maximum);
-    constexpr std::array<std::string_view, 5> entries{
-        "PARTY", "BAG", "TRAINER", "SAVE", "CLOSE"};
+    constexpr std::array<std::string_view, 6> entries{
+        "PARTY", "BAG", "TRAINER", "SAVE", "QUIT", "CLOSE"};
     for (std::size_t index = 0U; index < entries.size(); ++index) {
         const float y =
             minimum.y + 25.0F + static_cast<float>(index) * 47.0F;
@@ -77,6 +77,25 @@ void draw_root(ImDrawList* draw, const FieldMenuState& menu,
                 {maximum.x - 14.0F, y + 31.0F},
                 selected_color, 5.0F);
         text(draw, 27.0F, {minimum.x + 34.0F, y}, entries[index]);
+    }
+}
+
+void draw_quit_confirmation(
+    ImDrawList* draw, const FieldMenuState& menu,
+    ImVec2 minimum, ImVec2 maximum) {
+    panel(draw, minimum, maximum);
+    text(draw, 29.0F, {minimum.x + 32.0F, minimum.y + 30.0F},
+         "QUIT TO TITLE?");
+    constexpr std::array<std::string_view, 2> entries{"YES", "NO"};
+    for (std::size_t index = 0U; index < entries.size(); ++index) {
+        const float y =
+            minimum.y + 92.0F + static_cast<float>(index) * 48.0F;
+        if (index == menu.selected)
+            draw->AddRectFilled(
+                {minimum.x + 18.0F, y - 7.0F},
+                {maximum.x - 18.0F, y + 31.0F},
+                selected_color, 5.0F);
+        text(draw, 27.0F, {minimum.x + 40.0F, y}, entries[index]);
     }
 }
 
@@ -176,8 +195,16 @@ void draw_field_menu_overlay(
     if (world.menu.page == FieldMenuPage::root) {
         const ImVec2 maximum{
             io.DisplaySize.x - 32.0F, io.DisplaySize.y - 32.0F};
-        const ImVec2 minimum{maximum.x - 270.0F, maximum.y - 285.0F};
+        const ImVec2 minimum{maximum.x - 270.0F, maximum.y - 332.0F};
         draw_root(draw, world.menu, minimum, maximum);
+        return;
+    }
+    if (world.menu.page == FieldMenuPage::confirm_quit) {
+        const ImVec2 maximum{
+            io.DisplaySize.x - 32.0F, io.DisplaySize.y - 32.0F};
+        const ImVec2 minimum{maximum.x - 330.0F, maximum.y - 225.0F};
+        draw_quit_confirmation(
+            draw, world.menu, minimum, maximum);
         return;
     }
     const float width = std::min(io.DisplaySize.x - 64.0F, 900.0F);

@@ -96,6 +96,26 @@ std::uint16_t title_startup_frames(const BootTitleDefinition& title) {
         std::min<std::uint32_t>(frames, std::numeric_limits<std::uint16_t>::max()));
 }
 
+std::uint32_t title_crash_frame(
+    const BootTitleDefinition& title) {
+    std::uint32_t frame = title.setup_frames;
+    for (const BootTitleBounce& bounce : title.logo_bounce) {
+        frame += bounce.frame_count;
+        if (bounce.pixels_per_frame < 0)
+            return frame;
+    }
+    return frame;
+}
+
+std::uint32_t title_whoosh_frame(
+    const BootTitleDefinition& title) {
+    std::uint32_t frame =
+        title.setup_frames + title.after_logo_delay_frames;
+    for (const BootTitleBounce& bounce : title.logo_bounce)
+        frame += bounce.frame_count;
+    return frame;
+}
+
 void reset_title(const BootContent& content, BootState& state) {
     state.screen = BootScreen::title;
     state.title_phase = BootTitlePhase::wait;
@@ -501,6 +521,12 @@ bool step_boot(const BootContent& content, const BootInput& input, BootState& st
 
     if (state.screen == BootScreen::title) {
         if (state.title_startup_frames != 0U) {
+            result.intro_crash_sound =
+                state.title_elapsed ==
+                title_crash_frame(content.title);
+            result.intro_whoosh_sound =
+                state.title_elapsed ==
+                title_whoosh_frame(content.title);
             --state.title_startup_frames;
             ++state.title_elapsed;
         } else if (title_input(input)) {

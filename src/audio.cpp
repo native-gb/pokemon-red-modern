@@ -76,7 +76,7 @@ struct SceneMusicDispatch {
 };
 
 using SemanticSoundDispatch =
-    std::array<std::array<SceneMusicDispatch, 4>, 5>;
+    std::array<std::array<SceneMusicDispatch, 4>, 8>;
 
 struct MoveSoundDispatch {
     std::uint8_t sound{};
@@ -86,14 +86,14 @@ struct MoveSoundDispatch {
 
 bool load_audio_catalog(const std::filesystem::path& path,
                         ContentCatalogue& catalog,
-                        std::array<SceneMusicDispatch, 2>& scenes,
+                        std::array<SceneMusicDispatch, 3>& scenes,
                         SemanticSoundDispatch& semantic_sounds,
                         std::array<MoveSoundDispatch, 166>& move_sounds,
                         std::string& error) {
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), 4) ||
-        magic != std::array{'P', 'R', 'A', '5'}) {
+        magic != std::array{'P', 'R', 'A', '6'}) {
         error = "audio cache has an invalid header";
         return false;
     }
@@ -347,7 +347,7 @@ bool load_audio_catalog(const std::filesystem::path& path,
         scenes[scene] = dispatch;
     }
 
-    if (!read_u16(input, count) || count != 12U) {
+    if (!read_u16(input, count) || count != 16U) {
         error = "audio cache has an invalid semantic-sound census";
         return false;
     }
@@ -417,7 +417,7 @@ struct AudioSystem::Impl {
     };
 
     ContentCatalogue catalog;
-    std::array<SceneMusicDispatch, 2> scenes;
+    std::array<SceneMusicDispatch, 3> scenes;
     SemanticSoundDispatch semantic_sounds;
     std::array<MoveSoundDispatch, 166> move_sounds;
     std::array<MusicVoice, 2> music;
@@ -734,6 +734,23 @@ void AudioSystem::play_map_transition(
 void AudioSystem::play_ledge(std::uint8_t map_id) {
     if (impl_)
         (void)impl_->spawn_map_semantic(4U, map_id);
+}
+
+void AudioSystem::play_get_key_item() {
+    if (!impl_) return;
+    if (!impl_->spawn_semantic(
+            5U, impl_->preferred_bank))
+        (void)impl_->spawn_semantic(5U, 1U);
+}
+
+void AudioSystem::play_intro_crash() {
+    if (impl_)
+        (void)impl_->spawn_semantic(6U, 3U);
+}
+
+void AudioSystem::play_intro_whoosh() {
+    if (impl_)
+        (void)impl_->spawn_semantic(7U, 3U);
 }
 
 bool AudioSystem::available() const {

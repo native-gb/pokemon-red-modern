@@ -35,7 +35,6 @@ void bind_gamepad(BindsProfile& profile) {
     bind(profile, GubsyButton::GP_B, ControlAction::back);
     bind(profile, GubsyButton::GP_START, ControlAction::start);
     bind(profile, GubsyButton::GP_BACK, ControlAction::select);
-    bind(profile, GubsyButton::GP_Y, ControlAction::menu);
     bind(profile, GubsyButton::GP_GUIDE, ControlAction::quit);
     bind(profile, GubsyButton::GP_LEFT_SHOULDER, ControlAction::fast_forward);
     bind(profile, Gubsy1DAnalog::GP_LEFT_TRIGGER, AnalogControl::fast_forward);

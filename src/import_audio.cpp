@@ -86,6 +86,7 @@ std::vector<SceneMusic> scene_music(
     constexpr std::array names{
         std::string_view{"Music_TitleScreen"},
         std::string_view{"Music_MeetProfOak"},
+        std::string_view{"Music_IntroBattle"},
     };
     std::vector<SceneMusic> result;
     result.reserve(names.size());
@@ -115,6 +116,7 @@ std::vector<SemanticSound> semantic_sounds(
         std::string_view{"SFX_Go_Inside_"},
         std::string_view{"SFX_Go_Outside_"},
         std::string_view{"SFX_Ledge_"},
+        std::string_view{"SFX_Get_Key_Item_"},
     };
     std::vector<SemanticSound> result;
     result.reserve(stems.size() * 3U);
@@ -140,6 +142,28 @@ std::vector<SemanticSound> semantic_sounds(
             });
         }
     }
+    constexpr std::array exact_names{
+        std::string_view{"SFX_Intro_Crash"},
+        std::string_view{"SFX_Intro_Whoosh"},
+    };
+    for (std::size_t index = 0U;
+         index < exact_names.size(); ++index) {
+        const auto header = std::ranges::find_if(
+            catalog.audio_headers,
+            [&](const AudioHeaderDefinition& candidate) {
+                return candidate.kind ==
+                           AudioHeaderKind::SoundEffect &&
+                       candidate.name == exact_names[index];
+            });
+        if (header == catalog.audio_headers.end()) continue;
+        result.push_back({
+            .cue = static_cast<std::uint8_t>(
+                stems.size() + index),
+            .bank = header->audio_bank,
+            .sound = header->sound_id,
+            .name = exact_names[index],
+        });
+    }
     return result;
 }
 
@@ -148,7 +172,7 @@ void emit_cache(const ContentCatalogue& catalog,
                 const std::vector<SemanticSound>& sounds,
                 const std::vector<MoveSound>& moves,
                 AudioImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'R', 'A', '5'};
+    std::vector<std::uint8_t> bytes{'P', 'R', 'A', '6'};
 
     write_u16(bytes, catalog.audio_banks.size());
     for (const AudioBankDefinition& bank : catalog.audio_banks) {
@@ -420,11 +444,11 @@ bool decode_audio_import(std::span<const std::uint8_t> rom,
     const std::vector<SemanticSound> sounds =
         semantic_sounds(catalog);
     const std::vector<MoveSound> moves = move_sounds(rom);
-    if (scenes.size() != 2U) {
+    if (scenes.size() != 3U) {
         error = "audio import did not resolve every semantic scene";
         return false;
     }
-    if (sounds.size() != 12U) {
+    if (sounds.size() != 16U) {
         error = "audio import did not resolve every semantic sound";
         return false;
     }

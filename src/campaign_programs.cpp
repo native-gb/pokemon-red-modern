@@ -213,11 +213,27 @@ bool valid_instruction(const CampaignInstruction& instruction) {
                instruction.player_path.empty();
     case CampaignOpcode::wait_ticks:
         return instruction.value != 0U;
+    case CampaignOpcode::present_pokemon:
+        return instruction.a == 0U && instruction.b == 0U &&
+               instruction.value >= 1U &&
+               instruction.value <= 151U &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
+    case CampaignOpcode::emit_audio_cue:
+        return instruction.a ==
+                   static_cast<std::uint8_t>(
+                       WorldAudioCue::get_key_item) &&
+               instruction.b == 0U &&
+               instruction.value == 0U &&
+               instruction.pages.empty() &&
+               instruction.actor_path.empty() &&
+               instruction.player_path.empty();
     case CampaignOpcode::take_money:
         return instruction.a == 0U && instruction.b == 0U &&
                instruction.value != 0U;
     case CampaignOpcode::start_trainer_battle:
-        return instruction.a != 0U && instruction.b == 0U &&
+        return instruction.a != 0U && instruction.b <= 1U &&
                instruction.value <= 0xFFFFU;
     }
     return false;
@@ -527,7 +543,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'R'}) {
+        magic != std::array{'P', 'C', 'P', 'S'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -838,6 +854,7 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 .waiting_motion = false,
                 .waiting_choice = false,
                 .waiting_naming = false,
+                .waiting_pokemon_presentation = false,
                 .waiting_battle = false,
                 .naming_party_index = 0U,
                 .last_choice = 0U,
@@ -909,6 +926,13 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 world.naming.value;
         world.naming = {};
         fiber.waiting_naming = false;
+    }
+    if (fiber.waiting_pokemon_presentation) {
+        if (world.pokemon_presentation.active) {
+            error.clear();
+            return true;
+        }
+        fiber.waiting_pokemon_presentation = false;
     }
     if (fiber.waiting_battle) {
         if (campaign.trainer_battle_request.pending ||
@@ -1217,6 +1241,25 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
             error.clear();
             return true;
         }
+        case CampaignOpcode::present_pokemon:
+            world.pokemon_presentation = {
+                .serial =
+                    world.pokemon_presentation.serial + 1U,
+                .species_dex =
+                    static_cast<std::uint16_t>(
+                        instruction.value),
+                .active = true,
+            };
+            fiber.waiting_pokemon_presentation = true;
+            error.clear();
+            return true;
+        case CampaignOpcode::emit_audio_cue:
+            world.audio_event = {
+                .serial = world.audio_event.serial + 1U,
+                .cue = static_cast<WorldAudioCue>(
+                    instruction.a),
+            };
+            break;
         case CampaignOpcode::start_trainer_battle:
             if (campaign.trainer_battle_request.pending ||
                 campaign.battle.active) {
@@ -1228,6 +1271,10 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 .trainer_class_id = instruction.a,
                 .trainer_party_index =
                     static_cast<std::uint16_t>(instruction.value),
+                .defeat_policy =
+                    instruction.b == 0U
+                        ? BattleDefeatPolicy::resume_script
+                        : BattleDefeatPolicy::blackout,
                 .pending = true,
             };
             fiber.waiting_battle = true;

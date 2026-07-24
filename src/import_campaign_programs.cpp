@@ -444,6 +444,8 @@ enum class Opcode : std::uint8_t {
     actor_path_by_player_x,
     actor_path_by_player_y,
     actor_path_by_player_facing,
+    emit_audio_cue,
+    present_pokemon,
     start_trainer_battle,
     jump_if_choice_no,
     say_if_player_won,
@@ -5341,6 +5343,8 @@ GeneratedFile readable_starter_source(
            << "    required_flag 0x" << std::hex << kOakAskedToChooseFlag << '\n'
            << "    absent_flag 0x" << kGotStarterFlag << std::dec << '\n'
            << "    lock_input\n"
+           << "    present_pokemon species_dex "
+           << static_cast<unsigned>(choice.player_species) << '\n'
            << "    ask_yes_no species_dex "
            << static_cast<unsigned>(choice.player_species) << '\n'
            << page_source(prompt.pages, "        ")
@@ -5350,6 +5354,7 @@ GeneratedFile readable_starter_source(
            << "    say species_dex "
            << static_cast<unsigned>(choice.player_species) << '\n'
            << page_source(energetic.pages, "        ")
+           << "    emit_audio_cue get_key_item\n"
            << "    say species_dex "
            << static_cast<unsigned>(choice.player_species) << '\n'
            << page_source(player_received.pages, "        ")
@@ -5377,6 +5382,7 @@ GeneratedFile readable_starter_source(
            << page_source(rival_takes.pages, "        ")
            << "    hide_actor map oaks_lab actor "
            << static_cast<unsigned>(choice.rival_ball) << '\n'
+           << "    emit_audio_cue get_key_item\n"
            << "    say species_dex "
            << static_cast<unsigned>(choice.rival_species) << '\n'
            << page_source(rival_received.pages, "        ")
@@ -7432,6 +7438,13 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     // Reverse its decoded command stream; MoveSprite consumes Oak's stream forward.
     std::reverse(player_path.begin(), player_path.end());
     std::reverse(lab_player_path.begin(), lab_player_path.end());
+
+    // Red swaps its walking Oak object for the stationary lab object once the
+    // first object leaves the Game Boy camera. A modern whole-room camera can
+    // see that seam, so lower the hidden continuation into ordinary movement
+    // before performing the same visibility handoff.
+    lab_oak_path.insert(
+        lab_oak_path.end(), 5U, PathCommand::up);
     if (player_path.size() < 2U || player_path[player_path.size() - 1U] != PathCommand::up ||
         player_path[player_path.size() - 2U] != PathCommand::up) {
         error = "Pallet player path no longer ends in the verified lab transition";
@@ -7519,6 +7532,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         starter.absent_flag = kGotStarterFlag;
 
         starter.instructions.push_back(operation(Opcode::lock_input));
+        starter.instructions.push_back(operation(
+            Opcode::present_pokemon, 0U, 0U,
+            choice.player_species));
         starter.instructions.push_back(
             ask_yes_no(starter_prompts[index].pages,
                        choice.player_species));
@@ -7528,6 +7544,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             Opcode::hide_actor, choice.selected_ball, 0U, 40U));
         starter.instructions.push_back(species_dialogue(
             starter_energetic.pages, choice.player_species));
+        starter.instructions.push_back(operation(
+            Opcode::emit_audio_cue, 1U));
         starter.instructions.push_back(species_dialogue(
             player_received.pages, choice.player_species));
         starter.instructions.push_back(operation(
@@ -7554,6 +7572,8 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         starter.instructions.push_back(dialogue(rival_takes.pages));
         starter.instructions.push_back(operation(
             Opcode::hide_actor, choice.rival_ball, 0U, 40U));
+        starter.instructions.push_back(operation(
+            Opcode::emit_audio_cue, 1U));
         starter.instructions.push_back(species_dialogue(
             rival_received.pages, choice.rival_species));
         starter.instructions.push_back(
@@ -7870,7 +7890,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             route_22_first_rival.before_battle.pages));
         rival.instructions.push_back(operation(
             Opcode::start_trainer_battle,
-            battle.trainer_class, 0U,
+            battle.trainer_class, 1U,
             battle.trainer_party));
         Instruction defeated =
             operation(Opcode::say_if_player_won);
@@ -8226,7 +8246,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         dialogue(pewter_gym.pre_battle.pages));
     brock_battle.instructions.push_back(operation(
         Opcode::start_trainer_battle,
-        pewter_gym.trainer_class, 0U,
+        pewter_gym.trainer_class, 1U,
         pewter_gym.trainer_party));
     Instruction badge = operation(
         Opcode::say_if_player_won);
@@ -8523,7 +8543,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
             dialogue(mt_moon_fossils.both_mine.pages));
         battle.push_back(operation(
             Opcode::start_trainer_battle,
-            mt_moon_fossils.trainer_class, 0U,
+            mt_moon_fossils.trainer_class, 1U,
             mt_moon_fossils.trainer_party));
         Instruction share =
             operation(Opcode::say_if_player_won);
@@ -8852,7 +8872,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                 cerulean_rival.pre_battle.pages));
         rival.instructions.push_back(operation(
             Opcode::start_trainer_battle,
-            battle.trainer_class, 0U,
+            battle.trainer_class, 1U,
             battle.trainer_party));
         Instruction defeated =
             operation(Opcode::say_if_player_won);
@@ -8970,7 +8990,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         dialogue(cerulean_gym.pre_battle.pages));
     misty_battle.instructions.push_back(operation(
         Opcode::start_trainer_battle,
-        cerulean_gym.trainer_class, 0U,
+        cerulean_gym.trainer_class, 1U,
         cerulean_gym.trainer_party));
     Instruction cascade_badge =
         operation(Opcode::say_if_player_won);
@@ -9091,7 +9111,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                 route_24_nugget.join_rocket.pages));
             bridge.instructions.push_back(operation(
                 Opcode::start_trainer_battle,
-                route_24_nugget.trainer_class, 0U,
+                route_24_nugget.trainer_class, 1U,
                 route_24_nugget.trainer_party));
             Instruction defeated =
                 operation(Opcode::say_if_player_won);
@@ -9507,7 +9527,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                     cerulean_rocket.pre_battle.pages));
             battle.instructions.push_back(operation(
                 Opcode::start_trainer_battle,
-                cerulean_rocket.trainer_class, 0U,
+                cerulean_rocket.trainer_class, 1U,
                 cerulean_rocket.trainer_party));
             Instruction give_up =
                 operation(Opcode::say_if_player_won);
@@ -10193,7 +10213,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
                 ss_anne.rival_pre_battle.pages));
         rival.instructions.push_back(operation(
             Opcode::start_trainer_battle,
-            battle.trainer_class, 0U,
+            battle.trainer_class, 1U,
             battle.trainer_party));
         Instruction defeated =
             operation(Opcode::say_if_player_won);
@@ -10396,7 +10416,7 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(departure));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'R'};
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'S'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);

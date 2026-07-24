@@ -24,6 +24,10 @@ presentation is finished.
   the first lab rival battle, parcel handoff/return, Pokédex request, Route 1
   item, first Route 22 rival, Viridian Forest loose items and trainers,
   Pewter escorts, and Brock's battle/badge/TM retry.
+- Oak's original off-camera lab object swap is lowered into continuous
+  movement for the modern whole-room camera. Starter inspection presents the
+  imported front picture and cry before confirmation, and receipt emits the
+  imported Get Key Item fanfare.
 - Naming grids use directional navigation plus confirm/back only; presentation
   labels and choice cursors no longer overlap or point backward.
 - Overworld sheets import four-phase directional walk clips, and presentation
@@ -49,6 +53,13 @@ presentation is finished.
 - Grass cells repaint their imported foreground pixels over the player's
   feet. A total party defeat now heals and relocates to the last Center, or
   home before the first Center, halves money, and opens a blackout message.
+- Trainer-battle instructions declare a defeat policy. The lab rival resumes
+  its owning script, heals the party, and unlocks input after either result;
+  ordinary trainers and wild encounters use the shared blackout route. A
+  completed battle outcome is retained until its waiting campaign fiber has
+  consumed it.
+- The field menu includes a guarded QUIT action that returns to a freshly
+  initialized title flow without changing the saved campaign.
 
 ## Player pass
 
@@ -68,7 +79,8 @@ Then exercise one continuous New Game:
    then catch a wild Pokémon, switch party members, fight, and run;
 6. traverse Route 2 and Viridian Forest into Pewter;
 7. enter Pewter Gym, defeat Brock, and receive the badge/TM branch;
-8. use Start throughout to inspect party, bag, money, ID, and play time.
+8. use Start throughout to inspect party, bag, money, ID, and play time;
+   verify QUIT defaults to NO and YES returns to the title;
 9. save from Start, restart, choose Continue, and verify position, party,
    inventory, flags, NPC state, and play time.
 

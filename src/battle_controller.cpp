@@ -298,6 +298,8 @@ bool begin_actor_battle(
     }
     begin_battle_presentation(
         view, binding.kind == ActorOpponentKind::trainer);
+    campaign.active_battle_defeat_policy =
+        BattleDefeatPolicy::blackout;
     campaign.battle_owner = {
         .map_id = world.opponent_request.map_id,
         .actor_index = world.opponent_request.actor_index,
@@ -352,6 +354,8 @@ bool begin_world_wild_battle(
         return false;
     }
     begin_battle_presentation(view, false);
+    campaign.active_battle_defeat_policy =
+        BattleDefeatPolicy::blackout;
     began = true;
     error.clear();
     return true;
@@ -457,6 +461,8 @@ bool begin_campaign_trainer_battle(
         return false;
     }
     begin_battle_presentation(view, true);
+    campaign.active_battle_defeat_policy =
+        campaign.trainer_battle_request.defeat_policy;
     campaign.trainer_battle_request = {};
     campaign.battle_owner = {};
     began = true;

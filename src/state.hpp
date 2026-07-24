@@ -40,6 +40,7 @@ struct CampaignFiberState {
     bool waiting_motion{};
     bool waiting_choice{};
     bool waiting_naming{};
+    bool waiting_pokemon_presentation{};
     bool waiting_battle{};
     std::uint8_t naming_party_index{};
     std::uint8_t last_choice{};
@@ -49,9 +50,15 @@ struct CampaignFiberState {
     bool active{};
 };
 
+enum class BattleDefeatPolicy : std::uint8_t {
+    resume_script,
+    blackout,
+};
+
 struct CampaignTrainerBattleRequest {
     std::uint8_t trainer_class_id{};
     std::uint16_t trainer_party_index{};
+    BattleDefeatPolicy defeat_policy{BattleDefeatPolicy::blackout};
     bool pending{};
 };
 
@@ -82,6 +89,8 @@ struct CampaignState {
     BattleState battle;
     CampaignBattleOwner battle_owner;
     CampaignTrainerBattleRequest trainer_battle_request;
+    BattleDefeatPolicy active_battle_defeat_policy{
+        BattleDefeatPolicy::blackout};
     CampaignFiberState fiber;
     std::vector<std::uint8_t> flags;
     std::vector<std::uint16_t> variables;

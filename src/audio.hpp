@@ -10,6 +10,7 @@ namespace pokered {
 enum class AudioScene : std::uint8_t {
     title,
     oak_intro,
+    intro_battle,
 };
 
 class AudioSystem {
@@ -43,6 +44,9 @@ class AudioSystem {
     void play_map_transition(std::uint8_t source_map_id,
                              bool going_inside);
     void play_ledge(std::uint8_t map_id);
+    void play_get_key_item();
+    void play_intro_crash();
+    void play_intro_whoosh();
 
     bool available() const;
     std::uint8_t preferred_audio_bank() const;

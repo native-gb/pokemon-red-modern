@@ -31,7 +31,9 @@ The final mixer clamps the combined signal at the device boundary.
 
 Current cue sources are:
 
-- imported title and Oak-introduction scene music;
+- imported intro-battle carry, title, and Oak-introduction scene music;
+- ROM-timed title crash and version-whoosh cues derived from the imported
+  bounce/delay schedule;
 - imported per-map music;
 - imported wild/trainer battle music;
 - imported Pokémon cries during battle deployment;
@@ -39,6 +41,8 @@ Current cue sources are:
   Red's separately imported `MoveSoundTable` before playback;
 - menu-open and menu-confirm/navigation sounds;
 - bank-correct go-inside, go-outside/stair, and ledge-hop sounds.
+- Pokémon presentation cries and Get Key Item fanfares emitted by campaign
+  instructions.
 
 Additional campaign-specific music changes, victory themes, healing jingles,
 and scripted overworld effects should be emitted as ordinary semantic audio

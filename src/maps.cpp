@@ -1036,6 +1036,12 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         return;
     ++world.simulation_tick;
 
+    if (world.pokemon_presentation.active) {
+        if (input.activate || input.back)
+            world.pokemon_presentation.active = false;
+        return;
+    }
+
     if (world.menu.open) {
         step_field_menu(
             world.menu,
