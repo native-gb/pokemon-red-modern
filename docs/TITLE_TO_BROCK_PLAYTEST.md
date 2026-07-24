@@ -25,12 +25,16 @@ presentation is finished.
 - Naming grids use directional navigation plus confirm/back only; presentation
   labels and choice cursors no longer overlap or point backward.
 - Overworld sheets import four-phase directional walk clips, and presentation
-  interpolates actors and the player continuously across logical cell steps.
+  interpolates actors and the player continuously across Red's 16-frame
+  logical cell steps.
 - Red's upstairs room is placed one world cell above the downstairs room.
 - Map-entry camera profiles give Pallet Town, Route 1, Viridian, Route 22, and
   interiors useful starting views without carrying fitted-space scale between
   them. Manual zoom/pan remains in force until the next map entry, or forever
   when automatic camera adjustment is disabled.
+- Real battle turns now queue their imported move animations, including
+  opponent-side mirroring, instead of leaving the animation executor isolated
+  in the developer lab. The two-column command menu navigates spatially.
 
 ## Player pass
 

@@ -160,6 +160,7 @@ void set_battle_ui_species(BattleUiState& state, std::string_view species_name);
 void next_battle_ui_mode(BattleUiState& state);
 void next_battle_ui_selection(BattleUiState& state);
 void previous_battle_ui_selection(BattleUiState& state);
+void move_battle_ui_selection(BattleUiState& state, int x, int y);
 void next_battle_ui_status(BattleUiState& state);
 bool compose_battle_ui(const BattleUiState& state, BattleTileMap& result, std::string& error);
 std::string_view label(BattleUiMode mode);

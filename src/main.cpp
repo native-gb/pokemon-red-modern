@@ -489,12 +489,13 @@ int main(int argc, char** argv) {
                     rules, battle_rules, campaign_programs, campaign,
                     animation_lab,
                     {
-                        .previous =
-                            (controls.up && !previous_controls.up) ||
-                            (controls.left && !previous_controls.left),
-                        .next =
-                            (controls.down && !previous_controls.down) ||
-                            (controls.right && !previous_controls.right),
+                        .left =
+                            controls.left && !previous_controls.left,
+                        .right =
+                            controls.right && !previous_controls.right,
+                        .up = controls.up && !previous_controls.up,
+                        .down =
+                            controls.down && !previous_controls.down,
                         .confirm = confirm_pressed,
                         .back = controls.back && !previous_controls.back,
                     },
@@ -621,6 +622,8 @@ int main(int argc, char** argv) {
             }
             if (!game.paused && game.mode == pokered::Mode::battle_lab)
                 pokered::step_battle_animation_lab(animation_lab);
+            if (!game.paused && game.mode == pokered::Mode::battle)
+                pokered::step_gameplay_battle_animations(animation_lab);
             accumulator -= step_seconds;
         }
 
@@ -635,6 +638,7 @@ int main(int argc, char** argv) {
             window.frame.render_height);
         pokered::update_world_view(world, bounded_elapsed);
         imgui_new_frame();
+        pokered::apply_nearest_sampling(window);
         if (!pokered::render::render_frame(window.frame.renderer, window.frame.render_target,
                                            window.frame.render_width, window.frame.render_height,
                                            game, catalog, boot_content, boot, boot_resources,
@@ -653,6 +657,7 @@ int main(int argc, char** argv) {
         pokered::render::draw_field_menu_overlay(
             world, campaign, campaign_programs, rules);
         imgui_render_layer();
+        pokered::apply_nearest_sampling(window);
         pokered::present_window(window);
 
         const int render_rate = pokered::effective_render_rate(presentation);

@@ -127,9 +127,10 @@ decision. This keeps cost proportional to active work even when every outdoor
 actor remains resident.
 
 Logical positions are integer world cells. Presentation positions interpolate
-continuously between previous and current logical transforms. Directional walk
-clips advance by distance traveled, so neither a render-rate change nor a
-connected-map boundary can introduce a jerk, pause, or foot-phase reset.
+continuously between previous and current logical transforms over Red's
+16-frame ordinary step. Directional walk clips advance once every four
+simulation ticks, so neither a render-rate change nor a connected-map boundary
+can introduce a jerk, pause, or foot-phase reset.
 
 ## Gameplay camera policy
 
@@ -142,15 +143,17 @@ Each imported map has an initial framing profile. The first authored Red
 profiles fit Pallet Town, fit Route 1's width, use a fixed 3x scale in Viridian
 City, and fit Route 22's height. Interiors fit their connected space when that
 requires a scale between 1x and 4x; otherwise they use their authored fallback
-scale. Fit-map and fit-space profiles center both axes. Fit-width follows the
-player vertically, fit-height follows horizontally, and fixed-scale views
-follow in both axes.
+scale. After selecting that entry scale, the camera applies one universal
+rule: if the complete active map or connected interior space fits, center it
+and remain fixed; otherwise center on and follow the player. Manual zoom
+re-evaluates the same rule immediately.
 
 Manual pan or zoom takes control until the player enters another map. The next
-map then applies its profile. The Player Settings option `Adjust camera on zone
-entry` can disable that behavior completely, preserving the user's scale and
-camera choices across map and world-space changes. Reset immediately reapplies
-the current map's profile.
+map then applies its profile. The Player Settings option `Use zone zoom on
+entry` can disable profile-selected zoom changes, preserving the user's scale
+across map and world-space changes. Fit-versus-follow still updates so a
+transition cannot leave the player off-screen. Reset immediately reapplies the
+current map's profile.
 
 Maps joined by connections remain one continuous movement surface. Crossing a
 connection is not a warp and does not fade, load, snap, or reset camera or
@@ -175,6 +178,10 @@ Simulation remains fixed at 60 Hz. Rendering is independent and defaults to a
 - 60, 120, 144, 165, and 240 Hz render limits;
 - the effective render cap and measured frame rate;
 - a toggle for the top-left FPS overlay.
+
+All game, render-target, and in-game overlay textures use nearest-neighbor
+sampling. The ImGui font atlas is explicitly changed from its backend's linear
+default to nearest sampling; debug and player tools share that crisp sampling.
 
 Disabling motion interpolation intentionally reduces the effective render cap
 to 60 Hz. The frame limiter uses precise post-present pacing and does not alter

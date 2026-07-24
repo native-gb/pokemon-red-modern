@@ -32,6 +32,45 @@ bool start_current(BattleAnimationLab& lab, Diagnostics& diagnostics) {
     return start_animation(lab.entries[lab.current].program, targets, lab.animation, diagnostics);
 }
 
+bool start_gameplay_request(BattleAnimationLab& lab,
+                            std::string& error) {
+    if (lab.gameplay_queue_cursor >= lab.gameplay_queue.size()) {
+        error = "gameplay battle animation queue has no current entry";
+        return false;
+    }
+    const GameplayBattleAnimation& request =
+        lab.gameplay_queue[lab.gameplay_queue_cursor];
+    if (request.animation_id == 0U ||
+        request.animation_id > lab.entries.size()) {
+        error = "battle event references an unavailable imported animation";
+        return false;
+    }
+
+    lab.gameplay_program =
+        lab.entries[request.animation_id - 1U].program;
+    if (request.enemy_turn) {
+        for (Symbol& symbol : lab.gameplay_program.symbols) {
+            if (symbol.text == "attacker")
+                symbol.text = "defender";
+            else if (symbol.text == "defender")
+                symbol.text = "attacker";
+        }
+    }
+    Diagnostics diagnostics;
+    const auto targets = battle_targets();
+    if (!start_animation(lab.gameplay_program, targets,
+                         lab.animation, diagnostics)) {
+        error =
+            diagnostics.entries.empty()
+                ? "could not start imported gameplay battle animation"
+                : format_diagnostic(diagnostics.entries.front());
+        return false;
+    }
+    lab.gameplay_enemy_turn = request.enemy_turn;
+    error.clear();
+    return true;
+}
+
 bool read_u16(std::istream& input, std::uint16_t& result) {
     std::array<unsigned char, 2> bytes{};
     if (!input.read(reinterpret_cast<char*>(bytes.data()), bytes.size())) return false;
@@ -445,6 +484,59 @@ void prepare_battle_view(BattleAnimationLab& lab) {
     lab.animation.finished = true;
     lab.finish_after_message = false;
     lab.return_to_command_after_message = false;
+    lab.gameplay_program = {};
+    lab.gameplay_queue.clear();
+    lab.gameplay_queue_cursor = 0U;
+    lab.gameplay_animation_active = false;
+    lab.gameplay_enemy_turn = false;
+}
+
+bool begin_gameplay_battle_animations(
+    BattleAnimationLab& lab,
+    std::vector<GameplayBattleAnimation> animations,
+    std::string& error) {
+    if (!lab.loaded || animations.empty()) {
+        error.clear();
+        return true;
+    }
+    for (const GameplayBattleAnimation& animation : animations) {
+        if (animation.animation_id == 0U ||
+            animation.animation_id > lab.entries.size()) {
+            error =
+                "battle event references an unavailable imported animation";
+            return false;
+        }
+    }
+    lab.gameplay_queue = std::move(animations);
+    lab.gameplay_queue_cursor = 0U;
+    lab.gameplay_animation_active = true;
+    if (start_gameplay_request(lab, error)) return true;
+    lab.gameplay_queue.clear();
+    lab.gameplay_animation_active = false;
+    lab.gameplay_enemy_turn = false;
+    return false;
+}
+
+void step_gameplay_battle_animations(BattleAnimationLab& lab) {
+    if (!lab.loaded || !lab.gameplay_animation_active) return;
+    if (!lab.animation.finished) {
+        step_animation(lab.animation);
+        return;
+    }
+    ++lab.gameplay_queue_cursor;
+    if (lab.gameplay_queue_cursor < lab.gameplay_queue.size()) {
+        std::string error;
+        if (start_gameplay_request(lab, error)) return;
+    }
+    lab.gameplay_program = {};
+    lab.gameplay_queue.clear();
+    lab.gameplay_queue_cursor = 0U;
+    lab.gameplay_animation_active = false;
+    lab.gameplay_enemy_turn = false;
+    lab.animation = {};
+    const auto targets = battle_targets();
+    lab.animation.targets.assign(targets.begin(), targets.end());
+    lab.animation.finished = true;
 }
 
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab) {

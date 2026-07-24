@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -16,6 +17,11 @@ namespace pokered {
 struct BattleAnimationLabEntry {
     Symbol name;
     content::AnimationProgram program;
+};
+
+struct GameplayBattleAnimation {
+    std::uint8_t animation_id{};
+    bool enemy_turn{};
 };
 
 struct ImportedAnimationPiece {
@@ -72,6 +78,9 @@ struct BattleAnimationLab {
     BattleUiState ui;
     BattleTileMap ui_tile_map{};
     AnimationState animation;
+    content::AnimationProgram gameplay_program;
+    std::vector<GameplayBattleAnimation> gameplay_queue;
+    std::size_t gameplay_queue_cursor{};
     std::size_t current{};
     std::size_t current_species{};
     std::size_t player_species{};
@@ -81,6 +90,8 @@ struct BattleAnimationLab {
     bool distinct_battlers{};
     bool finish_after_message{};
     bool return_to_command_after_message{};
+    bool gameplay_animation_active{};
+    bool gameplay_enemy_turn{};
     bool loaded{};
 };
 
@@ -98,6 +109,11 @@ void next_battle_ui_menu_selection(BattleAnimationLab& lab);
 void previous_battle_ui_menu_selection(BattleAnimationLab& lab);
 void cycle_battle_ui_status(BattleAnimationLab& lab);
 void prepare_battle_view(BattleAnimationLab& lab);
+bool begin_gameplay_battle_animations(
+    BattleAnimationLab& lab,
+    std::vector<GameplayBattleAnimation> animations,
+    std::string& error);
+void step_gameplay_battle_animations(BattleAnimationLab& lab);
 std::string_view battle_animation_lab_name(const BattleAnimationLab& lab);
 std::string_view battle_animation_lab_species_name(const BattleAnimationLab& lab);
 const ImportedPokemonVisual* battle_animation_lab_species(const BattleAnimationLab& lab);

@@ -776,6 +776,29 @@ void test_local_encounter_cache(TestState& state) {
               route_22->camera_framing ==
                   pokered::WorldCameraFraming::fit_height,
           "early Kanto maps retain their imported camera framing");
+    if (pallet != world.maps.end()) {
+        world.player.map_index = static_cast<std::size_t>(
+            pallet - world.maps.begin());
+        world.player.initialized = true;
+        world.current_space = pallet->world_space;
+        world.player.visual_global_x =
+            static_cast<float>(pallet->global_x_tiles / 2);
+        world.player.visual_global_y =
+            static_cast<float>(pallet->global_y_tiles / 2);
+        world.target_zoom = 2.0F;
+        world.automatic_camera_framing = false;
+        world.camera_region_dirty = true;
+        world.camera_initialized = false;
+        pokered::update_world_camera_region(world, 1280, 720);
+        check(state,
+              !world.follow_player_x && !world.follow_player_y,
+              "camera fixes a complete active area that fits");
+        pokered::zoom_world_view(world, 8.0F);
+        pokered::update_world_camera_region(world, 1280, 720);
+        check(state,
+              world.follow_player_x && world.follow_player_y,
+              "camera follows after zoom makes the active area overflow");
+    }
     const pokered::MapTileset* tileset =
         pokered::find_tileset(world, map_it->tileset_id);
     check(state, tileset != nullptr && tileset->grass_tile != 0xFFU,
@@ -922,6 +945,14 @@ void test_local_encounter_cache(TestState& state) {
         static_cast<std::size_t>(fight -
                                  battle_view.ui.definition.standard_commands
                                      .slots.begin());
+    pokered::move_battle_ui_selection(battle_view.ui, 0, 1);
+    const auto& down_from_fight =
+        battle_view.ui.definition.standard_commands.slots[
+            battle_view.ui.definition.standard_commands.selected];
+    check(state,
+          down_from_fight.on_select.text == "battle_choose_item",
+          "battle command down moves from FIGHT to ITEM");
+    pokered::move_battle_ui_selection(battle_view.ui, 0, -1);
     pokered::BattleControlResult control_result;
     check(state,
           pokered::control_battle(
@@ -937,6 +968,14 @@ void test_local_encounter_cache(TestState& state) {
               {.confirm = true}, control_result, error) &&
               campaign.battle.turn == 1U,
           "battle control resolves an ordinary owned turn");
+    check(state, battle_view.gameplay_animation_active,
+          "ordinary battle turn starts its imported move animations");
+    for (std::size_t tick = 0U;
+         battle_view.gameplay_animation_active && tick < 4096U;
+         ++tick)
+        pokered::step_gameplay_battle_animations(battle_view);
+    check(state, !battle_view.gameplay_animation_active,
+          "ordinary battle move animation queue completes");
 
     // Every imported command now has an owned action. Running exits a wild
     // battle through its message boundary.

@@ -15,8 +15,10 @@ struct TrainerCatalog;
 struct WorldState;
 
 struct BattleControlInput {
-    bool previous{};
-    bool next{};
+    bool left{};
+    bool right{};
+    bool up{};
+    bool down{};
     bool confirm{};
     bool back{};
 };

@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 #include <imgui.h>
 
+#include <cstdint>
 #include <cstdio>
 
 namespace pokered {
@@ -64,6 +65,11 @@ bool initialize_window(HostWindow& window, const std::filesystem::path& data_roo
         return false;
     }
     ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+    ImGui::GetIO().Fonts->Flags |= ImFontAtlasFlags_NoBakedLines;
+    ImGui::GetIO().Fonts->TexGlyphPadding = 0;
+    ImGui::GetStyle().AntiAliasedLines = false;
+    ImGui::GetStyle().AntiAliasedLinesUseTex = false;
+    apply_nearest_sampling(window);
     return true;
 }
 
@@ -199,6 +205,22 @@ WindowInput poll_window_events(HostWindow& window) {
 void update_window(HostWindow& window, double elapsed) {
     gubsy_update_runtime(window.runtime, static_cast<float>(elapsed));
     window.frame = gubsy_get_frame(window.runtime);
+    apply_nearest_sampling(window);
+}
+
+void apply_nearest_sampling(HostWindow& window) {
+    if (window.frame.render_target != nullptr)
+        (void)SDL_SetTextureScaleMode(
+            window.frame.render_target, SDL_SCALEMODE_NEAREST);
+    if (!imgui_is_initialized()) return;
+    const ImTextureID texture_id =
+        ImGui::GetIO().Fonts->TexRef.GetTexID();
+    if (texture_id == ImTextureID_Invalid) return;
+    SDL_Texture* font_texture = reinterpret_cast<SDL_Texture*>(
+        static_cast<std::uintptr_t>(texture_id));
+    if (font_texture != nullptr)
+        (void)SDL_SetTextureScaleMode(
+            font_texture, SDL_SCALEMODE_NEAREST);
 }
 
 bool draw_window(HostWindow& window) {

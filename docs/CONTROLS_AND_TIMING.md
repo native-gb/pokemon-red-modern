@@ -52,8 +52,15 @@ Backspace do not acquire alternate meanings while a naming grid owns input.
 
 World zoom accepts `+`, `-`, and the mouse wheel. Panning or zooming manually
 overrides the active map's framing until another map is entered. Player
-Settings can disable `Adjust camera on zone entry` to preserve a manually
-chosen camera across every transition.
+Settings can disable `Use zone zoom on entry` to preserve a manually
+chosen scale across every transition. At any scale, a complete active area
+that fits is fixed and centered; an area that does not fit follows the player.
+
+Battle command navigation is spatial rather than list-ordered: left/right
+change columns and up/down change rows. Thus Down from FIGHT selects ITEM,
+while Right from FIGHT selects PKMN. Once a move is committed, the controller
+queues the move animation IDs from the resolved battle events and blocks new
+battle input until those imported animations finish.
 
 ## Clock domains
 

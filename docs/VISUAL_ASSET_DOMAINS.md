@@ -93,10 +93,10 @@ The readable form is equivalent to:
 
 ```text
 sprite_clip oak_walk_down
-    frame oak_down_stand duration 8
-    frame oak_down_step_left duration 8
-    frame oak_down_stand duration 8
-    frame oak_down_step_right duration 8
+    frame oak_down_stand duration 4
+    frame oak_down_step_left duration 4
+    frame oak_down_stand duration 4
+    frame oak_down_step_right duration 4
 ```
 
 The player has additional states which must remain distinct clips: walking,

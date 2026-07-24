@@ -437,11 +437,9 @@ bool activate_world_warp(WorldState& world) {
     world.player.map_index = destination_index;
     world.player.x = destination_warp.x;
     world.player.y = destination_warp.y;
-    world.player.move_cooldown = 7U;
+    world.player.move_cooldown = 15U;
     world.current = destination_index;
     world.current_space = destination.world_space;
-    world.follow_player_x = true;
-    world.follow_player_y = true;
     world.camera_region_dirty = true;
     world.dialogue = {};
     world.player.visual_global_x =
@@ -450,8 +448,7 @@ bool activate_world_warp(WorldState& world) {
         static_cast<float>(destination.global_y_tiles / 2 + world.player.y);
     world.player.moving = false;
     world.player.animation_phase = 0U;
-    world.camera_x = world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
-    world.camera_y = world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
+    world.camera_initialized = false;
     world.last_warp = {
         .source_map_id = source.id,
         .source_warp_index = source_warp->index,
@@ -723,7 +720,7 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
     world.follow_player_y = true;
     world.target_zoom = 2.0F;
     world.zoom = 2.0F;
-    world.camera_initialized = true;
+    world.camera_initialized = false;
     world.camera_x = world.target_camera_x = world.player.visual_global_x * 16.0F + 8.0F;
     world.camera_y = world.target_camera_y = world.player.visual_global_y * 16.0F + 8.0F;
     world.camera_region_dirty = true;
@@ -792,7 +789,7 @@ bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
         world.player.visual_global_x * 16.0F + 8.0F;
     world.camera_y = world.target_camera_y =
         world.player.visual_global_y * 16.0F + 8.0F;
-    world.camera_initialized = true;
+    world.camera_initialized = false;
     error.clear();
     return true;
 }
@@ -971,7 +968,7 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
             static_cast<std::int32_t>(
                 approach.actor_runtime_index);
         --approach.steps_remaining;
-        approach.step_cooldown = 7U;
+        approach.step_cooldown = 15U;
         return;
     }
 
@@ -1056,11 +1053,9 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
                     world.player.x = local_x;
                     world.player.y = local_y;
                     world.current = target_map;
-                    world.follow_player_x = true;
-                    world.follow_player_y = true;
                     if (previous_map != target_map)
                         world.camera_region_dirty = true;
-                    world.player.move_cooldown = 7U;
+                    world.player.move_cooldown = 15U;
                     world.player_completed_step =
                         !activate_world_warp(world);
                 }
@@ -1427,8 +1422,6 @@ bool apply_player_path_command(WorldState& world, WorldPathCommand command,
     world.player.facing = facing;
     world.current = target_map;
     world.current_space = target.world_space;
-    world.follow_player_x = true;
-    world.follow_player_y = true;
     if (previous_map != target_map)
         world.camera_region_dirty = true;
     world.player_completed_step = !activate_world_warp(world);
@@ -1673,7 +1666,7 @@ bool step_world_script_motion(WorldState& world, std::string& error) {
         error.clear();
         return true;
     }
-    motion.step_cooldown = 7U;
+    motion.step_cooldown = 15U;
     error.clear();
     return true;
 }
@@ -1705,12 +1698,14 @@ void toggle_world_view(WorldState& world) {
 void zoom_world_view(WorldState& world, float factor) {
     world.target_zoom = std::clamp(world.target_zoom * factor, 0.05F, 64.0F);
     world.manual_camera_override = true;
+    world.manual_pan_override = false;
 }
 
 void pan_world_view(WorldState& world, float x, float y) {
     world.follow_player_x = false;
     world.follow_player_y = false;
     world.manual_camera_override = true;
+    world.manual_pan_override = true;
     const float scale = std::max(world.target_zoom, 0.05F);
     world.target_camera_x += x / scale;
     world.target_camera_y += y / scale;
@@ -1748,13 +1743,8 @@ void reset_world_view(WorldState& world) {
         world.target_camera_y = (top + bottom) * 0.5F;
     }
     world.manual_camera_override = false;
+    world.manual_pan_override = false;
     world.camera_region_dirty = true;
-    if (!world.camera_initialized) {
-        world.camera_x = world.target_camera_x;
-        world.camera_y = world.target_camera_y;
-        world.zoom = world.target_zoom;
-        world.camera_initialized = true;
-    }
 }
 
 void update_world_camera_region(WorldState& world, int output_width,
@@ -1765,10 +1755,11 @@ void update_world_camera_region(WorldState& world, int output_width,
     const std::size_t map_index = world.player.map_index;
     const bool entered_region =
         world.camera_region_map_index != map_index;
-    if (!world.camera_region_dirty && !entered_region) return;
+    const bool apply_entry_profile =
+        world.camera_region_dirty || entered_region;
+    if (entered_region) world.manual_pan_override = false;
     world.camera_region_map_index = map_index;
     world.camera_region_dirty = false;
-    if (!world.automatic_camera_framing) return;
 
     const WorldMap& map = world.maps[map_index];
     float left = static_cast<float>(map.global_x_tiles) * 8.0F;
@@ -1786,45 +1777,55 @@ void update_world_camera_region(WorldState& world, int output_width,
         std::max(static_cast<float>(output_height) - 96.0F, 1.0F);
     const float width = std::max(right - left, 1.0F);
     const float height = std::max(bottom - top, 1.0F);
-    float requested_zoom = map.camera_zoom;
-    switch (map.camera_framing) {
-    case WorldCameraFraming::fixed_zoom:
-        break;
-    case WorldCameraFraming::fit_map:
-    case WorldCameraFraming::fit_space:
-        requested_zoom =
-            std::min(available_width / width,
-                     available_height / height);
-        break;
-    case WorldCameraFraming::fit_width:
-        requested_zoom = available_width / width;
-        break;
-    case WorldCameraFraming::fit_height:
-        requested_zoom = available_height / height;
-        break;
+    if (apply_entry_profile &&
+        world.automatic_camera_framing) {
+        float requested_zoom = map.camera_zoom;
+        switch (map.camera_framing) {
+        case WorldCameraFraming::fixed_zoom:
+            break;
+        case WorldCameraFraming::fit_map:
+        case WorldCameraFraming::fit_space:
+            requested_zoom =
+                std::min(available_width / width,
+                         available_height / height);
+            break;
+        case WorldCameraFraming::fit_width:
+            requested_zoom = available_width / width;
+            break;
+        case WorldCameraFraming::fit_height:
+            requested_zoom = available_height / height;
+            break;
+        }
+        if (requested_zoom < 1.0F || requested_zoom > 4.0F)
+            requested_zoom = map.camera_zoom;
+        world.target_zoom =
+            std::clamp(requested_zoom, 0.05F, 64.0F);
+        world.manual_camera_override = false;
     }
-    if (requested_zoom < 1.0F || requested_zoom > 4.0F)
-        requested_zoom = map.camera_zoom;
-    world.target_zoom =
-        std::clamp(requested_zoom, 0.05F, 64.0F);
-    world.manual_camera_override = false;
 
     const float center_x = (left + right) * 0.5F;
     const float center_y = (top + bottom) * 0.5F;
-    world.follow_player_x =
-        map.camera_framing == WorldCameraFraming::fixed_zoom ||
-        map.camera_framing == WorldCameraFraming::fit_height;
-    world.follow_player_y =
-        map.camera_framing == WorldCameraFraming::fixed_zoom ||
-        map.camera_framing == WorldCameraFraming::fit_width;
-    world.target_camera_x =
-        world.follow_player_x
-            ? world.player.visual_global_x * 16.0F + 8.0F
-            : center_x;
-    world.target_camera_y =
-        world.follow_player_y
-            ? world.player.visual_global_y * 16.0F + 8.0F
-            : center_y;
+    const bool area_fits =
+        width * world.target_zoom <= available_width &&
+        height * world.target_zoom <= available_height;
+    if (!world.manual_pan_override) {
+        world.follow_player_x = !area_fits;
+        world.follow_player_y = !area_fits;
+        world.target_camera_x =
+            area_fits
+                ? center_x
+                : world.player.visual_global_x * 16.0F + 8.0F;
+        world.target_camera_y =
+            area_fits
+                ? center_y
+                : world.player.visual_global_y * 16.0F + 8.0F;
+    }
+    if (!world.camera_initialized) {
+        world.camera_x = world.target_camera_x;
+        world.camera_y = world.target_camera_y;
+        world.zoom = world.target_zoom;
+        world.camera_initialized = true;
+    }
 }
 
 void update_world_view(WorldState& world, double elapsed_seconds) {
@@ -1859,7 +1860,7 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
             world.player.movement_elapsed = 0.0F;
         }
         if (world.player.moving) {
-            constexpr float duration = 8.0F / 60.0F;
+            constexpr float duration = 16.0F / 60.0F;
             world.player.movement_elapsed +=
                 static_cast<float>(bounded);
             const float amount = std::clamp(
@@ -1906,7 +1907,7 @@ void update_world_view(WorldState& world, double elapsed_seconds) {
             actor.movement_elapsed = 0.0F;
         }
         if (!actor.moving) continue;
-        constexpr float duration = 8.0F / 60.0F;
+        constexpr float duration = 16.0F / 60.0F;
         actor.movement_elapsed += static_cast<float>(bounded);
         const float amount = std::clamp(
             actor.movement_elapsed / duration, 0.0F, 1.0F);

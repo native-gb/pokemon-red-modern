@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <optional>
+#include <utility>
+#include <vector>
 
 namespace pokered {
 namespace {
@@ -29,6 +31,24 @@ std::uint8_t leading_level(const PartyState& party) {
 
 bool recompose(BattleAnimationLab& view, std::string& error) {
     return compose_battle_ui(view.ui, view.ui_tile_map, error);
+}
+
+bool begin_event_animations(const RuleCatalog& rules,
+                            const BattleState& battle,
+                            BattleAnimationLab& view,
+                            std::string& error) {
+    std::vector<GameplayBattleAnimation> animations;
+    for (const BattleEvent& event : battle.events) {
+        if (event.kind != BattleEventKind::used_move) continue;
+        const MoveRule* move = find_move(rules, event.move_id);
+        if (move == nullptr || move->animation_id == 0U) continue;
+        animations.push_back({
+            .animation_id = move->animation_id,
+            .enemy_turn = !event.player_actor,
+        });
+    }
+    return begin_gameplay_battle_animations(
+        view, std::move(animations), error);
 }
 
 bool show_battle_message(
@@ -329,6 +349,10 @@ bool control_battle(const RuleCatalog& rules,
         error = "battle controls require an active owned battle";
         return false;
     }
+    if (view.gameplay_animation_active) {
+        error.clear();
+        return true;
+    }
     if (view.ui.mode == BattleUiMode::message) {
         if (!input.confirm) {
             error.clear();
@@ -353,8 +377,12 @@ bool control_battle(const RuleCatalog& rules,
         error.clear();
         return true;
     }
-    if (input.previous) previous_battle_ui_menu_selection(view);
-    if (input.next) next_battle_ui_menu_selection(view);
+    if (input.left || input.right || input.up || input.down) {
+        move_battle_ui_selection(
+            view.ui, input.left ? -1 : input.right ? 1 : 0,
+            input.up ? -1 : input.down ? 1 : 0);
+        if (!recompose(view, error)) return false;
+    }
     if (input.back && view.ui.mode == BattleUiMode::moves) {
         view.ui.mode = BattleUiMode::command;
         return recompose(view, error);
@@ -580,8 +608,12 @@ bool control_battle(const RuleCatalog& rules,
     }
 
     view.ui.mode = BattleUiMode::command;
-    return sync_battle_view(rules, battle_rules, campaign.party,
-                            campaign.battle, view, error);
+    if (!sync_battle_view(
+            rules, battle_rules, campaign.party,
+            campaign.battle, view, error))
+        return false;
+    return begin_event_animations(
+        rules, campaign.battle, view, error);
 }
 
 } // namespace pokered

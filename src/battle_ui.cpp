@@ -852,6 +852,63 @@ void previous_battle_ui_selection(BattleUiState& state) {
         state.selected_move = previous(state.selected_move, state.moves.size());
 }
 
+void move_battle_ui_selection(BattleUiState& state, int x, int y) {
+    if (state.mode == BattleUiMode::moves) {
+        if (y > 0)
+            state.selected_move =
+                (state.selected_move + 1U) % state.moves.size();
+        else if (y < 0)
+            state.selected_move =
+                state.selected_move == 0U
+                    ? state.moves.size() - 1U
+                    : state.selected_move - 1U;
+        return;
+    }
+    BattleCommandMenu* menu =
+        state.mode == BattleUiMode::safari
+            ? &state.definition.safari_commands
+            : state.mode == BattleUiMode::command
+                  ? &state.definition.standard_commands
+                  : nullptr;
+    if (menu == nullptr || menu->slots.empty() ||
+        menu->selected >= menu->slots.size() ||
+        (x == 0 && y == 0))
+        return;
+
+    const BattleCommandSlot& current = menu->slots[menu->selected];
+    std::size_t best = menu->selected;
+    int best_primary = std::numeric_limits<int>::max();
+    int best_secondary = std::numeric_limits<int>::max();
+    for (std::size_t index = 0U; index < menu->slots.size(); ++index) {
+        if (index == menu->selected) continue;
+        const BattleCommandSlot& candidate = menu->slots[index];
+        const int delta_x =
+            static_cast<int>(candidate.x) -
+            static_cast<int>(current.x);
+        const int delta_y =
+            static_cast<int>(candidate.y) -
+            static_cast<int>(current.y);
+        const bool forward =
+            (x < 0 && delta_x < 0) ||
+            (x > 0 && delta_x > 0) ||
+            (y < 0 && delta_y < 0) ||
+            (y > 0 && delta_y > 0);
+        if (!forward) continue;
+        const int primary =
+            x == 0 ? std::abs(delta_y) : std::abs(delta_x);
+        const int secondary =
+            x == 0 ? std::abs(delta_x) : std::abs(delta_y);
+        if (primary < best_primary ||
+            (primary == best_primary &&
+             secondary < best_secondary)) {
+            best = index;
+            best_primary = primary;
+            best_secondary = secondary;
+        }
+    }
+    if (best != menu->selected) menu->selected = best;
+}
+
 void next_battle_ui_status(BattleUiState& state) {
     if (state.definition.conditions.empty()) return;
     const auto found = std::find_if(

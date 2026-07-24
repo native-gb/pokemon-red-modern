@@ -70,6 +70,7 @@ bool apply_window_vsync(HostWindow& window, bool enabled);
 bool set_window_text_input(HostWindow& window, bool enabled);
 WindowInput poll_window_events(HostWindow& window);
 void update_window(HostWindow& window, double elapsed);
+void apply_nearest_sampling(HostWindow& window);
 bool draw_window(HostWindow& window);
 void present_window(HostWindow& window);
 void shutdown_window(HostWindow& window);

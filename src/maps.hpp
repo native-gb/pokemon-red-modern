@@ -303,6 +303,7 @@ struct WorldState {
     bool follow_player_y{true};
     bool automatic_camera_framing{true};
     bool manual_camera_override{};
+    bool manual_pan_override{};
     bool camera_region_dirty{true};
     std::size_t camera_region_map_index{
         static_cast<std::size_t>(-1)};

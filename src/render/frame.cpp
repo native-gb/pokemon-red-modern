@@ -233,7 +233,8 @@ void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel, std::u
 
 bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
                           const AnimationEffect& effect, const ImportedAnimationAssets& assets,
-                          content::AnimationPalette screen_palette) {
+                          content::AnimationPalette screen_palette,
+                          bool enemy_turn) {
     const ImportedAnimationVisual* visual = find_imported_animation_visual(assets, effect.visual);
     if (visual == nullptr) return false;
     // Lower OAM indexes win sprite overlap priority, so draw them last.
@@ -259,11 +260,17 @@ bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
                     static_cast<std::uint8_t>(((high >> bit) & 1U) << 1U | ((low >> bit) & 1U));
                 if (pixel == 0) continue;
                 set_imported_pixel_color(renderer, pixel, piece.attributes, screen_palette);
-                fill_native_rect(
-                    renderer, view,
-                    effect.x + static_cast<float>(piece.x) + static_cast<float>(output_x),
-                    effect.y + static_cast<float>(piece.y) + static_cast<float>(output_y), 1.0F,
-                    1.0F);
+                float x =
+                    effect.x + static_cast<float>(piece.x) +
+                    static_cast<float>(output_x);
+                float y =
+                    effect.y + static_cast<float>(piece.y) +
+                    static_cast<float>(output_y);
+                if (enemy_turn) {
+                    x = 159.0F - x;
+                    y = 95.0F - y;
+                }
+                fill_native_rect(renderer, view, x, y, 1.0F, 1.0F);
             }
         }
     }
@@ -272,11 +279,19 @@ bool draw_imported_effect(SDL_Renderer* renderer, const ViewLayout& view,
 
 void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const AnimationEffect& effect,
                  const ImportedAnimationAssets& imported_assets,
-                 content::AnimationPalette screen_palette) {
+                 content::AnimationPalette screen_palette,
+                 bool enemy_turn) {
     if (!effect.visible) return;
-    if (draw_imported_effect(renderer, view, effect, imported_assets, screen_palette)) return;
-    const float x = view.x + effect.x * view.scale;
-    const float y = view.y + effect.y * view.scale;
+    if (draw_imported_effect(
+            renderer, view, effect, imported_assets,
+            screen_palette, enemy_turn))
+        return;
+    const float effect_x =
+        enemy_turn ? 160.0F - effect.x : effect.x;
+    const float effect_y =
+        enemy_turn ? 96.0F - effect.y : effect.y;
+    const float x = view.x + effect_x * view.scale;
+    const float y = view.y + effect_y * view.scale;
     const float unit = view.scale;
     const std::string& visual = effect.visual.text;
 
@@ -298,8 +313,10 @@ void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const Animation
     }
     if (visual == "healing_star") {
         (void)SDL_SetRenderDrawColor(renderer, 88, 196, 116, 255);
-        fill_native_rect(renderer, view, effect.x - 1.0F, effect.y - 6.0F, 3.0F, 13.0F);
-        fill_native_rect(renderer, view, effect.x - 6.0F, effect.y - 1.0F, 13.0F, 3.0F);
+        fill_native_rect(renderer, view, effect_x - 1.0F,
+                         effect_y - 6.0F, 3.0F, 13.0F);
+        fill_native_rect(renderer, view, effect_x - 6.0F,
+                         effect_y - 1.0F, 13.0F, 3.0F);
         return;
     }
 
@@ -310,7 +327,8 @@ void draw_effect(SDL_Renderer* renderer, const ViewLayout& view, const Animation
     else
         (void)SDL_SetRenderDrawColor(renderer, 224, 76, 48, 255);
     const float size = visual == "ember_burst" ? 14.0F : 7.0F;
-    fill_native_rect(renderer, view, effect.x - size * 0.5F, effect.y - size * 0.5F, size, size);
+    fill_native_rect(renderer, view, effect_x - size * 0.5F,
+                     effect_y - size * 0.5F, size, size);
 }
 
 bool draw_battle_ui(SDL_Renderer* renderer, const ViewLayout& view, const BattleAnimationLab& lab,
@@ -390,7 +408,8 @@ void draw_battle_lab(SDL_Renderer* renderer, const ViewLayout& view,
         fill_native_rect(renderer, scene_view, 2.0F, 98.0F, 156.0F, 44.0F);
     }
     for (const AnimationEffect& effect : lab.animation.effects)
-        draw_effect(renderer, scene_view, effect, lab.imported_assets, screen_palette);
+        draw_effect(renderer, scene_view, effect, lab.imported_assets,
+                    screen_palette, lab.gameplay_enemy_turn);
     (void)SDL_SetRenderClipRect(renderer, nullptr);
 }
 
