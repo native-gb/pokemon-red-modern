@@ -132,6 +132,11 @@ ordinary accuracy/evasion calculation with the cartridge-owned stage ratios.
 It also contains the executable ordinary-damage pipeline and all 24 direct
 one-stage/two-stage stat-change programs. Unsupported source effects remain
 explicit import gaps.
+`world_maps.bin` retains each tileset's three ROM-authored talking-over tile
+IDs alongside collision, grass, and animation metadata. Actor activation
+checks the immediately faced cell first, then extends by one cell only when
+that tile has the imported counter role. Pokémon Center nurses, mart clerks,
+and other counter NPCs therefore use the same generic targeting path.
 `boot_content.bin` contains normalized boot graphics, layouts, text programs,
 title timing tables, initial-placement content, and the initial previous-map
 state required by `LAST_MAP` exits.

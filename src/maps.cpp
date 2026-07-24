@@ -80,6 +80,9 @@ bool read_tilesets(std::istream& input, WorldState& world, std::string& error) {
         if (!read_u8(input, tileset.id) || !read_u16(input, tileset.tile_count) ||
             !read_u8(input, tileset.grass_tile) ||
             !read_u8(input, tileset.animation_mode) || tileset.animation_mode > 2 ||
+            !read_u8(input, tileset.counter_tiles[0]) ||
+            !read_u8(input, tileset.counter_tiles[1]) ||
+            !read_u8(input, tileset.counter_tiles[2]) ||
             !read_u8(input, passable_count) || passable_count == 0 ||
             !read_bytes(input, passable_count, tileset.passable_tiles) ||
             !read_u32(input, pixel_count) || tileset.tile_count == 0 ||
@@ -533,6 +536,22 @@ std::optional<std::uint8_t> collision_tile(
     return map.tiles[offset];
 }
 
+bool extends_actor_activation(
+    const WorldState& world, std::size_t map_index,
+    std::int32_t global_x, std::int32_t global_y) {
+    if (map_index >= world.maps.size()) return false;
+    const WorldMap& map = world.maps[map_index];
+    const MapTileset* tileset =
+        find_tileset(world, map.tileset_id);
+    const auto tile =
+        collision_tile(world, map_index, global_x, global_y);
+    return tileset != nullptr && tile.has_value() &&
+           std::find(
+               tileset->counter_tiles.begin(),
+               tileset->counter_tiles.end(), *tile) !=
+               tileset->counter_tiles.end();
+}
+
 void queue_player_segment(WorldState& world, float global_x,
                           float global_y, bool ledge_hop = false) {
     world.player.movement_queue.push_back({
@@ -619,6 +638,38 @@ void open_interaction(WorldState& world, CampaignState& campaign,
     world.dialogue.open = true;
 }
 
+bool activate_actor_at(
+    WorldState& world, const InteractionCatalog& interactions,
+    CampaignState& campaign, std::size_t map_index,
+    std::int32_t local_x, std::int32_t local_y) {
+    if (map_index >= world.maps.size() ||
+        map_index >= world.spatial.size())
+        return false;
+    WorldMapCellIndex& cells = world.spatial[map_index];
+    if (!inside(cells, local_x, local_y)) return false;
+    const std::int32_t actor_index =
+        cells.actor_by_cell[cell_offset(cells, local_x, local_y)];
+    if (actor_index < 0 ||
+        static_cast<std::size_t>(actor_index) >= world.actors.size())
+        return false;
+
+    WorldActorState& actor =
+        world.actors[static_cast<std::size_t>(actor_index)];
+    actor.facing = opposite(world.player.facing);
+    const WorldActorSpawn& spawn =
+        world.maps[actor.map_index].actors[actor.spawn_index];
+    world.last_actor_activation = {
+        .map_id = world.maps[map_index].id,
+        .actor_index = spawn.index,
+        .occurred = true,
+    };
+    open_interaction(
+        world, campaign,
+        find_interaction(
+            interactions, world.maps[map_index].id, spawn.text_id));
+    return true;
+}
+
 std::uint32_t next_random(WorldState& world) {
     world.random_state = world.random_state * 1664525U + 1013904223U;
     return world.random_state;
@@ -634,7 +685,7 @@ bool load_world(const std::filesystem::path& path, WorldState& result, std::stri
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'M', 'V', 'C'}) {
+        magic != std::array{'P', 'M', 'V', 'D'}) {
         error = "world map cache is missing or has an invalid header";
         return false;
     }
@@ -1169,14 +1220,20 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
         std::int32_t dy = 0;
         direction_delta(world.player.facing, dx, dy);
         const WorldMap& map = world.maps[world.player.map_index];
-        const std::int32_t global_x = map.global_x_tiles / 2 + world.player.x + dx;
-        const std::int32_t global_y = map.global_y_tiles / 2 + world.player.y + dy;
-        const std::size_t target_map =
-            find_map_for_global_cell(world, world.player.map_index, global_x, global_y);
+        std::int32_t global_x =
+            map.global_x_tiles / 2 + world.player.x + dx;
+        std::int32_t global_y =
+            map.global_y_tiles / 2 + world.player.y + dy;
+        std::size_t target_map = find_map_for_global_cell(
+            world, world.player.map_index, global_x, global_y);
+        bool activated = false;
+
         if (target_map < world.maps.size()) {
             const WorldMap& target = world.maps[target_map];
-            const std::int32_t local_x = global_x - target.global_x_tiles / 2;
-            const std::int32_t local_y = global_y - target.global_y_tiles / 2;
+            const std::int32_t local_x =
+                global_x - target.global_x_tiles / 2;
+            const std::int32_t local_y =
+                global_y - target.global_y_tiles / 2;
             world.last_cell_activation = {
                 .map_id = target.id,
                 .x = static_cast<std::uint8_t>(local_x),
@@ -1186,25 +1243,45 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
             };
             WorldMapCellIndex& cells = world.spatial[target_map];
             const std::size_t cell = cell_offset(cells, local_x, local_y);
-            const std::int32_t actor_index = cells.actor_by_cell[cell];
-            if (actor_index >= 0 &&
-                static_cast<std::size_t>(actor_index) < world.actors.size()) {
-                WorldActorState& actor = world.actors[static_cast<std::size_t>(actor_index)];
-                actor.facing = opposite(world.player.facing);
-                const WorldActorSpawn& spawn =
-                    world.maps[actor.map_index].actors[actor.spawn_index];
-                world.last_actor_activation = {
-                    .map_id = target.id,
-                    .actor_index = spawn.index,
-                    .occurred = true,
-                };
-                open_interaction(
-                    world, campaign,
-                    find_interaction(interactions, target.id, spawn.text_id));
-            } else if (cells.background_program_by_cell[cell] != 0U) {
+            activated = activate_actor_at(
+                world, interactions, campaign, target_map, local_x,
+                local_y);
+            if (!activated &&
+                cells.background_program_by_cell[cell] != 0U) {
                 open_interaction(world, campaign,
                                  find_interaction(interactions, target.id,
                                                   cells.background_program_by_cell[cell]));
+                activated = true;
+            }
+
+            // Red's tileset header owns three counter tile IDs. A counter in
+            // the immediately faced cell extends actor targeting by one cell,
+            // after immediate background interactions have had priority.
+            if (!activated &&
+                extends_actor_activation(
+                    world, target_map, global_x, global_y)) {
+                global_x += dx;
+                global_y += dy;
+                target_map = find_map_for_global_cell(
+                    world, target_map, global_x, global_y);
+                if (target_map < world.maps.size()) {
+                    const WorldMap& extended =
+                        world.maps[target_map];
+                    const std::int32_t extended_x =
+                        global_x - extended.global_x_tiles / 2;
+                    const std::int32_t extended_y =
+                        global_y - extended.global_y_tiles / 2;
+                    world.last_cell_activation = {
+                        .map_id = extended.id,
+                        .x = static_cast<std::uint8_t>(extended_x),
+                        .y = static_cast<std::uint8_t>(extended_y),
+                        .facing = world.player.facing,
+                        .occurred = true,
+                    };
+                    (void)activate_actor_at(
+                        world, interactions, campaign, target_map,
+                        extended_x, extended_y);
+                }
             }
         }
     }

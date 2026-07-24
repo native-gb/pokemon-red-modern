@@ -34,13 +34,13 @@ trainer_magic="$(head -c 4 "$trainer_cache" 2>/dev/null || true)"
 boot_magic="$(head -c 4 "$boot_cache" 2>/dev/null || true)"
 campaign_magic="$(head -c 4 "$campaign_cache" 2>/dev/null || true)"
 audio_magic="$(head -c 4 "$audio_cache" 2>/dev/null || true)"
-if [[ "$world_magic" != "PMVB" || "$interaction_magic" != "PWI3" ||
+if [[ "$world_magic" != "PMVD" || "$interaction_magic" != "PWI3" ||
       "$rule_magic" != "PRL1" || "$battle_rule_magic" != "PBR9" ||
       "$encounter_magic" != "PEC1" ||
-      "$trainer_magic" != "PTC1" ||
+      "$trainer_magic" != "PTC2" ||
       "$boot_magic" != "PBT2" ||
       "$campaign_magic" != "PCPR" ||
-      "$audio_magic" != "PRA4" ]]; then
+      "$audio_magic" != "PRA5" ]]; then
     rom="$repo_root/../native-gb-pokemon-red/roms/pokemon_red.gb"
     if [[ ! -f "$rom" ]]; then
         echo "Imported runtime data is stale and the canonical ROM is missing: $rom" >&2

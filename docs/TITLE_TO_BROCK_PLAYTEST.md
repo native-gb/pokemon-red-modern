@@ -18,6 +18,8 @@ presentation is finished.
   the enemy action.
 - Every decoded Pokémon Center nurse uses the imported shared text family,
   HEAL/CANCEL choice, HP/status/PP healing, and a saved healing checkpoint.
+  The tileset's ROM-derived counter roles extend actor activation across the
+  counter rather than relying on a Center-specific coordinate.
 - Existing campaign fibers cover Oak interception, all starters, naming,
   the first lab rival battle, parcel handoff/return, Pokédex request, Route 1
   item, first Route 22 rival, Viridian Forest loose items and trainers,

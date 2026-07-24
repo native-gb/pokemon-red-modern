@@ -3,6 +3,7 @@
 #include "field_menu.hpp"
 #include "naming.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -22,6 +23,7 @@ struct MapTileset {
     std::uint16_t tile_count{};
     std::uint8_t grass_tile{0xFFU};
     std::uint8_t animation_mode{};
+    std::array<std::uint8_t, 3> counter_tiles{};
     std::vector<std::uint8_t> passable_tiles;
     std::vector<std::uint8_t> pixels;
     std::vector<std::uint8_t> animation_pixels;
