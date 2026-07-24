@@ -14,6 +14,7 @@ struct ViewLayout;
 struct BootRenderResources {
     std::vector<SDL_Texture*> images;
     SDL_Texture* ui_tiles{};
+    SDL_Texture* pokedex_tiles{};
 };
 
 bool upload_boot_textures(SDL_Renderer* renderer, const BootContent& content,

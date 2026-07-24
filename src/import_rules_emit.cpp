@@ -56,6 +56,7 @@ std::string source_range(std::size_t offset, std::size_t size) {
 void emit_source(const std::vector<TypeRule>& types,
                  const std::vector<TypeInteractionRule>& interactions,
                  const std::vector<MoveRule>& moves, const std::vector<SpeciesRule>& species,
+                 const std::vector<PokedexEntryRule>& pokedex_entries,
                  const std::vector<LearnsetRule>& learnsets,
                  const std::vector<EvolutionRule>& evolutions,
                  const std::vector<GrowthCurveRule>& growth_curves,
@@ -140,6 +141,37 @@ void emit_source(const std::vector<TypeRule>& types,
     }
     add_file(result, "source/rules/species.sexpr", species_source.str());
 
+    std::ostringstream pokedex_source;
+    pokedex_source
+        << "; ROM-derived Pokédex metadata and two three-line description pages.\n";
+    for (const PokedexEntryRule& entry : pokedex_entries) {
+        const SpeciesRule& record =
+            species[entry.dex_number - 1U];
+        pokedex_source
+            << "\npokedex_entry " << record.key << '\n'
+            << "    species " << record.key << '\n'
+            << "    classification \""
+            << entry.classification << "\"\n"
+            << "    height "
+            << static_cast<unsigned>(entry.height_feet)
+            << ' '
+            << static_cast<unsigned>(entry.height_inches)
+            << "\n"
+            << "    weight_tenths_pounds "
+            << entry.weight_tenths_pounds << '\n';
+        for (std::size_t page = 0U; page < 2U; ++page) {
+            pokedex_source << "    page\n";
+            for (std::size_t row = 0U; row < 3U; ++row)
+                pokedex_source << "        line \""
+                               << entry.description_lines[
+                                      page * 3U + row]
+                               << "\"\n";
+        }
+    }
+    add_file(
+        result, "source/rules/pokedex_entries.sexpr",
+        pokedex_source.str());
+
     std::ostringstream learnset_source;
     learnset_source << "; Ordered level-up move records.\n";
     for (const LearnsetRule& learn : learnsets) {
@@ -198,6 +230,7 @@ void emit_source(const std::vector<TypeRule>& types,
            << "type_interactions " << interactions.size() << '\n'
            << "moves " << moves.size() << '\n'
            << "species " << species.size() << '\n'
+           << "pokedex_entries " << pokedex_entries.size() << '\n'
            << "internal_species_slots " << kInternalSpeciesCount << '\n'
            << "learnset_entries " << learnsets.size() << '\n'
            << "evolutions " << evolutions.size() << '\n'
@@ -220,11 +253,12 @@ void emit_source(const std::vector<TypeRule>& types,
 void emit_cache(const std::vector<TypeRule>& types,
                 const std::vector<TypeInteractionRule>& interactions,
                 const std::vector<MoveRule>& moves, const std::vector<SpeciesRule>& species,
+                const std::vector<PokedexEntryRule>& pokedex_entries,
                 const std::vector<LearnsetRule>& learnsets,
                 const std::vector<EvolutionRule>& evolutions,
                 const std::vector<GrowthCurveRule>& growth_curves,
                 const std::vector<MachineRule>& machines, RuleImport& result) {
-    std::vector<std::uint8_t> bytes{'P', 'R', 'L', '1'};
+    std::vector<std::uint8_t> bytes{'P', 'R', 'L', '2'};
     write_u16(bytes, types.size());
     for (const TypeRule& type : types) {
         bytes.push_back(type.id);
@@ -271,6 +305,17 @@ void emit_cache(const std::vector<TypeRule>& types,
         bytes.insert(bytes.end(), record.machine_compatibility.begin(),
                      record.machine_compatibility.end());
     }
+    write_u16(bytes, pokedex_entries.size());
+    for (const PokedexEntryRule& entry : pokedex_entries) {
+        bytes.push_back(entry.dex_number);
+        write_string(bytes, entry.classification);
+        bytes.push_back(entry.height_feet);
+        bytes.push_back(entry.height_inches);
+        write_u16(bytes, entry.weight_tenths_pounds);
+        for (const std::string& line :
+             entry.description_lines)
+            write_string(bytes, line);
+    }
     write_u16(bytes, learnsets.size());
     for (const LearnsetRule& learn : learnsets) {
         bytes.push_back(learn.species_dex);
@@ -308,14 +353,17 @@ void emit_cache(const std::vector<TypeRule>& types,
 void emit_rule_import(const std::vector<TypeRule>& types,
                       const std::vector<TypeInteractionRule>& interactions,
                       const std::vector<MoveRule>& moves, const std::vector<SpeciesRule>& species,
+                      const std::vector<PokedexEntryRule>& pokedex_entries,
                       const std::vector<LearnsetRule>& learnsets,
                       const std::vector<EvolutionRule>& evolutions,
                       const std::vector<GrowthCurveRule>& growth_curves,
                       const std::vector<MachineRule>& machines, RuleImport& result) {
-    emit_source(types, interactions, moves, species, learnsets, evolutions, growth_curves, machines,
-                result);
-    emit_cache(types, interactions, moves, species, learnsets, evolutions, growth_curves, machines,
-               result);
+    emit_source(
+        types, interactions, moves, species, pokedex_entries,
+        learnsets, evolutions, growth_curves, machines, result);
+    emit_cache(
+        types, interactions, moves, species, pokedex_entries,
+        learnsets, evolutions, growth_curves, machines, result);
 }
 
 } // namespace pokered::import

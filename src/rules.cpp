@@ -149,6 +149,34 @@ bool read_species(std::istream& input, RuleCatalog& rules) {
     return true;
 }
 
+bool read_pokedex_entries(
+    std::istream& input, RuleCatalog& rules) {
+    std::uint16_t count = 0U;
+    if (!read_u16(input, count) || count != 151U)
+        return false;
+    rules.pokedex_entries.reserve(count);
+    for (std::uint16_t index = 0U;
+         index < count; ++index) {
+        PokedexEntryRule entry;
+        if (!read_u8(input, entry.dex_number) ||
+            entry.dex_number != index + 1U ||
+            !read_string(input, entry.classification) ||
+            !read_u8(input, entry.height_feet) ||
+            !read_u8(input, entry.height_inches) ||
+            entry.height_inches > 11U ||
+            !read_u16(input, entry.weight_tenths_pounds) ||
+            entry.weight_tenths_pounds == 0U)
+            return false;
+        for (std::string& line :
+             entry.description_lines)
+            if (!read_string(input, line))
+                return false;
+        rules.pokedex_entries.push_back(
+            std::move(entry));
+    }
+    return true;
+}
+
 bool read_learnsets(std::istream& input, RuleCatalog& rules) {
     std::uint16_t count = 0;
     if (!read_u16(input, count) || count > 4096U) return false;
@@ -236,7 +264,7 @@ bool load_rules(const std::filesystem::path& path, RuleCatalog& result, std::str
     std::ifstream input(path, std::ios::binary);
     std::array<char, 4> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'R', 'L', '1'}) {
+        magic != std::array{'P', 'R', 'L', '2'}) {
         error = "Pokemon rule cache is missing or has an invalid header";
         return false;
     }
@@ -251,6 +279,8 @@ bool load_rules(const std::filesystem::path& path, RuleCatalog& result, std::str
         error = "Pokemon rule cache has invalid moves";
     else if (!read_species(input, loaded))
         error = "Pokemon rule cache has invalid species";
+    else if (!read_pokedex_entries(input, loaded))
+        error = "Pokemon rule cache has invalid Pokedex entries";
     else if (!read_learnsets(input, loaded))
         error = "Pokemon rule cache has invalid learnsets";
     else if (!read_evolutions(input, loaded))
@@ -285,6 +315,16 @@ const SpeciesRule* find_species(const RuleCatalog& rules, std::uint8_t dex_numbe
         rules.species[dex_number - 1U].dex_number != dex_number)
         return nullptr;
     return &rules.species[dex_number - 1U];
+}
+
+const PokedexEntryRule* find_pokedex_entry(
+    const RuleCatalog& rules, std::uint8_t dex_number) {
+    if (dex_number == 0U ||
+        dex_number > rules.pokedex_entries.size() ||
+        rules.pokedex_entries[dex_number - 1U].dex_number !=
+            dex_number)
+        return nullptr;
+    return &rules.pokedex_entries[dex_number - 1U];
 }
 
 std::uint16_t type_multiplier_tenths(

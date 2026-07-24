@@ -65,6 +65,15 @@ struct SpeciesRule {
     std::array<std::uint8_t, 7> machine_compatibility{};
 };
 
+struct PokedexEntryRule {
+    std::uint8_t dex_number{};
+    std::string classification;
+    std::uint8_t height_feet{};
+    std::uint8_t height_inches{};
+    std::uint16_t weight_tenths_pounds{};
+    std::array<std::string, 6> description_lines;
+};
+
 struct LearnsetRule {
     std::uint8_t species_dex{};
     std::uint8_t level{};
@@ -99,6 +108,7 @@ struct RuleCatalog {
     std::vector<TypeInteractionRule> type_interactions;
     std::vector<MoveRule> moves;
     std::vector<SpeciesRule> species;
+    std::vector<PokedexEntryRule> pokedex_entries;
     std::vector<LearnsetRule> learnsets;
     std::vector<EvolutionRule> evolutions;
     std::vector<GrowthCurveRule> growth_curves;
@@ -110,6 +120,8 @@ bool load_rules(const std::filesystem::path& path, RuleCatalog& result, std::str
 const TypeRule* find_type(const RuleCatalog& rules, std::uint8_t id);
 const MoveRule* find_move(const RuleCatalog& rules, std::uint8_t id);
 const SpeciesRule* find_species(const RuleCatalog& rules, std::uint8_t dex_number);
+const PokedexEntryRule* find_pokedex_entry(
+    const RuleCatalog& rules, std::uint8_t dex_number);
 std::uint16_t type_multiplier_tenths(const RuleCatalog& rules,
                                      std::uint8_t attacking_type,
                                      const std::array<std::uint8_t, 2>& defending_types);

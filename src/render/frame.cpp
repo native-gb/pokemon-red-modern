@@ -2,6 +2,7 @@
 #include "render/dialogue.hpp"
 #include "render/field_menu.hpp"
 #include "render/naming.hpp"
+#include "render/pokedex.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -218,39 +219,6 @@ void draw_battler(SDL_Renderer* renderer, const ViewLayout& view, const Animatio
 
     set_draw_color(renderer, palette, 246, 242, 224);
     squished_rect(x + 4.0F, y - 24.0F, 4.0F, 4.0F);
-}
-
-bool draw_pokemon_presentation(
-    SDL_Renderer* renderer, const ViewLayout& view,
-    const WorldState& world,
-    const ImportedAnimationAssets& assets) {
-    if (!world.pokemon_presentation.active) return true;
-    const std::uint16_t dex =
-        world.pokemon_presentation.species_dex;
-    if (dex == 0U || dex > assets.pokemon.size())
-        return true;
-
-    set_draw_color(
-        renderer, content::AnimationPalette::normal,
-        246, 238, 230);
-    fill_native_rect(renderer, view, 40.0F, 22.0F, 80.0F, 92.0F);
-    set_draw_color(
-        renderer, content::AnimationPalette::normal,
-        54, 47, 58);
-    fill_native_rect(renderer, view, 40.0F, 22.0F, 80.0F, 2.0F);
-    fill_native_rect(renderer, view, 40.0F, 112.0F, 80.0F, 2.0F);
-    fill_native_rect(renderer, view, 40.0F, 22.0F, 2.0F, 92.0F);
-    fill_native_rect(renderer, view, 118.0F, 22.0F, 2.0F, 92.0F);
-
-    AnimationTarget target;
-    target.x = 80.0F;
-    target.y = 75.0F;
-    target.visible = true;
-    draw_imported_battler(
-        renderer, view, target, false,
-        content::AnimationPalette::normal,
-        assets.pokemon[dex - 1U]);
-    return true;
 }
 
 void set_imported_pixel_color(SDL_Renderer* renderer, std::uint8_t pixel, std::uint8_t attributes,
@@ -579,8 +547,9 @@ bool render_frame(SDL_Renderer* renderer, SDL_Texture* target, int output_width,
                         world_resources))
             return false;
         return draw_area_banner(renderer, maps, boot_resources) &&
-               draw_pokemon_presentation(
-                   renderer, view, maps, lab.imported_assets) &&
+               draw_pokedex_presentation(
+                   renderer, view, maps, rules,
+                   boot_resources, lab.imported_assets) &&
                draw_naming_overlay(
                    renderer, view, maps, boot_resources) &&
                draw_dialogue_overlay(

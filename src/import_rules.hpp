@@ -15,6 +15,7 @@ struct RuleImport {
     std::size_t types{};
     std::size_t type_interactions{};
     std::size_t species{};
+    std::size_t pokedex_entries{};
     std::size_t internal_species_slots{};
     std::size_t moves{};
     std::size_t learnset_entries{};

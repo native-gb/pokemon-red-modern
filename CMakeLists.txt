@@ -146,6 +146,7 @@ add_executable(native-gb-pokemon-red-modern
     src/render/field_menu.cpp
     src/render/maps.cpp
     src/render/naming.cpp
+    src/render/pokedex.cpp
     src/sexpr.cpp
     src/source_loader.cpp
     src/state.cpp

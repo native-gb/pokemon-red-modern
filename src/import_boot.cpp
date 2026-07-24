@@ -42,6 +42,8 @@ constexpr std::size_t kVersionGraphicsOffset = 0x6802F;
 constexpr std::size_t kFontGraphicsOffset = 0x11A80;
 constexpr std::size_t kTextBoxGraphicsOffset = 0x12288;
 constexpr std::size_t kHpStatusGraphicsOffset = 0x11EA0;
+constexpr std::size_t kPokedexGraphicsOffset = 0x12488;
+constexpr std::size_t kPokedexTileCount = 18U;
 
 constexpr std::size_t kBaseStatsOffset = 0x383DE;
 constexpr std::size_t kBaseStatsSize = 28;
@@ -423,6 +425,32 @@ bool build_ui_tiles(std::span<const std::uint8_t> rom,
     return true;
 }
 
+bool build_pokedex_tiles(
+    std::span<const std::uint8_t> rom,
+    std::vector<std::uint8_t>& pixels,
+    std::string& error) {
+    if (!has_range(
+            rom, kPokedexGraphicsOffset,
+            kPokedexTileCount * 16U)) {
+        error =
+            "Pokedex UI graphics extend outside the verified ROM";
+        return false;
+    }
+    pixels.resize(kPokedexTileCount * 64U);
+    for (std::size_t tile = 0U;
+         tile < kPokedexTileCount; ++tile) {
+        std::array<std::uint8_t, 64> decoded{};
+        decode_two_bpp_tile(
+            rom, kPokedexGraphicsOffset + tile * 16U,
+            decoded);
+        std::copy(
+            decoded.begin(), decoded.end(),
+            pixels.begin() +
+                static_cast<std::ptrdiff_t>(tile * 64U));
+    }
+    return true;
+}
+
 bool build_title(std::span<const std::uint8_t> rom, std::vector<BootImage>& images,
                  BootTitleDefinition& title, std::ostringstream& source,
                  std::string& error) {
@@ -703,15 +731,20 @@ bool write_text(std::vector<std::uint8_t>& cache, const BootTextProgram& text,
 
 bool emit_cache(const std::vector<BootImage>& images,
                 const std::vector<std::uint8_t>& ui_tiles,
+                const std::vector<std::uint8_t>& pokedex_tiles,
                 const BootTitleDefinition& title, const BootMenuDefinition& menu,
                 const BootOakDefinition& oak, BootImport& result,
                 std::string& error) {
-    std::vector<std::uint8_t> cache{'P', 'B', 'T', '2'};
+    std::vector<std::uint8_t> cache{'P', 'B', 'T', '3'};
     write_u16(cache, images.size());
     for (const BootImage& image : images)
         if (!write_image(cache, image, error)) return false;
     write_u32(cache, ui_tiles.size());
     cache.insert(cache.end(), ui_tiles.begin(), ui_tiles.end());
+    write_u32(cache, pokedex_tiles.size());
+    cache.insert(
+        cache.end(), pokedex_tiles.begin(),
+        pokedex_tiles.end());
 
     for (const std::uint16_t image :
          {title.logo_image, title.copyright_image, title.version_image,
@@ -780,6 +813,7 @@ bool decode_boot_import(std::span<const std::uint8_t> rom, BootImport& result,
 
     std::vector<BootImage> images;
     std::vector<std::uint8_t> ui_tiles;
+    std::vector<std::uint8_t> pokedex_tiles;
     BootTitleDefinition title;
     BootMenuDefinition menu;
     BootOakDefinition oak;
@@ -787,10 +821,13 @@ bool decode_boot_import(std::span<const std::uint8_t> rom, BootImport& result,
     source << "; Normalized cartridge-derived boot content. Runtime consumes the\n"
            << "; compiled cache and contains no Pokemon Red startup tables.\n\n";
     if (!build_ui_tiles(rom, ui_tiles, error) ||
+        !build_pokedex_tiles(rom, pokedex_tiles, error) ||
         !build_title(rom, images, title, source, error) ||
         !build_menu(rom, menu, source, error) ||
         !build_oak(rom, images, oak, source, error) ||
-        !emit_cache(images, ui_tiles, title, menu, oak, result, error))
+        !emit_cache(
+            images, ui_tiles, pokedex_tiles,
+            title, menu, oak, result, error))
         return false;
 
     source << "new_game_state pokemon_red_new_game\n"

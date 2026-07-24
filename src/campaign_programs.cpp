@@ -1264,6 +1264,7 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 .species_dex =
                     static_cast<std::uint16_t>(
                         instruction.value),
+                .page = 0U,
                 .active = true,
             };
             fiber.waiting_pokemon_presentation = true;

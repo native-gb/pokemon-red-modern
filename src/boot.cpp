@@ -351,7 +351,7 @@ bool load_boot_content(const std::filesystem::path& path, BootContent& result,
     std::array<char, 4> magic{};
     std::uint16_t image_count = 0;
     if (!input.read(magic.data(), magic.size()) ||
-        magic != std::array{'P', 'B', 'T', '2'} ||
+        magic != std::array{'P', 'B', 'T', '3'} ||
         !read_u16(input, image_count) || image_count < 10U || image_count > 128U) {
         error = "boot cache has an invalid header";
         return false;
@@ -374,6 +374,21 @@ bool load_boot_content(const std::filesystem::path& path, BootContent& result,
     if (!input.read(reinterpret_cast<char*>(loaded.ui_tiles.data()),
                     static_cast<std::streamsize>(loaded.ui_tiles.size()))) {
         error = "boot cache UI tile set is truncated";
+        return false;
+    }
+    std::uint32_t pokedex_pixel_count = 0U;
+    if (!read_u32(input, pokedex_pixel_count) ||
+        pokedex_pixel_count != 18U * 64U) {
+        error = "boot cache has an invalid Pokedex tile set";
+        return false;
+    }
+    loaded.pokedex_tiles.resize(pokedex_pixel_count);
+    if (!input.read(
+            reinterpret_cast<char*>(
+                loaded.pokedex_tiles.data()),
+            static_cast<std::streamsize>(
+                loaded.pokedex_tiles.size()))) {
+        error = "boot cache Pokedex tile set is truncated";
         return false;
     }
 

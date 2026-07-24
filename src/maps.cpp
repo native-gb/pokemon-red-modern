@@ -1037,8 +1037,14 @@ void step_world(WorldState& world, const InteractionCatalog& interactions,
     ++world.simulation_tick;
 
     if (world.pokemon_presentation.active) {
-        if (input.activate || input.back)
+        if (input.back)
             world.pokemon_presentation.active = false;
+        else if (input.activate) {
+            if (world.pokemon_presentation.page == 0U)
+                world.pokemon_presentation.page = 1U;
+            else
+                world.pokemon_presentation.active = false;
+        }
         return;
     }
 

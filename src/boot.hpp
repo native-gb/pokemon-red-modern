@@ -74,6 +74,7 @@ struct BootContent {
     std::filesystem::path source;
     std::vector<BootImage> images;
     std::vector<std::uint8_t> ui_tiles;
+    std::vector<std::uint8_t> pokedex_tiles;
     BootTitleDefinition title;
     BootMenuDefinition menu;
     BootOakDefinition oak;

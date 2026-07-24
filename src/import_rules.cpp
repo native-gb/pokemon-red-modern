@@ -1,6 +1,7 @@
 #include "import_rules.hpp"
 
 #include "import_rules_internal.hpp"
+#include "import_text.hpp"
 #include "rules.hpp"
 
 #include <algorithm>
@@ -32,6 +33,7 @@ constexpr std::size_t kMonsterNamesOffset = 0x1C21E;
 constexpr std::size_t kMonsterNameSize = 10;
 constexpr std::size_t kInternalSpeciesCount = 190;
 constexpr std::size_t kPokedexOrderOffset = 0x41024;
+constexpr std::size_t kPokedexEntryPointerOffset = 0x4047E;
 
 constexpr std::size_t kTypeNamesOffset = 0x27DAE;
 constexpr std::size_t kTypeNamesEnd = 0x27E4A;
@@ -400,6 +402,125 @@ bool decode_species(std::span<const std::uint8_t> rom, const std::vector<Interna
     return true;
 }
 
+bool decode_pokedex_entries(
+    std::span<const std::uint8_t> rom,
+    const std::array<std::uint8_t, kSpeciesCount>& internal_by_dex,
+    std::vector<PokedexEntryRule>& entries,
+    std::string& error) {
+    if (!has_range(
+            rom, kPokedexEntryPointerOffset,
+            kInternalSpeciesCount * 2U)) {
+        error = "Pokedex entry pointer table extends outside the verified ROM";
+        return false;
+    }
+    entries.reserve(kSpeciesCount);
+    for (std::size_t index = 0U; index < kSpeciesCount; ++index) {
+        const std::uint8_t internal_id = internal_by_dex[index];
+        const std::size_t pointer_offset =
+            kPokedexEntryPointerOffset +
+            static_cast<std::size_t>(internal_id - 1U) * 2U;
+        std::size_t entry_offset = 0U;
+        if (!bank_pointer_to_offset(
+                0x10U, read_u16(rom, pointer_offset),
+                entry_offset)) {
+            error = "Pokedex entry table contains an invalid pointer";
+            return false;
+        }
+
+        std::size_t cursor = entry_offset;
+        std::string classification;
+        if (!decode_terminated_name(
+                rom, cursor, 0x44000U,
+                classification, error) ||
+            !has_range(rom, cursor, 9U)) {
+            if (error.empty())
+                error = "Pokedex entry record is truncated";
+            return false;
+        }
+        const std::uint8_t feet = rom[cursor];
+        const std::uint8_t inches = rom[cursor + 1U];
+        const std::uint16_t weight =
+            read_u16(rom, cursor + 2U);
+        std::size_t description_offset = 0U;
+        if (inches > 11U || weight == 0U ||
+            rom[cursor + 4U] != 0x17U ||
+            !bank_pointer_to_offset(
+                rom[cursor + 7U],
+                read_u16(rom, cursor + 5U),
+                description_offset) ||
+            rom[cursor + 8U] != 0x50U) {
+            error =
+                "Pokedex entry has invalid height, weight, or description binding";
+            return false;
+        }
+
+        std::array<std::string, 6> lines;
+        std::size_t line = 0U;
+        if (!has_range(rom, description_offset, 2U) ||
+            rom[description_offset] != 0x00U) {
+            error =
+                "Pokedex description is missing its static-text command";
+            return false;
+        }
+        std::size_t description_cursor =
+            description_offset + 1U;
+        bool ended = false;
+        for (std::size_t bytes = 0U; bytes < 4096U;
+             ++bytes) {
+            if (!has_range(rom, description_cursor, 1U)) {
+                error =
+                    "Pokedex description extends outside the verified ROM";
+                return false;
+            }
+            const std::uint8_t value =
+                rom[description_cursor++];
+            if (value == 0x5FU) {
+                ended = true;
+                ++line;
+                break;
+            }
+            if (value == 0x4EU || value == 0x4FU ||
+                value == 0x49U) {
+                ++line;
+                if (line >= lines.size()) {
+                    error =
+                        "Pokedex description contains more than six lines";
+                    return false;
+                }
+                continue;
+            }
+            if (value == 0x50U) {
+                error =
+                    "Pokedex description ended without a dex terminator";
+                return false;
+            }
+            lines[line] += decode_text_glyph(value);
+        }
+        if (!ended || line != lines.size() ||
+            std::ranges::any_of(
+                lines,
+                [](const std::string& value) {
+                    return value.empty();
+                })) {
+            error =
+                "Pokedex description for dex " +
+                std::to_string(index + 1U) +
+                " did not decode to six nonempty lines";
+            return false;
+        }
+        entries.push_back({
+            .dex_number =
+                static_cast<std::uint8_t>(index + 1U),
+            .classification = std::move(classification),
+            .height_feet = feet,
+            .height_inches = inches,
+            .weight_tenths_pounds = weight,
+            .description_lines = std::move(lines),
+        });
+    }
+    return true;
+}
+
 bool take_progression_byte(std::span<const std::uint8_t> rom, std::size_t& cursor,
                            std::uint8_t& result, std::string& error) {
     if (cursor >= kEvolutionDataEnd || cursor >= rom.size()) {
@@ -582,6 +703,7 @@ bool decode_rule_import(std::span<const std::uint8_t> rom, RuleImport& result, s
     std::vector<InternalSpecies> internal;
     std::array<std::uint8_t, kSpeciesCount> internal_by_dex{};
     std::vector<SpeciesRule> species;
+    std::vector<PokedexEntryRule> pokedex_entries;
     std::vector<LearnsetRule> learnsets;
     std::vector<EvolutionRule> evolutions;
     std::vector<GrowthCurveRule> growth_curves = build_growth_curves();
@@ -591,6 +713,8 @@ bool decode_rule_import(std::span<const std::uint8_t> rom, RuleImport& result, s
         !decode_moves(rom, types, moves, error) ||
         !decode_internal_species(rom, internal, internal_by_dex, error) ||
         !decode_species(rom, internal, internal_by_dex, types, moves, species, error) ||
+        !decode_pokedex_entries(
+            rom, internal_by_dex, pokedex_entries, error) ||
         !decode_progression(rom, internal, learnsets, evolutions, error) ||
         !decode_machines(rom, machines, error))
         return false;
@@ -607,11 +731,13 @@ bool decode_rule_import(std::span<const std::uint8_t> rom, RuleImport& result, s
         return left.target_species_dex < right.target_species_dex;
     });
 
-    emit_rule_import(types, interactions, moves, species, learnsets, evolutions, growth_curves,
-                     machines, result);
+    emit_rule_import(
+        types, interactions, moves, species, pokedex_entries,
+        learnsets, evolutions, growth_curves, machines, result);
     result.types = types.size();
     result.type_interactions = interactions.size();
     result.species = species.size();
+    result.pokedex_entries = pokedex_entries.size();
     result.internal_species_slots = internal.size();
     result.moves = moves.size();
     result.learnset_entries = learnsets.size();

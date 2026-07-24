@@ -482,6 +482,17 @@ bool upload_boot_textures(SDL_Renderer* renderer, const BootContent& content,
         destroy_boot_textures(uploaded);
         return false;
     }
+    if (content.pokedex_tiles.size() != 18U * 64U) {
+        destroy_boot_textures(uploaded);
+        return false;
+    }
+    uploaded.pokedex_tiles = upload_pixels(
+        renderer, 18U * 8U, 8U, true,
+        content.pokedex_tiles);
+    if (uploaded.pokedex_tiles == nullptr) {
+        destroy_boot_textures(uploaded);
+        return false;
+    }
     resources = std::move(uploaded);
     return true;
 }
@@ -490,6 +501,8 @@ void destroy_boot_textures(BootRenderResources& resources) {
     for (SDL_Texture* texture : resources.images)
         if (texture != nullptr) SDL_DestroyTexture(texture);
     if (resources.ui_tiles != nullptr) SDL_DestroyTexture(resources.ui_tiles);
+    if (resources.pokedex_tiles != nullptr)
+        SDL_DestroyTexture(resources.pokedex_tiles);
     resources = {};
 }
 

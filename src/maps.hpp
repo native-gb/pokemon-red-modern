@@ -228,6 +228,7 @@ struct WorldChoiceState {
 struct WorldPokemonPresentation {
     std::uint32_t serial{};
     std::uint16_t species_dex{};
+    std::uint8_t page{};
     bool active{};
 };
 

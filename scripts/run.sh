@@ -35,10 +35,10 @@ boot_magic="$(head -c 4 "$boot_cache" 2>/dev/null || true)"
 campaign_magic="$(head -c 4 "$campaign_cache" 2>/dev/null || true)"
 audio_magic="$(head -c 4 "$audio_cache" 2>/dev/null || true)"
 if [[ "$world_magic" != "PMVD" || "$interaction_magic" != "PWI3" ||
-      "$rule_magic" != "PRL1" || "$battle_rule_magic" != "PBR9" ||
+      "$rule_magic" != "PRL2" || "$battle_rule_magic" != "PBR9" ||
       "$encounter_magic" != "PEC1" ||
       "$trainer_magic" != "PTC2" ||
-      "$boot_magic" != "PBT2" ||
+      "$boot_magic" != "PBT3" ||
       "$campaign_magic" != "PCPT" ||
       "$audio_magic" != "PRA6" ]]; then
     rom="$repo_root/../native-gb-pokemon-red/roms/pokemon_red.gb"

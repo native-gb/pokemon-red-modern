@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
                     << "trainer_classes " << trainers.classes << '\n'
                     << "trainer_parties " << trainers.parties << '\n'
                     << "trainer_party_members " << trainers.members << '\n'
-                    << "boot_importer_version 1\n"
+                    << "boot_importer_version 2\n"
                     << "boot_images " << boot.images << '\n'
                     << "boot_title_species " << boot.title_species << '\n'
                     << "boot_text_programs " << boot.text_programs << '\n'
@@ -163,10 +163,12 @@ int main(int argc, char** argv) {
                     << "world_spaces " << maps.world_spaces << '\n'
                     << "overworld_sprites " << maps.sprites << '\n'
                     << "ledge_rules " << maps.ledges << '\n'
-                    << "rule_importer_version 1\n"
+                    << "rule_importer_version 2\n"
                     << "types " << rules.types << '\n'
                     << "type_interactions " << rules.type_interactions << '\n'
                     << "species " << rules.species << '\n'
+                    << "pokedex_entries "
+                    << rules.pokedex_entries << '\n'
                     << "internal_species_slots " << rules.internal_species_slots << '\n'
                     << "moves " << rules.moves << '\n'
                     << "learnset_entries " << rules.learnset_entries << '\n'
@@ -253,7 +255,9 @@ int main(int argc, char** argv) {
               << " warps\n";
     std::cout << "World map cache: " << output_root / "compiled" / "world_maps.bin" << '\n';
     std::cout << "Imported " << rules.types << " types, " << rules.type_interactions
-              << " type interactions, " << rules.species << " species, " << rules.moves
+              << " type interactions, " << rules.species
+              << " species and " << rules.pokedex_entries
+              << " Pokedex entries, " << rules.moves
               << " moves, " << rules.learnset_entries << " learnset entries, " << rules.evolutions
               << " evolutions, and " << rules.machines << " machines\n";
     std::cout << "Pokemon rule cache: " << output_root / "compiled" / "pokemon_rules.bin" << '\n';
