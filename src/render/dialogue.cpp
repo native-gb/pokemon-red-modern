@@ -123,6 +123,9 @@ bool draw_box(SDL_Renderer* renderer,
     return true;
 }
 
+std::size_t word_length(
+    std::string_view text, std::size_t cursor);
+
 bool draw_text(SDL_Renderer* renderer,
                const BootRenderResources& resources,
                const PixelGrid& grid, std::string_view text,
@@ -133,6 +136,18 @@ bool draw_text(SDL_Renderer* renderer,
          cursor < text.size() && row < rows;) {
         if (text[cursor] == '\n') {
             ++cursor;
+            column = 0;
+            ++row;
+            continue;
+        }
+        if (text[cursor] == ' ' && column > 0 &&
+            column + 1 +
+                    static_cast<int>(word_length(
+                        text, cursor + 1U)) >
+                columns) {
+            while (cursor < text.size() &&
+                   text[cursor] == ' ')
+                ++cursor;
             column = 0;
             ++row;
             continue;
@@ -153,20 +168,62 @@ bool draw_text(SDL_Renderer* renderer,
 std::size_t longest_line(std::string_view text) {
     std::size_t longest = 0U;
     std::size_t current = 0U;
-    for (char value : text) {
-        if (value == '\n') {
+    for (std::size_t cursor = 0U; cursor < text.size();) {
+        if (text[cursor] == '\n') {
+            ++cursor;
             longest = std::max(longest, current);
             current = 0U;
         } else {
+            (void)next_tile(text, cursor);
             ++current;
         }
     }
     return std::max(longest, current);
 }
 
-std::size_t line_count(std::string_view text) {
-    return 1U + static_cast<std::size_t>(
-                    std::ranges::count(text, '\n'));
+std::size_t word_length(
+    std::string_view text, std::size_t cursor) {
+    std::size_t length = 0U;
+    while (cursor < text.size() &&
+           text[cursor] != ' ' && text[cursor] != '\n') {
+        (void)next_tile(text, cursor);
+        ++length;
+    }
+    return length;
+}
+
+std::size_t wrapped_line_count(
+    std::string_view text, int columns) {
+    std::size_t lines = 1U;
+    int column = 0;
+    for (std::size_t cursor = 0U; cursor < text.size();) {
+        if (text[cursor] == '\n') {
+            ++cursor;
+            column = 0;
+            ++lines;
+            continue;
+        }
+        if (text[cursor] == ' ' && column > 0 &&
+            column + 1 +
+                    static_cast<int>(word_length(
+                        text, cursor + 1U)) >
+                columns) {
+            while (cursor < text.size() &&
+                   text[cursor] == ' ')
+                ++cursor;
+            column = 0;
+            ++lines;
+            continue;
+        }
+        (void)next_tile(text, cursor);
+        if (++column >= columns) {
+            column = 0;
+            ++lines;
+        }
+    }
+    if (column == 0 && lines > 1U)
+        --lines;
+    return lines;
 }
 
 } // namespace
@@ -182,9 +239,13 @@ bool draw_dialogue_overlay(
     const std::string_view page =
         world.dialogue.pages[world.dialogue.page];
     const int desired_columns = std::clamp(
-        static_cast<int>(longest_line(page)) + 2, 20, 28);
+        static_cast<int>(longest_line(page)) + 2, 20, 48);
+    const int content_columns = desired_columns - 2;
     const int rows = std::clamp(
-        static_cast<int>(line_count(page)) + 2, 4, 7);
+        static_cast<int>(
+            wrapped_line_count(page, content_columns)) +
+            2,
+        4, 7);
     const int width_scale =
         std::max(1, (output_width - 32) /
                         (desired_columns * 8));
@@ -199,8 +260,7 @@ bool draw_dialogue_overlay(
     const int width = columns * scale * 8;
     const int height = rows * scale * 8;
     const PixelGrid dialogue{
-        .left = std::min(
-            24, std::max(8, output_width - width - 8)),
+        .left = (output_width - width) / 2,
         .top = output_height - height - 24,
         .scale = scale,
     };
