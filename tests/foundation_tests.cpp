@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 68U &&
+              programs.programs.size() == 86U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 24> source_names{
+    constexpr std::array<std::string_view, 26> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1820,6 +1820,8 @@ void test_local_pallet_campaign_program(TestState& state) {
         "route_24_nugget_bridge.sexpr",
         "bills_house.sexpr",
         "cerulean_rocket.sexpr",
+        "route_5_gate.sexpr",
+        "vermilion_harbor.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -3721,6 +3723,196 @@ void test_local_pallet_campaign_program(TestState& state) {
               world.dialogue.pages.front().find(
                   "lost is lost") != std::string::npos,
           "trashed-house owner selects imported post-TM28 dialogue by possession");
+
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "trashed-house owner dialogue completes");
+        if (!error.empty()) break;
+    }
+
+    // Route 5's Saffron gate first rejects the player with no drink and moves
+    // them off the trigger. Supplying the first item in the ROM's ordered
+    // guard-drink list consumes it, sets the shared four-gate state, and
+    // changes the actor's later response.
+    check(state,
+          pokered::inventory_item_quantity(
+              campaign.inventory, 60U) == 0U &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 61U) == 0U &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 62U) == 0U,
+          "campaign fixture starts without a Saffron guard drink");
+    check(state,
+          pokered::enter_world_at(
+              world, 70U, 3, 3, error) &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "guard duty") != std::string::npos,
+          "Route 5 gate starts its imported no-drink rejection");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Route 5 no-drink response advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              world.player.x == 3 &&
+              world.player.y == 2 &&
+              !pokered::campaign_flag(
+                  campaign, 0x6B946U),
+          "Route 5 rejection moves the player north and leaves the shared guard state clear");
+
+    const auto removable_rocket_filler =
+        std::ranges::find_if(
+            rocket_fillers,
+            [&](std::uint16_t item_id) {
+                return pokered::inventory_item_quantity(
+                           campaign.inventory, item_id) != 0U;
+            });
+    check(state,
+          removable_rocket_filler !=
+              rocket_fillers.end(),
+          "Route 5 fixture owns a removable filler stack");
+    if (removable_rocket_filler !=
+        rocket_fillers.end())
+        check(state,
+              pokered::take_inventory_item(
+                  campaign.inventory,
+                  *removable_rocket_filler, 1U),
+              "campaign fixture frees one guard-drink slot");
+    check(state,
+          pokered::give_inventory_item(
+              campaign.inventory, 60U, 1U),
+          "campaign fixture adds imported Fresh Water");
+    check(state,
+          pokered::enter_world_at(
+              world, 70U, 4, 3, error) &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+          "Route 5 gate recognizes the imported drink");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Route 5 drink response advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6B946U) &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 60U) == 0U,
+          "Route 5 consumes the drink and records the shared Saffron guard state");
+    world.last_actor_activation = {
+        .map_id = 70U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world, campaign,
+              error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "thanks") != std::string::npos,
+          "Route 5 guard selects imported post-drink dialogue");
+    while (campaign.fiber.active) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Route 5 post-drink dialogue completes");
+        if (!error.empty()) break;
+    }
+
+    // The harbor cell remains a real gate even though ordinary actor
+    // activation can show the sailor's welcome. Without Bill's ticket it
+    // rejects and steps north; with item 63 it shows the imported ticket
+    // response and leaves the dock warp reachable.
+    check(state,
+          pokered::take_inventory_item(
+              campaign.inventory, 63U, 1U),
+          "campaign fixture temporarily removes the S.S. Ticket");
+    check(state,
+          pokered::enter_world_at(
+              world, 5U, 18, 30, error) &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+          "Vermilion harbor gate starts without a ticket");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Vermilion no-ticket response advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              world.player.x == 18 &&
+              world.player.y == 29,
+          "Vermilion harbor rejects the player one cell north without the ticket");
+    check(state,
+          pokered::give_inventory_item(
+              campaign.inventory, 63U, 1U),
+          "campaign fixture restores Bill's S.S. Ticket");
+    check(state,
+          pokered::enter_world_at(
+              world, 5U, 18, 30, error) &&
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+          "Vermilion harbor gate recognizes the S.S. Ticket");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate = world.dialogue.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Vermilion ticket response advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              world.player.x == 18 &&
+              world.player.y == 30 &&
+              pokered::inventory_item_quantity(
+                  campaign.inventory, 63U) == 1U,
+          "Vermilion accepts but does not consume the ticket and leaves the dock warp open");
 }
 
 } // namespace

@@ -958,10 +958,33 @@ TM28, verifies all three actor states, and confirms the house owner's
 possession-dependent response. Readable content is generated at
 `source/scripts/campaign/cerulean_rocket.sexpr`.
 
+Route 5's Saffron guard and Vermilion's harbor sailor are now content-authored
+traversal gates. The Route 5 importer derives both guarded cells, the guard
+actor, the shared four-gate status bit, the ordered Fresh Water/Soda
+Pop/Lemonade list, and all three responses. With no drink, the program presents
+the cartridge response and smoothly moves the player north off the trigger.
+With a listed drink, it consumes exactly one, presents the combined response,
+and records the shared state; later actor activation uses the thanks response.
+No drink ID or gate coordinate lives in the runtime.
+
+The Vermilion importer derives the harbor cell, sailor actor, S.S. Ticket item,
+S.S. Anne departure event, and five response programs. Entering without a
+ticket presents both source responses and moves the player north. Entering with
+Bill's ticket presents the check and acceptance, leaves the key item
+unconsumed, and permits the ordinary imported dock warp on the next cell. The
+sailor has separate before/after-departure actor responses.
+
+The focused fixture proves the Route 5 no-item rejection, ordered drink
+transaction, shared flag, and later guard response, then removes/restores item
+63 to prove both Vermilion harbor branches and the ticket's persistence.
+Readable content is generated at
+`source/scripts/campaign/route_5_gate.sexpr` and
+`source/scripts/campaign/vermilion_harbor.sexpr`.
+
 This is not full-campaign completion. The next campaign blocker begins with
-Route 5, the Day Care, the Underground Path, and Vermilion progression. Every
-later map program still requires semantic lifting and the remaining acceptance
-gates above stay open.
+the Day Care's party-selection/growth transaction, Underground Path trades and
+hidden items, and the S.S. Anne campaign. Every later map program still
+requires semantic lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance
 

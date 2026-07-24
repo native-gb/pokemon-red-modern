@@ -280,6 +280,24 @@ constexpr std::size_t kCeruleanRocketHideActorOffset = 0x074889U;
 constexpr std::size_t kCeruleanTrashedHouseObjectOffset = 0x01D6BFU;
 constexpr std::size_t kCeruleanTrashedHouseStolenTextOffset = 0x01D6ABU;
 constexpr std::size_t kCeruleanTrashedHouseAcceptedTextOffset = 0x01D6B0U;
+constexpr std::size_t kRoute5GateCheckOffset = 0x01DF50U;
+constexpr std::size_t kRoute5GateCoordsOffset = 0x01DF8FU;
+constexpr std::size_t kRoute5GateSetOffset = 0x01DFD6U;
+constexpr std::size_t kRoute5GateThirstyTextOffset = 0x01DFE7U;
+constexpr std::size_t kRoute5GateDrinkTextOffset = 0x01DFECU;
+constexpr std::size_t kRoute5GateThanksTextOffset = 0x01DFF6U;
+constexpr std::size_t kRoute5GateObjectOffset = 0x01DFFBU;
+constexpr std::size_t kGuardDrinkRoutineOffset = 0x05A59FU;
+constexpr std::size_t kVermilionTicketGateOffset = 0x0197E6U;
+constexpr std::size_t kVermilionShipLeftCheckOffset = 0x0197FFU;
+constexpr std::size_t kVermilionTicketItemOffset = 0x019806U;
+constexpr std::size_t kVermilionTicketCoordsOffset = 0x019823U;
+constexpr std::size_t kVermilionCityObjectOffset = 0x0189BAU;
+constexpr std::size_t kVermilionWelcomeTextOffset = 0x019904U;
+constexpr std::size_t kVermilionTicketQuestionTextOffset = 0x019909U;
+constexpr std::size_t kVermilionFlashedTicketTextOffset = 0x01990EU;
+constexpr std::size_t kVermilionNeedTicketTextOffset = 0x019913U;
+constexpr std::size_t kVermilionShipSailedTextOffset = 0x019918U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -754,6 +772,34 @@ struct CeruleanRocketProgram {
     DecodedTextProgram no_room;
     DecodedTextProgram house_stolen;
     DecodedTextProgram house_accepted;
+};
+
+struct Route5GateProgram {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::array<std::pair<std::uint8_t, std::uint8_t>, 2>
+        trigger_cells;
+    std::uint32_t shared_guard_flag{};
+    std::array<std::uint16_t, 3> drink_item_ids{};
+    std::array<std::string, 3> drink_names;
+    DecodedTextProgram thirsty;
+    DecodedTextProgram give_drink;
+    DecodedTextProgram thanks;
+};
+
+struct VermilionTicketGateProgram {
+    std::uint8_t map_id{};
+    std::uint8_t sailor_actor_index{};
+    std::uint8_t trigger_x{};
+    std::uint8_t trigger_y{};
+    std::uint32_t ship_left_flag{};
+    std::uint16_t ticket_item_id{};
+    std::string ticket_name;
+    DecodedTextProgram welcome;
+    DecodedTextProgram question;
+    DecodedTextProgram flashed_ticket;
+    DecodedTextProgram need_ticket;
+    DecodedTextProgram ship_sailed;
 };
 
 struct CampaignInitialState {
@@ -3949,6 +3995,181 @@ bool decode_cerulean_rocket_program(
     return true;
 }
 
+bool decode_route_5_gate_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ImportedItemName>& item_names,
+    Route5GateProgram& result, std::string& error) {
+    result = {};
+    result.map_id = 70U;
+    if (!decode_map_actor_owner(
+            rom, kRoute5GateObjectOffset, 1U,
+            result.actor_index, error))
+        return false;
+
+    if (kRoute5GateCoordsOffset + 5U > rom.size() ||
+        rom[kRoute5GateCoordsOffset + 4U] != 0xFFU) {
+        error = "Route 5 gate trigger cells are truncated";
+        return false;
+    }
+    for (std::size_t index = 0U;
+         index < result.trigger_cells.size(); ++index) {
+        result.trigger_cells[index] = {
+            rom[kRoute5GateCoordsOffset + index * 2U + 1U],
+            rom[kRoute5GateCoordsOffset + index * 2U],
+        };
+    }
+
+    std::uint32_t set_flag = 0U;
+    if (!decode_checked_event(
+            rom, kRoute5GateCheckOffset,
+            result.shared_guard_flag, error) ||
+        !decode_set_event(
+            rom, kRoute5GateSetOffset,
+            set_flag, error) ||
+        set_flag != result.shared_guard_flag) {
+        if (error.empty())
+            error =
+                "Route 5 gate guard flag check and mutation disagree";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 3>
+        drink_routine_prefix{0x21U, 0xB7U, 0x65U};
+    constexpr std::size_t drink_list_offset =
+        0x05A5B7U;
+    if (!has_bytes(
+            rom, kGuardDrinkRoutineOffset,
+            drink_routine_prefix) ||
+        drink_list_offset + 4U > rom.size() ||
+        rom[drink_list_offset + 3U] != 0U) {
+        error =
+            "Saffron guard drink list does not match the verified ROM";
+        return false;
+    }
+    for (std::size_t index = 0U;
+         index < result.drink_item_ids.size(); ++index) {
+        result.drink_item_ids[index] =
+            rom[drink_list_offset + index];
+        const auto item = std::ranges::find_if(
+            item_names,
+            [&](const ImportedItemName& candidate) {
+                return candidate.item_id ==
+                       result.drink_item_ids[index];
+            });
+        if (result.drink_item_ids[index] == 0U ||
+            item == item_names.end()) {
+            error =
+                "Saffron guard drink is missing from the imported item catalogue";
+            return false;
+        }
+        result.drink_names[index] = item->name;
+    }
+
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 3>
+        texts{{
+            {kRoute5GateThirstyTextOffset,
+             &result.thirsty},
+            {kRoute5GateDrinkTextOffset,
+             &result.give_drink},
+            {kRoute5GateThanksTextOffset,
+             &result.thanks},
+        }};
+    for (const auto& [offset, text] : texts)
+        if (!decode_text_program(
+                rom, 0x07U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Route 5 gate dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    return true;
+}
+
+bool decode_vermilion_ticket_gate_program(
+    std::span<const std::uint8_t> rom,
+    const std::vector<ImportedItemName>& item_names,
+    VermilionTicketGateProgram& result,
+    std::string& error) {
+    result = {};
+    result.map_id = 5U;
+    if (!decode_map_actor_owner(
+            rom, kVermilionCityObjectOffset, 3U,
+            result.sailor_actor_index, error))
+        return false;
+
+    constexpr std::array<std::uint8_t, 5>
+        ticket_gate_prefix{
+            0xFAU, 0x09U, 0xC1U, 0xA7U, 0xC0U};
+    if (!has_bytes(
+            rom, kVermilionTicketGateOffset,
+            ticket_gate_prefix) ||
+        kVermilionTicketCoordsOffset + 3U > rom.size() ||
+        rom[kVermilionTicketCoordsOffset + 2U] != 0xFFU) {
+        error =
+            "Vermilion ticket gate does not match the verified ROM";
+        return false;
+    }
+    result.trigger_x =
+        rom[kVermilionTicketCoordsOffset + 1U];
+    result.trigger_y =
+        rom[kVermilionTicketCoordsOffset];
+    if (!decode_checked_event(
+            rom, kVermilionShipLeftCheckOffset,
+            result.ship_left_flag, error))
+        return false;
+
+    constexpr std::array<std::uint8_t, 7>
+        ticket_check{
+            0x06U, 0x3FU, 0x3EU, 0x1CU,
+            0xCDU, 0x6DU, 0x3EU};
+    if (!has_bytes(
+            rom, kVermilionTicketItemOffset,
+            ticket_check)) {
+        error =
+            "Vermilion S.S. Ticket check does not match the verified ROM";
+        return false;
+    }
+    result.ticket_item_id =
+        rom[kVermilionTicketItemOffset + 1U];
+    const auto ticket = std::ranges::find_if(
+        item_names,
+        [&](const ImportedItemName& candidate) {
+            return candidate.item_id ==
+                   result.ticket_item_id;
+        });
+    if (ticket == item_names.end()) {
+        error =
+            "Vermilion S.S. Ticket is missing from the imported item catalogue";
+        return false;
+    }
+    result.ticket_name = ticket->name;
+
+    const std::array<
+        std::pair<std::size_t, DecodedTextProgram*>, 5>
+        texts{{
+            {kVermilionWelcomeTextOffset,
+             &result.welcome},
+            {kVermilionTicketQuestionTextOffset,
+             &result.question},
+            {kVermilionFlashedTicketTextOffset,
+             &result.flashed_ticket},
+            {kVermilionNeedTicketTextOffset,
+             &result.need_ticket},
+            {kVermilionShipSailedTextOffset,
+             &result.ship_sailed},
+        }};
+    for (const auto& [offset, text] : texts)
+        if (!decode_text_program(
+                rom, 0x06U, offset, *text) ||
+            !text->complete || text->pages.empty()) {
+            error =
+                "Vermilion ticket dialogue could not be decoded from the pinned ROM";
+            return false;
+        }
+    return true;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -5432,6 +5653,100 @@ GeneratedFile readable_cerulean_rocket_source(
     };
 }
 
+GeneratedFile readable_route_5_gate_source(
+    const Route5GateProgram& gate) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Route 5 gate program.\n"
+        << "; Both gate cells, the shared Saffron guard state, ordered drink list, and dialogue are ROM-derived.\n\n"
+        << "campaign_template route_5_saffron_guard\n"
+        << "    triggers\n";
+    for (const auto& [x, y] : gate.trigger_cells)
+        source << "        player_cell "
+               << static_cast<unsigned>(x) << ' '
+               << static_cast<unsigned>(y) << '\n';
+    source
+        << "        actor_activation "
+        << static_cast<unsigned>(gate.actor_index)
+        << "\n    unless_flag 0x" << std::hex
+        << gate.shared_guard_flag << std::dec
+        << "\n    first_owned_item\n";
+    for (std::size_t index = 0U;
+         index < gate.drink_item_ids.size(); ++index)
+        source << "        item "
+               << source_quote(gate.drink_names[index])
+               << " rom_id " << gate.drink_item_ids[index]
+               << '\n';
+    source
+        << "    if_no_item\n"
+        << "        say\n"
+        << page_source(gate.thirsty.pages, "            ")
+        << "        step_player up\n"
+        << "    else\n"
+        << "        take_selected_item quantity 1\n"
+        << "        say\n"
+        << page_source(gate.give_drink.pages, "            ")
+        << "        set_flag 0x" << std::hex
+        << gate.shared_guard_flag << std::dec
+        << "\n\ninteraction route_5_saffron_guard_after_drink\n"
+        << "    required_flag 0x" << std::hex
+        << gate.shared_guard_flag << std::dec
+        << "\n    say\n"
+        << page_source(gate.thanks.pages, "        ");
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/route_5_gate.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
+GeneratedFile readable_vermilion_ticket_gate_source(
+    const VermilionTicketGateProgram& gate) {
+    std::ostringstream source;
+    source
+        << "; Lifted from the verified Pokemon Red US rev 0 Vermilion harbor gate.\n"
+        << "; Sailor owner, gate cell, S.S. Ticket item, ship event, and all responses are ROM-derived.\n\n"
+        << "campaign_program vermilion_harbor_ticket_gate\n"
+        << "    trigger map vermilion_city player_cell "
+        << static_cast<unsigned>(gate.trigger_x) << ' '
+        << static_cast<unsigned>(gate.trigger_y)
+        << "\n    unless_flag 0x" << std::hex
+        << gate.ship_left_flag << std::dec
+        << "\n    say\n"
+        << page_source(gate.question.pages, "        ")
+        << "    if_has_item "
+        << source_quote(gate.ticket_name)
+        << " quantity 1\n"
+        << "        say\n"
+        << page_source(
+               gate.flashed_ticket.pages, "            ")
+        << "    else\n"
+        << "        say\n"
+        << page_source(gate.need_ticket.pages, "            ")
+        << "        step_player up\n\n"
+        << "interaction vermilion_harbor_sailor_welcome\n"
+        << "    say\n"
+        << page_source(gate.welcome.pages, "        ")
+        << "\ninteraction vermilion_harbor_after_departure\n"
+        << "    required_flag 0x" << std::hex
+        << gate.ship_left_flag << std::dec
+        << "\n    say\n"
+        << page_source(gate.ship_sailed.pages, "        ")
+        << "    if_player_cell "
+        << static_cast<unsigned>(gate.trigger_x) << ' '
+        << static_cast<unsigned>(gate.trigger_y)
+        << "\n        step_player up\n";
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/vermilion_harbor.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -5723,6 +6038,15 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     if (!decode_cerulean_rocket_program(
             rom, toggle_actors, item_names,
             cerulean_rocket, error))
+        return false;
+    Route5GateProgram route_5_gate;
+    if (!decode_route_5_gate_program(
+            rom, item_names, route_5_gate, error))
+        return false;
+    VermilionTicketGateProgram vermilion_ticket_gate;
+    if (!decode_vermilion_ticket_gate_program(
+            rom, item_names, vermilion_ticket_gate,
+            error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -7918,7 +8242,266 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         operation(Opcode::end));
     programs.push_back(std::move(house_before));
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'M'};
+    Program route_5_guard_thanks;
+    route_5_guard_thanks.key =
+        "route_5_gate_guard_after_drink";
+    route_5_guard_thanks.trigger_kind =
+        TriggerKind::actor_activation;
+    route_5_guard_thanks.trigger_map =
+        route_5_gate.map_id;
+    route_5_guard_thanks.trigger_x =
+        route_5_gate.actor_index;
+    route_5_guard_thanks.required_flag =
+        route_5_gate.shared_guard_flag;
+    route_5_guard_thanks.instructions.push_back(
+        operation(Opcode::lock_input));
+    route_5_guard_thanks.instructions.push_back(
+        dialogue(route_5_gate.thanks.pages));
+    route_5_guard_thanks.instructions.push_back(
+        operation(Opcode::unlock_input));
+    route_5_guard_thanks.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(
+        std::move(route_5_guard_thanks));
+
+    const auto route_5_guard_drink =
+        [&](std::string key, TriggerKind trigger,
+            std::uint8_t trigger_x,
+            std::uint8_t trigger_y,
+            std::uint16_t item_id) {
+            Program drink;
+            drink.key = std::move(key);
+            drink.trigger_kind = trigger;
+            drink.trigger_map = route_5_gate.map_id;
+            drink.trigger_x = trigger_x;
+            drink.trigger_y = trigger_y;
+            drink.trigger_width = 1U;
+            drink.trigger_height = 1U;
+            drink.absent_flag =
+                route_5_gate.shared_guard_flag;
+            drink.required_item_id = item_id;
+            drink.required_item_quantity = 1U;
+            drink.instructions.push_back(
+                operation(Opcode::lock_input));
+            if (trigger ==
+                TriggerKind::player_rectangle) {
+                drink.instructions.push_back(operation(
+                    Opcode::face_player, 2U));
+                drink.instructions.push_back(operation(
+                    Opcode::face_actor,
+                    route_5_gate.actor_index, 3U,
+                    route_5_gate.map_id));
+            }
+            drink.instructions.push_back(operation(
+                Opcode::take_item, 1U, 0U, item_id));
+            drink.instructions.push_back(
+                dialogue(
+                    route_5_gate.give_drink.pages));
+            drink.instructions.push_back(operation(
+                Opcode::set_flag, 0U, 0U,
+                route_5_gate.shared_guard_flag));
+            drink.instructions.push_back(
+                operation(Opcode::unlock_input));
+            drink.instructions.push_back(
+                operation(Opcode::end));
+            return drink;
+        };
+    for (std::size_t cell = 0U;
+         cell < route_5_gate.trigger_cells.size();
+         ++cell)
+        for (std::size_t item = 0U;
+             item < route_5_gate.drink_item_ids.size();
+             ++item)
+            programs.push_back(route_5_guard_drink(
+                "route_5_gate_cell_" +
+                    std::to_string(cell) + "_drink_" +
+                    std::to_string(item),
+                TriggerKind::player_rectangle,
+                route_5_gate.trigger_cells[cell].first,
+                route_5_gate.trigger_cells[cell].second,
+                route_5_gate.drink_item_ids[item]));
+    for (std::size_t item = 0U;
+         item < route_5_gate.drink_item_ids.size();
+         ++item)
+        programs.push_back(route_5_guard_drink(
+            "route_5_gate_actor_drink_" +
+                std::to_string(item),
+            TriggerKind::actor_activation,
+            route_5_gate.actor_index, 0U,
+            route_5_gate.drink_item_ids[item]));
+
+    const auto route_5_guard_thirsty =
+        [&](std::string key, TriggerKind trigger,
+            std::uint8_t trigger_x,
+            std::uint8_t trigger_y) {
+            Program thirsty;
+            thirsty.key = std::move(key);
+            thirsty.trigger_kind = trigger;
+            thirsty.trigger_map = route_5_gate.map_id;
+            thirsty.trigger_x = trigger_x;
+            thirsty.trigger_y = trigger_y;
+            thirsty.trigger_width = 1U;
+            thirsty.trigger_height = 1U;
+            thirsty.absent_flag =
+                route_5_gate.shared_guard_flag;
+            thirsty.instructions.push_back(
+                operation(Opcode::lock_input));
+            if (trigger ==
+                TriggerKind::player_rectangle) {
+                thirsty.instructions.push_back(operation(
+                    Opcode::face_player, 2U));
+                thirsty.instructions.push_back(operation(
+                    Opcode::face_actor,
+                    route_5_gate.actor_index, 3U,
+                    route_5_gate.map_id));
+            }
+            thirsty.instructions.push_back(
+                dialogue(route_5_gate.thirsty.pages));
+            if (trigger ==
+                TriggerKind::player_rectangle) {
+                Instruction step =
+                    operation(Opcode::player_path);
+                step.player_path.push_back(
+                    PathCommand::up);
+                thirsty.instructions.push_back(
+                    std::move(step));
+            }
+            thirsty.instructions.push_back(
+                operation(Opcode::unlock_input));
+            thirsty.instructions.push_back(
+                operation(Opcode::end));
+            return thirsty;
+        };
+    for (std::size_t cell = 0U;
+         cell < route_5_gate.trigger_cells.size();
+         ++cell)
+        programs.push_back(route_5_guard_thirsty(
+            "route_5_gate_cell_" +
+                std::to_string(cell) + "_thirsty",
+            TriggerKind::player_rectangle,
+            route_5_gate.trigger_cells[cell].first,
+            route_5_gate.trigger_cells[cell].second));
+    programs.push_back(route_5_guard_thirsty(
+        "route_5_gate_actor_thirsty",
+        TriggerKind::actor_activation,
+        route_5_gate.actor_index, 0U));
+
+    const auto vermilion_gate_program =
+        [&](std::string key,
+            std::uint32_t required_flag,
+            std::uint32_t absent_flag,
+            std::uint16_t required_item,
+            const std::vector<std::string>& second_pages,
+            bool reject) {
+            Program gate;
+            gate.key = std::move(key);
+            gate.trigger_kind =
+                TriggerKind::player_rectangle;
+            gate.trigger_map =
+                vermilion_ticket_gate.map_id;
+            gate.trigger_x =
+                vermilion_ticket_gate.trigger_x;
+            gate.trigger_y =
+                vermilion_ticket_gate.trigger_y;
+            gate.trigger_width = 1U;
+            gate.trigger_height = 1U;
+            gate.required_flag = required_flag;
+            gate.absent_flag = absent_flag;
+            gate.required_item_id = required_item;
+            gate.required_item_quantity =
+                required_item == 0U ? 0U : 1U;
+            gate.instructions.push_back(
+                operation(Opcode::lock_input));
+            gate.instructions.push_back(operation(
+                Opcode::face_player, 3U));
+            gate.instructions.push_back(operation(
+                Opcode::face_actor,
+                vermilion_ticket_gate.sailor_actor_index,
+                2U, vermilion_ticket_gate.map_id));
+            if (required_flag == 0xFFFFFFFFU)
+                gate.instructions.push_back(dialogue(
+                    vermilion_ticket_gate.question.pages));
+            gate.instructions.push_back(
+                dialogue(second_pages));
+            if (reject) {
+                Instruction step =
+                    operation(Opcode::player_path);
+                step.player_path.push_back(
+                    PathCommand::up);
+                gate.instructions.push_back(
+                    std::move(step));
+            }
+            gate.instructions.push_back(
+                operation(Opcode::unlock_input));
+            gate.instructions.push_back(
+                operation(Opcode::end));
+            return gate;
+        };
+    programs.push_back(vermilion_gate_program(
+        "vermilion_harbor_show_ticket",
+        0xFFFFFFFFU,
+        vermilion_ticket_gate.ship_left_flag,
+        vermilion_ticket_gate.ticket_item_id,
+        vermilion_ticket_gate.flashed_ticket.pages,
+        false));
+    programs.push_back(vermilion_gate_program(
+        "vermilion_harbor_need_ticket",
+        0xFFFFFFFFU,
+        vermilion_ticket_gate.ship_left_flag,
+        0U, vermilion_ticket_gate.need_ticket.pages,
+        true));
+    programs.push_back(vermilion_gate_program(
+        "vermilion_harbor_ship_sailed",
+        vermilion_ticket_gate.ship_left_flag,
+        0xFFFFFFFFU, 0U,
+        vermilion_ticket_gate.ship_sailed.pages,
+        true));
+
+    Program harbor_after_departure;
+    harbor_after_departure.key =
+        "vermilion_harbor_sailor_after_departure";
+    harbor_after_departure.trigger_kind =
+        TriggerKind::actor_activation;
+    harbor_after_departure.trigger_map =
+        vermilion_ticket_gate.map_id;
+    harbor_after_departure.trigger_x =
+        vermilion_ticket_gate.sailor_actor_index;
+    harbor_after_departure.required_flag =
+        vermilion_ticket_gate.ship_left_flag;
+    harbor_after_departure.instructions.push_back(
+        operation(Opcode::lock_input));
+    harbor_after_departure.instructions.push_back(
+        dialogue(
+            vermilion_ticket_gate.ship_sailed.pages));
+    harbor_after_departure.instructions.push_back(
+        operation(Opcode::unlock_input));
+    harbor_after_departure.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(
+        std::move(harbor_after_departure));
+
+    Program harbor_welcome;
+    harbor_welcome.key =
+        "vermilion_harbor_sailor_welcome";
+    harbor_welcome.trigger_kind =
+        TriggerKind::actor_activation;
+    harbor_welcome.trigger_map =
+        vermilion_ticket_gate.map_id;
+    harbor_welcome.trigger_x =
+        vermilion_ticket_gate.sailor_actor_index;
+    harbor_welcome.absent_flag =
+        vermilion_ticket_gate.ship_left_flag;
+    harbor_welcome.instructions.push_back(
+        operation(Opcode::lock_input));
+    harbor_welcome.instructions.push_back(
+        dialogue(vermilion_ticket_gate.welcome.pages));
+    harbor_welcome.instructions.push_back(
+        operation(Opcode::unlock_input));
+    harbor_welcome.instructions.push_back(
+        operation(Opcode::end));
+    programs.push_back(std::move(harbor_welcome));
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'N'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -8008,6 +8591,12 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     result.files.push_back(
         readable_cerulean_rocket_source(
             cerulean_rocket));
+    result.files.push_back(
+        readable_route_5_gate_source(
+            route_5_gate));
+    result.files.push_back(
+        readable_vermilion_ticket_gate_source(
+            vermilion_ticket_gate));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
