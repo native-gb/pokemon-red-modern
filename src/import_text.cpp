@@ -19,6 +19,7 @@ struct DecodeState {
     std::span<const std::uint8_t> rom;
     std::ostringstream operations;
     std::vector<std::string> pages{1};
+    std::string next_operation{"write"};
     std::size_t bytes{};
     bool dynamic{};
     std::string reason;
@@ -151,14 +152,15 @@ std::string glyph(std::uint8_t value) {
     return token.str();
 }
 
-void emit_write(DecodeState& state, std::string_view operation, const std::string& text) {
-    if (text.empty()) return;
+bool emit_write(DecodeState& state, std::string_view operation, const std::string& text) {
+    if (text.empty()) return false;
     state.operations << "    " << operation << " \"";
     append_escaped(state.operations, text);
     state.operations << "\"\n";
     if ((operation == "line" || operation == "continue") && !state.pages.back().empty())
         state.pages.back().push_back('\n');
     state.pages.back() += text;
+    return true;
 }
 
 enum class StringEnd {
@@ -171,53 +173,52 @@ enum class StringEnd {
 
 StringEnd decode_string(DecodeState& state, std::size_t& cursor) {
     std::string text;
-    std::string_view next_operation = "write";
+    const auto flush_text = [&] {
+        if (emit_write(
+                state, state.next_operation, text))
+            state.next_operation = "write";
+        text.clear();
+    };
     for (std::size_t count = 0; count < kMaximumProgramBytes; ++count) {
         if (!has_range(state.rom, cursor, 1)) return StringEnd::malformed;
         const std::uint8_t value = state.rom[cursor++];
         ++state.bytes;
         switch (value) {
         case 0x49:
-            emit_write(state, next_operation, text);
-            text.clear();
+            flush_text();
             state.operations << "    page\n";
             if (!state.pages.back().empty()) state.pages.emplace_back();
-            next_operation = "write";
+            state.next_operation = "write";
             break;
         case 0x4A:
             text += "PKMN";
             break;
         case 0x4B:
-            emit_write(state, next_operation, text);
-            text.clear();
+            flush_text();
             state.operations << "    continue_no_pause\n";
-            next_operation = "write";
+            state.next_operation = "write";
             break;
         case 0x4C:
-            emit_write(state, next_operation, text);
-            text.clear();
+            flush_text();
             state.operations << "    scroll\n";
-            next_operation = "write";
+            state.next_operation = "write";
             break;
         case 0x4E:
-            emit_write(state, next_operation, text);
-            text.clear();
-            next_operation = "next";
+            flush_text();
+            state.next_operation = "next";
             break;
         case 0x4F:
-            emit_write(state, next_operation, text);
-            text.clear();
-            next_operation = "line";
+            flush_text();
+            state.next_operation = "line";
             break;
         case 0x50:
-            emit_write(state, next_operation, text);
+            flush_text();
             return StringEnd::terminator;
         case 0x51:
-            emit_write(state, next_operation, text);
-            text.clear();
+            flush_text();
             state.operations << "    paragraph\n";
             if (!state.pages.back().empty()) state.pages.emplace_back();
-            next_operation = "write";
+            state.next_operation = "write";
             break;
         case 0x52:
             text += "{player_name}";
@@ -226,20 +227,19 @@ StringEnd decode_string(DecodeState& state, std::size_t& cursor) {
             text += "{rival_name}";
             break;
         case 0x55:
-            emit_write(state, next_operation, text);
-            text.clear();
-            next_operation = "continue";
+            flush_text();
+            state.next_operation = "continue";
             break;
         case 0x57:
-            emit_write(state, next_operation, text);
+            flush_text();
             state.operations << "    finish done\n";
             return StringEnd::done;
         case 0x58:
-            emit_write(state, next_operation, text);
+            flush_text();
             state.operations << "    finish prompt\n";
             return StringEnd::prompt;
         case 0x5F:
-            emit_write(state, next_operation, text);
+            flush_text();
             state.operations << "    finish dex\n";
             return StringEnd::dex;
         default:
@@ -317,6 +317,11 @@ bool decode_commands(DecodeState& state, std::uint8_t bank, std::size_t offset, 
                              << std::hex << std::setfill('0') << std::setw(4)
                              << address << std::dec << '\n';
             if (command == 0x01U) {
+                if ((state.next_operation == "line" ||
+                     state.next_operation == "continue") &&
+                    !state.pages.back().empty())
+                    state.pages.back().push_back('\n');
+                state.next_operation = "write";
                 if (address == 0xCD6DU)
                     state.pages.back() += "{name_buffer}";
                 else {
@@ -429,6 +434,7 @@ bool decode_text_program(std::span<const std::uint8_t> rom, std::uint8_t bank, s
         .rom = rom,
         .operations = {},
         .pages = std::vector<std::string>(1),
+        .next_operation = "write",
         .bytes = 0,
         .dynamic = false,
         .reason = {},

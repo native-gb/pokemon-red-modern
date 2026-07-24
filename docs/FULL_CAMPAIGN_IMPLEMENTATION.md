@@ -1018,10 +1018,36 @@ north/south Underground Path cell, proves full-bag retention, frees a slot,
 retries, and verifies the hidden Full Restore and flag. All 54 records are
 readable at `source/scripts/campaign/hidden_items.sexpr`.
 
+In-game trades are now a centralized ROM-driven content domain rather than
+bespoke NPC code. The importer exhaustively decodes all ten 14-byte trade
+records: requested and received internal species are normalized to Pokédex
+species, names come from the cartridge's internal-order name table, and each
+record retains its dialogue-set selector, nickname, and exact completion bit.
+It also decodes all three five-response dialogue families plus the shared
+cable and exchange presentation.
+
+The engine adds only two generic party operations: branch when the selected
+party member is not a requested species, and replace a valid selected member
+with an imported received species at the offered member's level. Received
+stats and moves use the imported rules, random DVs and trainer ID use the
+deterministic world random stream, and nickname, original trainer, and
+completion event come from imported content. Decline, cancel, wrong-species,
+success, and completed-trade responses remain campaign-program branches.
+
+The currently reached campaign slice binds the Route 5 Underground Path actor
+to record 9 (male Nidoran for SPOT) and the Vermilion Trade House actor to
+record 4 (Spearow for DUX), deriving both actor owners and trade selectors from
+their map data and scripts. The focused fixture completes SPOT, checks the
+replacement's species, nickname, level, original trainer, and exact event, then
+verifies the actor changes to its imported after-trade response. The full
+ten-record catalogue and two current bindings are readable at
+`source/scripts/campaign/in_game_trades.sexpr`. The other eight records are
+already decoded; their actor bindings will be added as their later maps enter
+the playable campaign.
+
 This is not full-campaign completion. The next campaign blocker begins with
-Underground Path and Vermilion in-game trades and the S.S. Anne campaign.
-Every later map program still requires semantic lifting and the remaining
-acceptance gates above stay open.
+the S.S. Anne campaign. Every later map program still requires semantic
+lifting and the remaining acceptance gates above stay open.
 
 ## Playable acceptance
 

@@ -131,6 +131,11 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::unlock_input:
     case CampaignOpcode::end:
         return true;
+    case CampaignOpcode::trade_selected_pokemon:
+        return instruction.a != 0U &&
+               instruction.b != 0U &&
+               instruction.value != 0U &&
+               instruction.pages.size() == 1U;
     case CampaignOpcode::set_variable:
         return instruction.a < 64U && instruction.value <= 0xFFFFU;
     case CampaignOpcode::give_pokemon:
@@ -190,6 +195,7 @@ bool valid_instruction(const CampaignInstruction& instruction) {
     case CampaignOpcode::jump_if_party_size_below:
     case CampaignOpcode::jump_if_choice_cancelled:
     case CampaignOpcode::jump_if_selected_pokemon_knows_hm:
+    case CampaignOpcode::jump_if_selected_species_not:
     case CampaignOpcode::jump_if_party_full:
     case CampaignOpcode::jump_if_money_below_daycare_cost:
         return instruction.b == 0U && instruction.pages.empty() &&
@@ -508,7 +514,7 @@ bool load_campaign_programs(const std::filesystem::path& path, CampaignProgramCa
     std::uint16_t program_count = 0U;
     CampaignProgramCatalog loaded;
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size())) ||
-        magic != std::array{'P', 'C', 'P', 'P'}) {
+        magic != std::array{'P', 'C', 'P', 'Q'}) {
         error = "campaign program cache has an invalid header";
         return false;
     }
@@ -1290,6 +1296,15 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 fiber.instruction_index =
                     instruction.value;
             break;
+        case CampaignOpcode::jump_if_selected_species_not:
+            if (fiber.last_choice >=
+                    campaign.party.members.size() ||
+                campaign.party.members[
+                    fiber.last_choice].species_dex !=
+                    instruction.a)
+                fiber.instruction_index =
+                    instruction.value;
+            break;
         case CampaignOpcode::deposit_selected_party_member:
             if (campaign.daycare.occupied ||
                 fiber.last_choice >=
@@ -1309,6 +1324,58 @@ bool service_campaign_programs(const CampaignProgramCatalog& programs,
                 campaign.daycare.pokemon.level;
             campaign.daycare.occupied = true;
             break;
+        case CampaignOpcode::trade_selected_pokemon: {
+            if (fiber.last_choice >=
+                    campaign.party.members.size() ||
+                campaign.party.members[
+                    fiber.last_choice].species_dex !=
+                    instruction.a) {
+                error =
+                    "campaign in-game trade lost its selected Pokemon";
+                return false;
+            }
+            const PokemonState offered =
+                campaign.party.members[
+                    fiber.last_choice];
+            const StatFormulaProgram* stat_formula =
+                find_stat_formula(
+                    battle_rules,
+                    battle_rules.original_stat_formula);
+            PokemonState received;
+            const std::uint8_t first =
+                next_world_random_byte(world);
+            const std::uint8_t second =
+                next_world_random_byte(world);
+            if (stat_formula == nullptr ||
+                !build_pokemon(
+                    rules, *stat_formula,
+                    instruction.b, offered.level,
+                    {
+                        static_cast<std::uint8_t>(
+                            first >> 4U),
+                        static_cast<std::uint8_t>(
+                            first & 0x0FU),
+                        static_cast<std::uint8_t>(
+                            second >> 4U),
+                        static_cast<std::uint8_t>(
+                            second & 0x0FU),
+                    },
+                    static_cast<std::uint16_t>(
+                        first |
+                        static_cast<std::uint16_t>(
+                            second)
+                            << 8U),
+                    "TRAINER", received, error))
+                return false;
+            received.nickname =
+                instruction.pages.front();
+            campaign.party.members[
+                fiber.last_choice] =
+                std::move(received);
+            set_campaign_flag(
+                campaign, instruction.value, true);
+            break;
+        }
         case CampaignOpcode::say_if_daycare_grown:
             if (!campaign.daycare.occupied ||
                 daycare_level(

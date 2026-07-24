@@ -1749,7 +1749,7 @@ void test_local_pallet_campaign_program(TestState& state) {
               programs.party_capacity == 6U &&
               programs.storage_box_count == 12U &&
               programs.storage_box_capacity == 20U &&
-              programs.programs.size() == 141U &&
+              programs.programs.size() == 145U &&
               programs.encounter_suppression_zones.size() == 1U &&
               programs.item_names.size() == 138U &&
               programs.item_names.front().item_id == 1U &&
@@ -1795,7 +1795,7 @@ void test_local_pallet_campaign_program(TestState& state) {
                   "battle_moves",
               battle_view, battle_diagnostics),
           "campaign fixture loads battle presentation");
-    constexpr std::array<std::string_view, 28> source_names{
+    constexpr std::array<std::string_view, 29> source_names{
         "pallet_oak_interception.sexpr",
         "oaks_lab_choose_charmander.sexpr",
         "oaks_lab_choose_squirtle.sexpr",
@@ -1824,6 +1824,7 @@ void test_local_pallet_campaign_program(TestState& state) {
         "vermilion_harbor.sexpr",
         "daycare.sexpr",
         "hidden_items.sexpr",
+        "in_game_trades.sexpr",
     };
     for (const std::string_view source_name : source_names) {
         const std::filesystem::path source_path =
@@ -4140,6 +4141,86 @@ void test_local_pallet_campaign_program(TestState& state) {
               pokered::campaign_flag(
                   campaign, 0x6B7ABU),
           "Underground hidden Full Restore grants once and records its ROM index flag");
+
+    // The map script only binds an actor to trade record 9. The requested
+    // and received species, nickname, dialogue family, and one-shot flag
+    // are all supplied by the independently imported ten-record table.
+    const pokered::StatFormulaProgram* trade_stats =
+        pokered::find_stat_formula(
+            battle_rules,
+            battle_rules.original_stat_formula);
+    pokered::PokemonState trade_offer;
+    check(state,
+          trade_stats != nullptr &&
+              pokered::build_pokemon(
+                  rules, *trade_stats, 32U, 10U,
+                  {12U, 11U, 10U, 9U},
+                  0x1234U, "PLAYER",
+                  trade_offer, error),
+          "in-game trade fixture builds the requested Nidoran male");
+    if (trade_stats != nullptr && !trade_offer.nickname.empty()) {
+        trade_offer.nickname = "NIDORAN";
+        campaign.party.members.front() =
+            std::move(trade_offer);
+    }
+    check(state,
+          pokered::enter_world_at(
+              world, 71U, 2, 4, error),
+          "campaign fixture enters the Route 5 trade house");
+    world.last_actor_activation = {
+        .map_id = 71U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world,
+              campaign, error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "\nNIDORAN") != std::string::npos,
+          "Route 5 actor offers the ROM-selected SPOT trade");
+    for (std::size_t guard = 0U;
+         guard < 1000U && campaign.fiber.active; ++guard) {
+        pokered::step_world(
+            world, interactions, campaign,
+            {.activate =
+                 world.dialogue.open ||
+                 world.choice.open});
+        check(state,
+              pokered::service_campaign_programs(
+                  programs, rules, battle_rules, world,
+                  campaign, error),
+              "Route 5 in-game trade advances");
+        if (!error.empty()) break;
+    }
+    check(state,
+          error.empty() &&
+              pokered::campaign_flag(
+                  campaign, 0x6B9C1U) &&
+              campaign.party.members.front()
+                      .species_dex == 29U &&
+              campaign.party.members.front().level ==
+                  10U &&
+              campaign.party.members.front().nickname ==
+                  "SPOT" &&
+              campaign.party.members.front()
+                      .original_trainer == "TRAINER",
+          "Route 5 trade replaces the selected Pokemon with imported SPOT at the offered level");
+
+    world.last_actor_activation = {
+        .map_id = 71U,
+        .actor_index = 1U,
+        .occurred = true,
+    };
+    check(state,
+          pokered::service_campaign_programs(
+              programs, rules, battle_rules, world,
+              campaign, error) &&
+              world.dialogue.open &&
+              world.dialogue.pages.front().find(
+                  "old") != std::string::npos,
+          "completed Route 5 trade switches to its imported after-trade dialogue");
 }
 
 } // namespace

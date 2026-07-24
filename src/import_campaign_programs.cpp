@@ -313,6 +313,15 @@ constexpr std::size_t kFoundHiddenItemTextOffset = 0x07675BU;
 constexpr std::size_t kHiddenItemBagFullTextOffset = 0x076794U;
 constexpr std::uint32_t kHiddenItemFlagBase =
     static_cast<std::uint32_t>(0xD6F0U) * 8U;
+constexpr std::size_t kTradeTableOffset = 0x071B7BU;
+constexpr std::size_t kMonsterNamesOffset = 0x01C21EU;
+constexpr std::size_t kTradeTextPointerTablesOffset = 0x071D64U;
+constexpr std::size_t kUndergroundRoute5ObjectOffset = 0x05D6C1U;
+constexpr std::size_t kVermilionTradeHouseObjectOffset = 0x019C25U;
+constexpr std::size_t kUndergroundRoute5TradeScriptOffset = 0x05D6B2U;
+constexpr std::size_t kVermilionTradeScriptOffset = 0x019C17U;
+constexpr std::uint32_t kTradeFlagBase =
+    static_cast<std::uint32_t>(0xD737U) * 8U;
 constexpr std::size_t kInitialMoneyCodeOffset = 0x00F880U;
 constexpr std::size_t kGivePokemonPartyCapacityOffset = 0x04FDB0U;
 constexpr std::size_t kGivePokemonBoxCapacityOffset = 0x04FDB7U;
@@ -391,7 +400,9 @@ enum class Opcode : std::uint8_t {
     jump_if_party_size_below,
     jump_if_choice_cancelled,
     jump_if_selected_pokemon_knows_hm,
+    jump_if_selected_species_not,
     deposit_selected_party_member,
+    trade_selected_pokemon,
     say_if_daycare_grown,
     say_if_daycare_unchanged,
     jump_if_party_full,
@@ -849,6 +860,34 @@ struct HiddenItemCatalogue {
     std::vector<HiddenItemProgram> items;
     DecodedTextProgram found;
     DecodedTextProgram bag_full;
+};
+
+struct TradeDefinition {
+    std::uint8_t requested_species{};
+    std::uint8_t received_species{};
+    std::uint8_t dialogue_set{};
+    std::string requested_name;
+    std::string received_name;
+    std::string nickname;
+    std::uint32_t completed_flag{};
+};
+
+struct TradeDialogueSet {
+    std::array<DecodedTextProgram, 5> texts;
+};
+
+struct TradeBinding {
+    std::uint8_t map_id{};
+    std::uint8_t actor_index{};
+    std::uint8_t trade_index{};
+};
+
+struct InGameTradeCatalogue {
+    std::array<TradeDefinition, 10> trades;
+    std::array<TradeDialogueSet, 3> dialogue_sets;
+    std::array<TradeBinding, 2> active_bindings;
+    DecodedTextProgram connect;
+    DecodedTextProgram traded_for;
 };
 
 struct CampaignInitialState {
@@ -4435,6 +4474,210 @@ bool decode_hidden_item_catalogue(
     return true;
 }
 
+bool decode_in_game_trade_catalogue(
+    std::span<const std::uint8_t> rom,
+    InGameTradeCatalogue& result,
+    std::string& error) {
+    result = {};
+    const auto fixed_name =
+        [&](std::size_t offset, std::size_t width,
+            std::string& name) {
+            if (offset + width > rom.size())
+                return false;
+            name.clear();
+            for (std::size_t index = 0U;
+                 index < width &&
+                 rom[offset + index] != 0x50U;
+                 ++index)
+                name +=
+                    decode_text_glyph(
+                        rom[offset + index]);
+            return !name.empty();
+        };
+    for (std::size_t index = 0U;
+         index < result.trades.size(); ++index) {
+        const std::size_t offset =
+            kTradeTableOffset + index * 14U;
+        if (offset + 14U > rom.size()) {
+            error =
+                "in-game trade table is truncated";
+            return false;
+        }
+        const std::uint8_t requested_internal =
+            rom[offset];
+        const std::uint8_t received_internal =
+            rom[offset + 1U];
+        TradeDefinition& trade =
+            result.trades[index];
+        trade.requested_species =
+            dex_for_internal_species(
+                rom, requested_internal);
+        trade.received_species =
+            dex_for_internal_species(
+                rom, received_internal);
+        trade.dialogue_set = rom[offset + 2U];
+        trade.completed_flag =
+            kTradeFlagBase +
+            static_cast<std::uint32_t>(index);
+        if (trade.requested_species == 0U ||
+            trade.received_species == 0U ||
+            trade.dialogue_set >=
+                result.dialogue_sets.size() ||
+            requested_internal == 0U ||
+            received_internal == 0U ||
+            !fixed_name(
+                kMonsterNamesOffset +
+                    static_cast<std::size_t>(
+                        requested_internal - 1U) *
+                        10U,
+                10U, trade.requested_name) ||
+            !fixed_name(
+                kMonsterNamesOffset +
+                    static_cast<std::size_t>(
+                        received_internal - 1U) *
+                        10U,
+                10U, trade.received_name) ||
+            !fixed_name(
+                offset + 3U, 11U,
+                trade.nickname)) {
+            error =
+                "in-game trade record contains invalid content";
+            return false;
+        }
+    }
+
+    for (std::size_t set = 0U;
+         set < result.dialogue_sets.size(); ++set) {
+        const std::size_t table_pointer_offset =
+            kTradeTextPointerTablesOffset + set * 2U;
+        const std::uint16_t table_pointer =
+            static_cast<std::uint16_t>(
+                rom[table_pointer_offset] |
+                static_cast<std::uint16_t>(
+                    rom[table_pointer_offset + 1U])
+                    << 8U);
+        if (table_pointer < 0x4000U ||
+            table_pointer >= 0x8000U) {
+            error =
+                "in-game trade dialogue table pointer is invalid";
+            return false;
+        }
+        const std::size_t table_offset =
+            0x070000U +
+            static_cast<std::size_t>(
+                table_pointer - 0x4000U);
+        for (std::size_t text = 0U;
+             text <
+             result.dialogue_sets[set].texts.size();
+             ++text) {
+            const std::size_t pointer_offset =
+                table_offset + text * 2U;
+            if (pointer_offset + 2U > rom.size()) {
+                error =
+                    "in-game trade dialogue pointers are truncated";
+                return false;
+            }
+            const std::uint16_t pointer =
+                static_cast<std::uint16_t>(
+                    rom[pointer_offset] |
+                    static_cast<std::uint16_t>(
+                        rom[pointer_offset + 1U])
+                        << 8U);
+            if (pointer < 0x4000U ||
+                pointer >= 0x8000U ||
+                !decode_text_program(
+                    rom, 0x1CU,
+                    0x070000U +
+                        static_cast<std::size_t>(
+                            pointer - 0x4000U),
+                    result.dialogue_sets[set]
+                        .texts[text]) ||
+                !result.dialogue_sets[set]
+                     .texts[text]
+                     .complete ||
+                result.dialogue_sets[set]
+                    .texts[text]
+                    .pages.empty()) {
+                error =
+                    "in-game trade dialogue could not be decoded from the pinned ROM";
+                return false;
+            }
+        }
+    }
+    if (!decode_text_program(
+            rom, 0x1CU, 0x071D88U,
+            result.connect) ||
+        !result.connect.complete ||
+        result.connect.pages.empty() ||
+        !decode_text_program(
+            rom, 0x1CU, 0x071D8DU,
+            result.traded_for) ||
+        !result.traded_for.complete ||
+        result.traded_for.pages.empty()) {
+        error =
+            "in-game trade presentation could not be decoded from the pinned ROM";
+        return false;
+    }
+
+    constexpr std::array<std::uint8_t, 2>
+        trade_script_prefix{0x08U, 0x3EU};
+    const auto binding =
+        [&](std::uint8_t map_id,
+            std::size_t object_offset,
+            std::size_t script_offset,
+            TradeBinding& target) {
+            std::uint8_t actor_index = 0U;
+            if (!decode_map_actor_owner(
+                    rom, object_offset, 1U,
+                    actor_index, error))
+                return false;
+            if (!has_bytes(
+                    rom, script_offset,
+                    trade_script_prefix) ||
+                script_offset + 3U > rom.size())
+                return false;
+            target = {
+                .map_id = map_id,
+                .actor_index = actor_index,
+                .trade_index =
+                    rom[script_offset + 2U],
+            };
+            return target.trade_index <
+                   result.trades.size();
+        };
+    if (!binding(
+            71U, kUndergroundRoute5ObjectOffset,
+            kUndergroundRoute5TradeScriptOffset,
+            result.active_bindings[0]) ||
+        !binding(
+            196U, kVermilionTradeHouseObjectOffset,
+            kVermilionTradeScriptOffset,
+            result.active_bindings[1])) {
+        if (error.empty())
+            error =
+                "active in-game trade bindings do not match the verified ROM";
+        return false;
+    }
+    return true;
+}
+
+DecodedTextProgram resolved_trade_text(
+    DecodedTextProgram text,
+    const TradeDefinition& trade) {
+    for (std::string& page : text.pages) {
+        replace_all(
+            page, "{ram_cd13}",
+            trade.requested_name);
+        replace_all(
+            page, "{ram_cd1e}",
+            trade.received_name);
+        replace_all(
+            page, "{ram_cd29}",
+            trade.nickname);
+    }
+    return text;
+}
+
 std::uint32_t packed_position(std::uint8_t x, std::uint8_t y) {
     return static_cast<std::uint32_t>(x) |
            static_cast<std::uint32_t>(y) << 16U;
@@ -6107,6 +6350,93 @@ GeneratedFile readable_hidden_items_source(
     };
 }
 
+GeneratedFile readable_in_game_trades_source(
+    const InGameTradeCatalogue& trades) {
+    std::ostringstream source;
+    source
+        << "; Exhaustive ten-record in-game trade catalogue lifted from the verified Pokemon Red US rev 0 ROM.\n"
+        << "; Species, dialogue-set selection, nickname, completion flag, and the currently bound actor owners are ROM-derived.\n\n";
+    constexpr std::array<std::string_view, 5>
+        response_names{
+            "offer", "declined", "wrong_species",
+            "thanks", "completed",
+        };
+    for (std::size_t set = 0U;
+         set < trades.dialogue_sets.size(); ++set) {
+        source << "trade_dialogue_set " << set << '\n';
+        for (std::size_t response = 0U;
+             response < response_names.size();
+             ++response)
+            source
+                << "    response "
+                << response_names[response] << '\n'
+                << page_source(
+                       trades.dialogue_sets[set]
+                           .texts[response]
+                           .pages,
+                       "        ");
+        source << '\n';
+    }
+    source
+        << "shared_trade_text connect\n"
+        << page_source(
+               trades.connect.pages, "    ")
+        << "\nshared_trade_text exchanged\n"
+        << page_source(
+               trades.traded_for.pages, "    ")
+        << '\n';
+    for (std::size_t index = 0U;
+         index < trades.trades.size(); ++index) {
+        const TradeDefinition& trade =
+            trades.trades[index];
+        source
+            << "in_game_trade trade_" << index
+            << "\n    requested_species "
+            << source_quote(trade.requested_name)
+            << " dex "
+            << static_cast<unsigned>(
+                   trade.requested_species)
+            << "\n    received_species "
+            << source_quote(trade.received_name)
+            << " dex "
+            << static_cast<unsigned>(
+                   trade.received_species)
+            << "\n    nickname "
+            << source_quote(trade.nickname)
+            << "\n    dialogue_set "
+            << static_cast<unsigned>(
+                   trade.dialogue_set)
+            << "\n    completed_flag 0x"
+            << std::hex << trade.completed_flag
+            << std::dec << "\n\n";
+    }
+    for (const TradeBinding& binding :
+         trades.active_bindings) {
+        source
+            << "trade_binding map_"
+            << static_cast<unsigned>(binding.map_id)
+            << "_actor_"
+            << static_cast<unsigned>(
+                   binding.actor_index)
+            << "\n    map_id "
+            << static_cast<unsigned>(binding.map_id)
+            << "\n    actor_index "
+            << static_cast<unsigned>(
+                   binding.actor_index)
+            << "\n    trade trade_"
+            << static_cast<unsigned>(
+                   binding.trade_index)
+            << "\n\n";
+    }
+    const std::string text = source.str();
+    return {
+        .relative_path =
+            "source/scripts/campaign/in_game_trades.sexpr",
+        .bytes = std::vector<std::uint8_t>(
+            text.begin(), text.end()),
+    };
+}
+
 GeneratedFile readable_pewter_gym_source(
     const PewterGymProgram& gym) {
     std::ostringstream source;
@@ -6415,6 +6745,10 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
     HiddenItemCatalogue hidden_items;
     if (!decode_hidden_item_catalogue(
             rom, item_names, hidden_items, error))
+        return false;
+    InGameTradeCatalogue in_game_trades;
+    if (!decode_in_game_trade_catalogue(
+            rom, in_game_trades, error))
         return false;
 
     std::vector<PathCommand> oak_path;
@@ -9033,7 +9367,122 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         programs.push_back(std::move(hidden));
     }
 
-    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'P'};
+    for (const TradeBinding& binding :
+         in_game_trades.active_bindings) {
+        const TradeDefinition& trade =
+            in_game_trades.trades[
+                binding.trade_index];
+        const TradeDialogueSet& dialogue_set =
+            in_game_trades.dialogue_sets[
+                trade.dialogue_set];
+        std::array<DecodedTextProgram, 5> texts =
+            dialogue_set.texts;
+        for (DecodedTextProgram& text : texts)
+            text = resolved_trade_text(
+                std::move(text), trade);
+        const DecodedTextProgram connect =
+            resolved_trade_text(
+                in_game_trades.connect, trade);
+        const DecodedTextProgram traded_for =
+            resolved_trade_text(
+                in_game_trades.traded_for, trade);
+        const std::string key_prefix =
+            "in_game_trade_" +
+            std::to_string(binding.trade_index) +
+            "_map_" +
+            std::to_string(binding.map_id);
+
+        Program completed;
+        completed.key = key_prefix + "_completed";
+        completed.trigger_kind =
+            TriggerKind::actor_activation;
+        completed.trigger_map = binding.map_id;
+        completed.trigger_x = binding.actor_index;
+        completed.required_flag =
+            trade.completed_flag;
+        completed.instructions.push_back(
+            operation(Opcode::lock_input));
+        completed.instructions.push_back(
+            dialogue(texts[4].pages));
+        completed.instructions.push_back(
+            operation(Opcode::unlock_input));
+        completed.instructions.push_back(
+            operation(Opcode::end));
+        programs.push_back(std::move(completed));
+
+        Program offer;
+        offer.key = key_prefix + "_offer";
+        offer.trigger_kind =
+            TriggerKind::actor_activation;
+        offer.trigger_map = binding.map_id;
+        offer.trigger_x = binding.actor_index;
+        offer.absent_flag = trade.completed_flag;
+        offer.instructions.push_back(
+            operation(Opcode::lock_input));
+        offer.instructions.push_back(
+            ask_yes_no(texts[0].pages, 0U));
+        const std::size_t declined_jump =
+            offer.instructions.size();
+        offer.instructions.push_back(
+            operation(Opcode::jump_if_choice_no));
+        offer.instructions.push_back(
+            operation(Opcode::ask_party_member));
+        const std::size_t cancelled_jump =
+            offer.instructions.size();
+        offer.instructions.push_back(
+            operation(
+                Opcode::jump_if_choice_cancelled));
+        const std::size_t wrong_species_jump =
+            offer.instructions.size();
+        offer.instructions.push_back(operation(
+            Opcode::jump_if_selected_species_not,
+            trade.requested_species));
+        offer.instructions.push_back(
+            dialogue(connect.pages));
+        Instruction exchange = operation(
+            Opcode::trade_selected_pokemon,
+            trade.requested_species,
+            trade.received_species,
+            trade.completed_flag);
+        exchange.pages.push_back(trade.nickname);
+        offer.instructions.push_back(
+            std::move(exchange));
+        offer.instructions.push_back(
+            dialogue(traded_for.pages));
+        offer.instructions.push_back(
+            dialogue(texts[3].pages));
+        offer.instructions.push_back(
+            operation(Opcode::unlock_input));
+        offer.instructions.push_back(
+            operation(Opcode::end));
+
+        const std::uint32_t declined_target =
+            static_cast<std::uint32_t>(
+                offer.instructions.size());
+        offer.instructions[declined_jump].value =
+            declined_target;
+        offer.instructions[cancelled_jump].value =
+            declined_target;
+        offer.instructions.push_back(
+            dialogue(texts[1].pages));
+        offer.instructions.push_back(
+            operation(Opcode::unlock_input));
+        offer.instructions.push_back(
+            operation(Opcode::end));
+
+        offer.instructions[wrong_species_jump].value =
+            static_cast<std::uint32_t>(
+                offer.instructions.size());
+        offer.instructions.push_back(
+            dialogue(texts[2].pages));
+        offer.instructions.push_back(
+            operation(Opcode::unlock_input));
+        offer.instructions.push_back(
+            operation(Opcode::end));
+        programs.push_back(std::move(offer));
+    }
+
+    std::vector<std::uint8_t> cache{'P', 'C', 'P', 'Q'};
     write_naming_profile(cache, naming_profile, nickname_heading);
     write_u16(cache, inventory_stack_capacity);
     write_u32(cache, initial_state.money);
@@ -9133,6 +9582,9 @@ bool decode_campaign_program_import(std::span<const std::uint8_t> rom,
         readable_daycare_source(daycare));
     result.files.push_back(
         readable_hidden_items_source(hidden_items));
+    result.files.push_back(
+        readable_in_game_trades_source(
+            in_game_trades));
     result.files.push_back(
         readable_initial_actor_visibility_source(toggle_actors));
     result.files.push_back({"compiled/campaign_programs.bin", std::move(cache)});
