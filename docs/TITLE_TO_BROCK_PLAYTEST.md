@@ -44,7 +44,7 @@ Run:
 ./scripts/run.sh
 ```
 
-Then exercise one continuous save-less New Game:
+Then exercise one continuous New Game:
 
 1. leave Red's bedroom and house;
 2. trigger Oak, choose/name a starter, and finish the lab rival encounter;
@@ -55,15 +55,17 @@ Then exercise one continuous save-less New Game:
 6. traverse Route 2 and Viridian Forest into Pewter;
 7. enter Pewter Gym, defeat Brock, and receive the badge/TM branch;
 8. use Start throughout to inspect party, bag, money, ID, and play time.
+9. save from Start, restart, choose Continue, and verify position, party,
+   inventory, flags, NPC state, and play time.
 
 Report several observations together. Screenshots are most useful for layout;
 map name, actor, last dialogue, and exact action are most useful for logic.
 
 ## Explicit gaps after this handoff
 
-- The modern Start overlay is read-only. Direct party-member selection,
-  item-use targeting, Pokédex, options, and save/continue remain separate
-  owners.
+- Direct party-member selection, item-use targeting, Pokédex, and options
+  remain unfinished Start-menu owners. SAVE and title-menu CONTINUE use the
+  modern semantic S-expression slot.
 - PKMN currently rotates to the next usable party member rather than opening
   the final party-selection layout.
 - Mart purchase UI is decoded as a shop interaction but is not yet executable.

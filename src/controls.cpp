@@ -21,6 +21,11 @@ void bind(BindsProfile& profile, Gubsy1DAnalog axis, AnalogControl action) {
     bind_1d_analog(profile, axis, static_cast<int>(action));
 }
 
+void bind(BindsProfile& profile, Gubsy2DAnalog axis,
+          Analog2DControl action) {
+    bind_2d_analog(profile, axis, static_cast<int>(action));
+}
+
 void bind_gamepad(BindsProfile& profile) {
     bind(profile, GubsyButton::GP_DPAD_LEFT, ControlAction::left);
     bind(profile, GubsyButton::GP_DPAD_RIGHT, ControlAction::right);
@@ -34,6 +39,8 @@ void bind_gamepad(BindsProfile& profile) {
     bind(profile, GubsyButton::GP_GUIDE, ControlAction::quit);
     bind(profile, GubsyButton::GP_LEFT_SHOULDER, ControlAction::fast_forward);
     bind(profile, Gubsy1DAnalog::GP_LEFT_TRIGGER, AnalogControl::fast_forward);
+    bind(profile, Gubsy2DAnalog::GP_RIGHT_STICK,
+         Analog2DControl::camera_zoom);
 }
 
 BindsProfile default_profile(int slot) {
@@ -109,13 +116,34 @@ bool register_controls(GubsyRuntime& runtime, int profile) {
                             "Enhancements");
     (void)schema.add_axis_1d(static_cast<int>(AnalogControl::fast_forward), "Fast-forward",
                              "Enhancements");
+    (void)schema.add_axis_2d(
+        static_cast<int>(Analog2DControl::camera_zoom),
+        "Camera zoom", "Camera");
     gubsy_register_binds_schema(runtime, schema);
 
     for (int slot = 0; slot < kControlProfileCount; ++slot) {
         const BindsProfile defaults = default_profile(slot);
-        if (gubsy_find_binds_profile(runtime, defaults.id) == nullptr &&
-            !gubsy_replace_binds_profile(runtime, defaults))
-            return false;
+        const BindsProfile* existing =
+            gubsy_find_binds_profile(runtime, defaults.id);
+        if (existing == nullptr) {
+            if (!gubsy_replace_binds_profile(runtime, defaults))
+                return false;
+            continue;
+        }
+        const bool has_camera_zoom = std::ranges::any_of(
+            existing->axis_2d_binds(),
+            [](const ginput::Axis2DBind& binding) {
+                return binding.axis_2d ==
+                    static_cast<int>(
+                        Analog2DControl::camera_zoom);
+            });
+        if (!has_camera_zoom) {
+            BindsProfile migrated = *existing;
+            bind(migrated, Gubsy2DAnalog::GP_RIGHT_STICK,
+                 Analog2DControl::camera_zoom);
+            if (!gubsy_replace_binds_profile(runtime, migrated))
+                return false;
+        }
     }
     return select_control_profile(runtime, profile);
 }
@@ -154,6 +182,10 @@ bool control_down(GubsyRuntime& runtime, ControlAction action) {
 ControlButtons read_controls(GubsyRuntime& runtime) {
     const bool trigger = gubsy_lobby_player_axis_1d_down(
         runtime, 0, static_cast<int>(AnalogControl::fast_forward), kTriggerThreshold);
+    const ginput::Vec2 camera =
+        gubsy_lobby_player_axis_2d(
+            runtime, 0,
+            static_cast<int>(Analog2DControl::camera_zoom));
     return {
         .left = control_down(runtime, ControlAction::left),
         .right = control_down(runtime, ControlAction::right),
@@ -166,6 +198,7 @@ ControlButtons read_controls(GubsyRuntime& runtime) {
         .menu = control_down(runtime, ControlAction::menu),
         .quit = control_down(runtime, ControlAction::quit),
         .fast_forward = control_down(runtime, ControlAction::fast_forward) || trigger,
+        .camera_zoom = camera.y,
     };
 }
 

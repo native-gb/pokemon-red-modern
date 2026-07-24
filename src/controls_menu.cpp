@@ -112,6 +112,47 @@ bool draw_axis_combo(GubsyRuntime& runtime, const BindsProfile& profile, int bin
     return changed;
 }
 
+bool draw_stick_combo(
+    GubsyRuntime& runtime, const BindsProfile& profile,
+    int binding_index, const char* id, std::string& status) {
+    const std::vector<ginput::Axis2DBind>& bindings =
+        profile.axis_2d_binds();
+    const bool adding = binding_index < 0;
+    const int current =
+        adding
+            ? -1
+            : bindings[static_cast<std::size_t>(binding_index)]
+                  .device_stick;
+    const std::string preview =
+        adding
+            ? "Add stick..."
+            : binds_input_label(
+                  BindsActionType::Analog2D, current);
+    ImGui::SetNextItemWidth(260.0F);
+    if (!ImGui::BeginCombo(id, preview.c_str())) return false;
+
+    bool changed = false;
+    for (const InputChoice choice :
+         binds_input_choices(BindsActionType::Analog2D)) {
+        const bool selected = choice.code == current;
+        if (ImGui::Selectable(choice.label, selected)) {
+            BindsProfile updated = profile;
+            if (!replace_bind_at(
+                    updated, BindsActionType::Analog2D,
+                    binding_index, choice.code,
+                    static_cast<int>(
+                        Analog2DControl::camera_zoom)))
+                status = "That stick binding already exists";
+            else
+                changed =
+                    save_profile(runtime, updated, status);
+        }
+        if (selected) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+    return changed;
+}
+
 bool draw_action(GubsyRuntime& runtime, const BindsProfile& profile, ActionRow row,
                  std::string& status) {
     const int action = static_cast<int>(row.action);
@@ -169,6 +210,40 @@ bool draw_fast_forward_axis(GubsyRuntime& runtime, const BindsProfile& profile,
     return draw_axis_combo(runtime, profile, -1, "##add-axis", status);
 }
 
+bool draw_camera_zoom_axis(
+    GubsyRuntime& runtime, const BindsProfile& profile,
+    std::string& status) {
+    ImGui::SeparatorText("Camera zoom");
+    bool found = false;
+    for (std::size_t index = 0U;
+         index < profile.axis_2d_binds().size(); ++index) {
+        if (profile.axis_2d_binds()[index].axis_2d !=
+            static_cast<int>(
+                Analog2DControl::camera_zoom))
+            continue;
+        found = true;
+        ImGui::PushID(static_cast<int>(index));
+        const bool changed = draw_stick_combo(
+            runtime, profile, static_cast<int>(index),
+            "##camera-stick", status);
+        ImGui::SameLine();
+        const bool remove = ImGui::SmallButton("Remove");
+        ImGui::PopID();
+        if (changed) return true;
+        if (remove) {
+            BindsProfile updated = profile;
+            if (remove_bind_at(
+                    updated, BindsActionType::Analog2D,
+                    static_cast<int>(index)))
+                return save_profile(runtime, updated, status);
+            status = "Could not remove stick binding";
+        }
+    }
+    if (!found) ImGui::TextDisabled("Unbound");
+    return draw_stick_combo(
+        runtime, profile, -1, "##add-camera-stick", status);
+}
+
 void draw_profile(GubsyRuntime& runtime, int slot, std::string& status) {
     const BindsProfile* source = gubsy_find_binds_profile(runtime, control_profile_id(slot));
     if (source == nullptr) {
@@ -188,6 +263,7 @@ void draw_profile(GubsyRuntime& runtime, int slot, std::string& status) {
             draw_fast_forward_axis(runtime, profile, status))
             return;
     }
+    (void)draw_camera_zoom_axis(runtime, profile, status);
 }
 
 bool assigned_to_player(const GubsyLobbyState& lobby, int device_id) {

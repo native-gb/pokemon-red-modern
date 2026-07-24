@@ -30,9 +30,11 @@ toggle fast-forward behind the interface.
 
 Primary provides arrows and WASD, Z/E/Space for A, X for B, Enter for Start,
 Backspace for Select, Escape for the player menu, and left Shift for
-fast-forward. The controller defaults use the D-pad, face A/B, Start, Back,
-Y for the player menu, Guide for application quit, and left trigger for
-fast-forward. Left shoulder is a digital fast-forward alternative.
+fast-forward. The controller defaults use the D-pad, south face for confirm,
+east face for back, Start, Back/Select, Y for the player menu, Guide for
+application quit, and left trigger for fast-forward. Left shoulder is a
+digital fast-forward alternative. Right-stick up/down zooms the world camera;
+Select resets its authored zoom. No controller camera-pan binding is present.
 
 Alternate begins with IJKL movement, U/O for A/B, P/Y for Start/Select, Escape
 for the player menu, and right Shift for fast-forward. Both profile slots are
@@ -80,8 +82,9 @@ player setting selects a multiplier from 2x through 8x. Pausing stops game time
 but does not stop the independent host clocks.
 
 Presentation choices are saved to `data/runtime/settings.cfg`. Binding profiles
-are persisted by Gubsy in the same runtime data root. Render smoke checks do not
-write settings.
+are persisted by Gubsy in the same runtime data root. The right-stick camera
+axis is listed in the same editable profile UI as buttons and triggers. Render
+smoke checks do not write settings.
 
 ## Campaign integration contract
 

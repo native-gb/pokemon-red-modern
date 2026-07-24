@@ -56,7 +56,7 @@ if(EXISTS "${POKERED_MODERN_GUBSY_DIR}/CMakeLists.txt")
 else()
     FetchContent_Declare(gubsy
         GIT_REPOSITORY https://github.com/wegfawefgawefg/gubsy.git
-        GIT_TAG c5e8140d14ff7f92da2f83e2d71e3208bae2b575)
+        GIT_TAG f95d5644fc254d85d8406a47df23def8f89dc0dd)
     FetchContent_MakeAvailable(gubsy)
     set(POKERED_MODERN_GUBSY_DIR "${gubsy_SOURCE_DIR}")
 endif()
@@ -115,6 +115,7 @@ add_executable(native-gb-pokemon-red-modern
     src/predicates.cpp
     src/pokemon.cpp
     src/rules.cpp
+    src/save.cpp
     src/render/frame.cpp
     src/render/boot.cpp
     src/render/dialogue.cpp
@@ -172,6 +173,7 @@ if(BUILD_TESTING)
         src/predicates.cpp
         src/pokemon.cpp
         src/rules.cpp
+        src/save.cpp
         src/sexpr.cpp
         src/source_loader.cpp
         src/state.cpp

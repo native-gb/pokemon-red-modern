@@ -22,6 +22,10 @@ enum class AnalogControl : int {
     fast_forward = 1,
 };
 
+enum class Analog2DControl : int {
+    camera_zoom = 1,
+};
+
 inline constexpr int kControlProfileCount = 2;
 
 struct ControlButtons {
@@ -36,6 +40,7 @@ struct ControlButtons {
     bool menu{};
     bool quit{};
     bool fast_forward{};
+    float camera_zoom{};
 };
 
 bool register_controls(GubsyRuntime& runtime, int profile);

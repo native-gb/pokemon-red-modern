@@ -47,8 +47,7 @@ gaps:
 - import and render the cartridge palette/SGB programs and exact fades;
 - replace page-at-a-time dialogue with the complete text timing, input-wait,
   and text-sound program;
-- add Continue only after semantic save/load and initial-state construction
-  exist, and implement the clear-save chord;
+- add the original-style clear-save chord for the modern semantic slot;
 - construct the complete New Game party, bag, flags, variables, Pokédex,
   options, clocks, and save state before campaign control begins;
 - validate exact boot timing and presentation against imported program

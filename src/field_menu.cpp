@@ -3,7 +3,7 @@
 namespace pokered {
 namespace {
 
-constexpr std::size_t root_entry_count = 4U;
+constexpr std::size_t root_entry_count = 5U;
 
 } // namespace
 
@@ -12,6 +12,7 @@ void open_field_menu(FieldMenuState& menu) {
         .page = FieldMenuPage::root,
         .selected = 0U,
         .input_cooldown = 0U,
+        .save_requested = false,
         .open = true,
     };
 }
@@ -55,6 +56,10 @@ void step_field_menu(FieldMenuState& menu,
         break;
     case 2U:
         menu.page = FieldMenuPage::trainer;
+        break;
+    case 3U:
+        menu.save_requested = true;
+        menu.open = false;
         break;
     default:
         menu = {};

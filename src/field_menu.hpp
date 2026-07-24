@@ -16,6 +16,7 @@ struct FieldMenuState {
     FieldMenuPage page{FieldMenuPage::root};
     std::size_t selected{};
     std::uint8_t input_cooldown{};
+    bool save_requested{};
     bool open{};
 };
 

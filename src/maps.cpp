@@ -728,6 +728,85 @@ bool initialize_world_runtime(WorldState& world, const InteractionCatalog& inter
     return true;
 }
 
+bool rebuild_world_actor_spatial(
+    WorldState& world, const InteractionCatalog& interactions,
+    std::string& error) {
+    if (!world.loaded || !interactions.loaded ||
+        world.spatial.size() != world.maps.size()) {
+        error =
+            "world actor spatial rebuild requires an initialized runtime";
+        return false;
+    }
+    for (WorldMapCellIndex& cells : world.spatial) {
+        std::ranges::fill(cells.actor_by_cell, -1);
+        for (auto& sight : cells.trainer_sight_actors_by_cell)
+            sight.clear();
+    }
+    for (std::size_t actor_index = 0U;
+         actor_index < world.actors.size(); ++actor_index) {
+        const WorldActorState& actor = world.actors[actor_index];
+        if (actor.map_index >= world.maps.size() ||
+            actor.map_index >= world.spatial.size()) {
+            error = "saved actor references an unavailable map";
+            return false;
+        }
+        const WorldMap& map = world.maps[actor.map_index];
+        if (actor.spawn_index >= map.actors.size()) {
+            error = "saved actor references an unavailable spawn";
+            return false;
+        }
+        WorldMapCellIndex& cells = world.spatial[actor.map_index];
+        if (!inside(cells, actor.x, actor.y)) {
+            error = "saved actor is outside its authored map";
+            return false;
+        }
+        const std::size_t offset =
+            cell_offset(cells, actor.x, actor.y);
+        if (actor.visible) {
+            if (cells.actor_by_cell[offset] >= 0) {
+                error = "saved actors occupy the same world cell";
+                return false;
+            }
+            cells.actor_by_cell[offset] =
+                static_cast<std::int32_t>(actor_index);
+        }
+
+        const WorldActorSpawn& spawn =
+            map.actors[actor.spawn_index];
+        const TrainerInteractionRule* trainer =
+            find_trainer_interaction(
+                interactions, map.id, spawn.index);
+        if (!actor.visible || trainer == nullptr ||
+            trainer->sight_range == 0U)
+            continue;
+        std::int32_t dx = 0;
+        std::int32_t dy = 0;
+        direction_delta(actor.facing, dx, dy);
+        for (std::uint8_t distance = 1U;
+             distance <= trainer->sight_range; ++distance) {
+            const std::int32_t x =
+                actor.x +
+                dx * static_cast<std::int32_t>(distance);
+            const std::int32_t y =
+                actor.y +
+                dy * static_cast<std::int32_t>(distance);
+            const std::int32_t global_x =
+                map.global_x_tiles / 2 + x;
+            const std::int32_t global_y =
+                map.global_y_tiles / 2 + y;
+            if (!inside(cells, x, y) ||
+                !is_passable(world, actor.map_index, global_x,
+                             global_y))
+                break;
+            cells.trainer_sight_actors_by_cell[
+                cell_offset(cells, x, y)]
+                .push_back(actor_index);
+        }
+    }
+    error.clear();
+    return true;
+}
+
 bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
                     std::int32_t y, std::string& error,
                     std::optional<std::uint8_t> previous_map_id) {

@@ -511,14 +511,32 @@ bool step_boot(const BootContent& content, const BootInput& input, BootState& st
             advance_title_animation(content, input.random, state);
         }
     } else if (state.screen == BootScreen::main_menu) {
+        const std::uint8_t entry_count =
+            state.continue_available ? 3U : 2U;
         if (state.delay_frames != 0U) {
             --state.delay_frames;
         } else if (input.up_pressed || input.down_pressed) {
-            state.menu_selection = static_cast<std::uint8_t>(1U - state.menu_selection);
+            if (input.up_pressed)
+                state.menu_selection =
+                    state.menu_selection == 0U
+                        ? static_cast<std::uint8_t>(
+                              entry_count - 1U)
+                        : static_cast<std::uint8_t>(
+                              state.menu_selection - 1U);
+            else
+                state.menu_selection =
+                    static_cast<std::uint8_t>(
+                        (state.menu_selection + 1U) %
+                        entry_count);
         } else if (input.cancel_pressed) {
             reset_title(content, state);
         } else if (input.confirm_pressed || input.start_pressed) {
-            if (state.menu_selection == 0U) {
+            if (state.continue_available &&
+                state.menu_selection == 0U) {
+                result.continue_requested = true;
+            } else if (
+                state.menu_selection ==
+                (state.continue_available ? 1U : 0U)) {
                 state.player_name.clear();
                 state.rival_name.clear();
                 begin_oak_text(state, BootOakStage::greeting, 6, false);

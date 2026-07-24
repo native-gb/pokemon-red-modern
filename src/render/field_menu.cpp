@@ -66,8 +66,8 @@ std::string item_name(const CampaignProgramCatalog& programs,
 void draw_root(ImDrawList* draw, const FieldMenuState& menu,
                ImVec2 minimum, ImVec2 maximum) {
     panel(draw, minimum, maximum);
-    constexpr std::array<std::string_view, 4> entries{
-        "PARTY", "BAG", "TRAINER", "CLOSE"};
+    constexpr std::array<std::string_view, 5> entries{
+        "PARTY", "BAG", "TRAINER", "SAVE", "CLOSE"};
     for (std::size_t index = 0U; index < entries.size(); ++index) {
         const float y =
             minimum.y + 25.0F + static_cast<float>(index) * 47.0F;
@@ -176,7 +176,7 @@ void draw_field_menu_overlay(
     if (world.menu.page == FieldMenuPage::root) {
         const ImVec2 maximum{
             io.DisplaySize.x - 32.0F, io.DisplaySize.y - 32.0F};
-        const ImVec2 minimum{maximum.x - 270.0F, maximum.y - 230.0F};
+        const ImVec2 minimum{maximum.x - 270.0F, maximum.y - 285.0F};
         draw_root(draw, world.menu, minimum, maximum);
         return;
     }

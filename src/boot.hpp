@@ -153,6 +153,7 @@ struct BootState {
     std::uint8_t naming_column{};
     bool naming_lowercase{};
     bool naming_player{};
+    bool continue_available{};
     std::string naming_value;
     std::string player_name;
     std::string rival_name;

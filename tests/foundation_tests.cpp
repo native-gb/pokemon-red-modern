@@ -16,6 +16,7 @@
 #include "predicates.hpp"
 #include "pokemon.hpp"
 #include "rules.hpp"
+#include "save.hpp"
 #include "settings.hpp"
 #include "sexpr.hpp"
 #include "state.hpp"
@@ -514,9 +515,20 @@ void test_world_spaces_and_warps(TestState& state) {
             },
     };
     pokered::PokemonState patient;
-    patient.stats.hp = 24U;
+    patient.species_dex = 1U;
+    patient.level = 5U;
+    patient.stats = {
+        .hp = 24U,
+        .attack = 12U,
+        .defense = 12U,
+        .speed = 11U,
+        .special = 13U,
+    };
     patient.current_hp = 3U;
     patient.status = pokered::MajorStatus::poison;
+    patient.trainer_id = campaign.trainer_id;
+    patient.original_trainer = campaign.player_name;
+    patient.nickname = "BULBASAUR";
     patient.moves[0] = {
         .move_id = 1U,
         .pp = 0U,
@@ -570,6 +582,40 @@ void test_world_spaces_and_warps(TestState& state) {
           world.maps[world.player.map_index].id == 0U,
           "seeded indoor LAST_MAP exit returns to its imported outdoor map");
 
+    campaign.imported_initial_state = true;
+    campaign.inventory.stack_capacity = 20U;
+    campaign.storage.box_capacity = 20U;
+    campaign.storage.boxes.resize(12U);
+    campaign.money = 1234U;
+    campaign.flags = {1U, 0U, 1U};
+    campaign.variables = {7U, 11U};
+    const std::filesystem::path save_path =
+        std::filesystem::temp_directory_path() /
+        "pokered-modern-foundation-save.sexpr";
+    check(state, pokered::save_game(
+                     save_path, campaign, world, error),
+          "modern semantic campaign save writes");
+    campaign.money = 0U;
+    world.player.x = 3;
+    const bool save_reloaded = pokered::load_game(
+        save_path, campaign, world, interactions, error);
+    if (!save_reloaded)
+        std::fprintf(stderr, "save reload error: %s\n", error.c_str());
+    check(state, save_reloaded,
+          "modern semantic campaign save reloads");
+    check(state,
+          campaign.money == 1234U &&
+              campaign.flags ==
+                  std::vector<std::uint8_t>{1U, 0U, 1U} &&
+              campaign.variables ==
+                  std::vector<std::uint16_t>{7U, 11U} &&
+              world.maps[world.player.map_index].id == 0U &&
+              world.player.x == 1 && world.player.y == 0,
+          "modern semantic save restores campaign and world state");
+    std::error_code remove_error;
+    if (save_reloaded)
+        std::filesystem::remove(save_path, remove_error);
+
     pokered::step_world(
         world, interactions, campaign, {.start = true});
     check(state,
@@ -592,6 +638,14 @@ void test_world_spaces_and_warps(TestState& state) {
         world, interactions, campaign, {.back = true});
     check(state, !world.menu.open,
           "field menu Back closes from the root");
+    pokered::open_field_menu(world.menu);
+    world.menu.selected = 3U;
+    pokered::step_world(
+        world, interactions, campaign, {.activate = true});
+    check(state,
+          !world.menu.open && world.menu.save_requested,
+          "field menu exposes the modern save action");
+    world.menu.save_requested = false;
 
     // Trainer sight is indexed by world cell and owns the approach before it
     // emits the same activation used by direct conversation.
@@ -1990,6 +2044,21 @@ void test_local_boot_cache(TestState& state) {
           grid_name.player_name == "VEGA" &&
               grid_name.screen == pokered::BootScreen::oak_text,
           "Oak grid name submits through the normal confirmation flow");
+
+    pokered::BootState continue_boot;
+    check(state, pokered::begin_boot(
+                     content, continue_boot, error),
+          "Continue fixture starts a boot owner");
+    continue_boot.screen = pokered::BootScreen::main_menu;
+    continue_boot.continue_available = true;
+    continue_boot.delay_frames = 0U;
+    pokered::BootStepResult continue_result;
+    check(state,
+          pokered::step_boot(
+              content, {.confirm_pressed = true},
+              continue_boot, continue_result, error) &&
+              continue_result.continue_requested,
+          "available semantic save exposes Continue");
 }
 
 void test_local_pallet_campaign_program(TestState& state) {

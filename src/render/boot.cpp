@@ -313,13 +313,20 @@ bool draw_title(SDL_Renderer* renderer, const ViewLayout& view,
 bool draw_main_menu(SDL_Renderer* renderer, const ViewLayout& view,
                     const BootContent& content, const BootState& state,
                     const BootRenderResources& resources) {
-    if (!draw_box(renderer, view, resources, 0U, 0U, 12U, 7U)) return false;
-    const std::array<std::string_view, 2> labels{
-        content.menu.new_game_label,
-        content.menu.option_label,
-    };
-    for (std::size_t index = 0U; index < labels.size(); ++index) {
-        if (!draw_text(renderer, view, resources, labels[index], 2U,
+    const std::size_t entry_count =
+        state.continue_available ? 3U : 2U;
+    if (!draw_box(
+            renderer, view, resources, 0U, 0U, 12U,
+            state.continue_available ? 9U : 7U))
+        return false;
+    const std::array<std::string_view, 3> labels{
+        content.menu.continue_label, content.menu.new_game_label,
+        content.menu.option_label};
+    const std::size_t offset =
+        state.continue_available ? 0U : 1U;
+    for (std::size_t index = 0U; index < entry_count; ++index) {
+        if (!draw_text(renderer, view, resources,
+                       labels[index + offset], 2U,
                        2U + index * 2U, 9U, 1U))
             return false;
     }

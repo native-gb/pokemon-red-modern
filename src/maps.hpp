@@ -314,6 +314,9 @@ struct WorldState {
 bool load_world(const std::filesystem::path& path, WorldState& result, std::string& error);
 bool initialize_world_runtime(WorldState& world, const InteractionCatalog& interactions,
                               std::string& error);
+bool rebuild_world_actor_spatial(
+    WorldState& world, const InteractionCatalog& interactions,
+    std::string& error);
 bool enter_world_at(WorldState& world, std::uint8_t map_id, std::int32_t x,
                     std::int32_t y, std::string& error,
                     std::optional<std::uint8_t> previous_map_id = std::nullopt);

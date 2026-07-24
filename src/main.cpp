@@ -17,6 +17,7 @@
 #include "render/maps.hpp"
 #include "render/naming.hpp"
 #include "rules.hpp"
+#include "save.hpp"
 #include "settings.hpp"
 #include "src/imgui_layer.hpp"
 #include "state.hpp"
@@ -93,6 +94,8 @@ int main(int argc, char** argv) {
     // Host choices load before platform initialization because the selected
     // control profile must be active for the first input frame.
     const std::filesystem::path settings_path = data_root / "settings.cfg";
+    const std::filesystem::path save_path =
+        data_root / "saves" / "pokemon_red_modern.sexpr";
     pokered::PresentationSettings presentation;
     std::string settings_error;
     bool settings_writable = pokered::load_settings(settings_path, presentation, settings_error);
@@ -234,6 +237,8 @@ int main(int argc, char** argv) {
             pokered::shutdown_window(window);
             return 1;
         }
+        boot.continue_available =
+            pokered::save_game_exists(save_path);
         game.mode = pokered::Mode::title;
     } else if (world.loaded) {
         game.mode = pokered::Mode::overworld;
@@ -445,7 +450,19 @@ int main(int argc, char** argv) {
             if (input.zoom_world_steps != 0.0F)
                 pokered::zoom_world_view(
                     world, std::pow(1.18F, input.zoom_world_steps));
-            if (input.reset_world_view) pokered::reset_world_view(world);
+            if (!tools_own_input &&
+                std::fabs(controls.camera_zoom) > 0.01F)
+                pokered::zoom_world_view(
+                    world,
+                    std::exp(
+                        -zoom_speed * controls.camera_zoom *
+                        frame_seconds));
+            const bool select_pressed =
+                controls.select && !previous_controls.select;
+            if (input.reset_world_view ||
+                (!tools_own_input && !tools_chord &&
+                 select_pressed))
+                pokered::reset_world_view(world);
             const float pan_speed = world.view == pokered::WorldView::world ? 3000.0F : 180.0F;
             const float pan_step = pan_speed * frame_seconds;
             if (input.pan_world_left) pokered::pan_world_view(world, -pan_step, 0.0F);
@@ -551,6 +568,19 @@ int main(int argc, char** argv) {
                         break;
                     }
                     game.mode = pokered::Mode::overworld;
+                } else if (boot_result.continue_requested) {
+                    if (!pokered::load_game(
+                            save_path, campaign, world,
+                            interactions,
+                            boot_error)) {
+                        std::fprintf(
+                            stderr, "could not load save: %s\n",
+                            boot_error.c_str());
+                        boot.continue_available = false;
+                        boot.menu_selection = 0U;
+                    } else {
+                        game.mode = pokered::Mode::overworld;
+                    }
                 }
             }
             if (!game.paused && !tools_own_input && game.mode == pokered::Mode::overworld) {
@@ -572,6 +602,22 @@ int main(int argc, char** argv) {
                                                 ? nullptr
                                                 : pending_world_text.c_str(),
                                     });
+                if (world.menu.save_requested) {
+                    world.menu.save_requested = false;
+                    std::string save_error;
+                    if (pokered::save_game(
+                            save_path, campaign, world,
+                            save_error)) {
+                        pokered::open_world_dialogue(
+                            world, campaign, {"Game saved."});
+                    } else {
+                        std::fprintf(
+                            stderr, "could not save game: %s\n",
+                            save_error.c_str());
+                        pokered::open_world_dialogue(
+                            world, campaign, {"Save failed."});
+                    }
+                }
                 pending_world_activation = false;
                 pending_world_erase = false;
                 pending_world_submit = false;
